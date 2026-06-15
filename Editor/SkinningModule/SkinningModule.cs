@@ -300,6 +300,7 @@ namespace UnityEditor.U2D.Animation
         public override void DoMainGUI()
         {
             Debug.Assert(currentTool != null);
+            SkinningEditorInput.altKeyDown = Event.current.alt;
 
             DoViewGUI();
 

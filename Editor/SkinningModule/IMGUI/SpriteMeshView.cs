@@ -389,7 +389,7 @@ namespace UnityEditor.U2D.Animation
                     return hoveredVertex == -1;
             }
 
-            if (guiWrapper.isAltDown)
+            if (SkinningEditorInput.altKeyDown)
                 return false;
 
             if (action == MeshEditorAction.MoveVertex)
@@ -515,7 +515,7 @@ namespace UnityEditor.U2D.Animation
 
         private bool IsTemporaryCreateVertexMode()
         {
-            return mode == SpriteMeshViewMode.EditGeometry && guiWrapper.isAltDown;
+            return mode == SpriteMeshViewMode.EditGeometry && SkinningEditorInput.altKeyDown;
         }
 
         public void DoRepaint()
