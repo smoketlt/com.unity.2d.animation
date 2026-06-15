@@ -34,6 +34,7 @@ namespace UnityEditor.U2D.Animation
         public static string createVertex = "Create Vertex";
         public static string createEdge = "Create Edge";
         public static string splitEdge = "Split Edge";
+        public static string resetGeometry = "Reset Geometry";
         public static string removeEdge = "Remove Edge";
         public static string removeVertices = "Remove Vertices";
         public static string selectionChange = "Selection Change";
@@ -67,6 +68,10 @@ namespace UnityEditor.U2D.Animation
         public static string removeBoneInfluenceTooltip = L10n.Tr("Remove selected bone from influencing Sprite");
         public static string addSpriteInfluenceTooltip = L10n.Tr("Add selected Sprite to be influenced by bone");
         public static string removeSpriteInfluenceTooltip = L10n.Tr("Remove selected Sprite from being influenced by bone");
+        public static string resetGeometryWeightsTitle = L10n.Tr("Attachment weights");
+        public static string resetGeometryWeightsMessage = L10n.Tr("This attachment has weights.\n\nPerforming this operation will remove all weights for this attachment.");
+        public static string resetGeometryWeightsConfirm = L10n.Tr("Remove weights");
+        public static string resetGeometryWeightsCancel = L10n.Tr("Cancel");
 
         // Horizontal tool bar button txt
         public static string visibilityIconText = L10n.Tr("Visibility");

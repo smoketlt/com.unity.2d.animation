@@ -347,6 +347,7 @@ namespace UnityEditor.U2D.Animation
             m_LayoutOverlay.verticalToolbar.AddToContainer(m_MeshToolbar);
 
             m_MeshToolbar.SetMeshTool += SetMeshTool;
+            m_MeshToolbar.ResetGeometry += ResetGeometry;
             m_MeshToolbar.SetEnabled(!spriteEditor.editingDisabled);
         }
 
@@ -411,6 +412,57 @@ namespace UnityEditor.U2D.Animation
                 skinningCache.RestoreBindPose();
                 UnselectBones();
             }
+        }
+
+        private void ResetGeometry()
+        {
+            SpriteCache sprite = skinningCache.selectedSprite;
+            if (sprite == null)
+                return;
+
+            MeshCache mesh = sprite.GetMesh();
+            if (mesh == null)
+                return;
+
+            if (HasWeights(mesh) && !ConfirmResetWeightedGeometry())
+                return;
+
+            using (skinningCache.UndoScope(TextContent.resetGeometry))
+            {
+                SpriteMeshDataController spriteMeshDataController = new SpriteMeshDataController();
+                spriteMeshDataController.spriteMeshData = mesh;
+                mesh.Clear();
+                spriteMeshDataController.CreateQuad();
+                spriteMeshDataController.Triangulate(new Triangulator());
+                spriteMeshDataController.SortTrianglesByDepth();
+
+                skinningCache.vertexSelection.Clear();
+                skinningCache.RestoreBindPose();
+                UnselectBones();
+                skinningCache.events.meshChanged.Invoke(mesh);
+            }
+
+            spriteEditor.RequestRepaint();
+        }
+
+        private bool ConfirmResetWeightedGeometry()
+        {
+            return EditorUtility.DisplayDialog(
+                TextContent.resetGeometryWeightsTitle,
+                TextContent.resetGeometryWeightsMessage,
+                TextContent.resetGeometryWeightsConfirm,
+                TextContent.resetGeometryWeightsCancel);
+        }
+
+        private bool HasWeights(MeshCache mesh)
+        {
+            foreach (EditableBoneWeight vertexWeight in mesh.vertexWeights)
+            {
+                if (vertexWeight != null && vertexWeight.Sum() > 0f)
+                    return true;
+            }
+
+            return false;
         }
 
         private void SetWeightTool(Tools toolType)

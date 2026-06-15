@@ -14,7 +14,7 @@
               <ui:Image name="CreateEdgeImage" />
               <ui:Label text="New"/>
           </ui:Button>
-          <ui:Button name="SplitEdge" tooltip="Splits the edges of selected geometry at the point you hover over.">
+          <ui:Button name="SplitEdge" tooltip="Resets geometry to a rectangle with four vertices. Removes weights from this attachment.">
               <ui:Image name="SplitEdgeImage" />
               <ui:Label text="Reset"/>
           </ui:Button>
