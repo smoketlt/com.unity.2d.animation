@@ -13,13 +13,9 @@ namespace UnityEditor.U2D.Animation
 
             bool previousAltKeyDown = altKeyDown;
 
-            if (IsAltKeyEvent(evt, EventType.KeyDown))
+            if (IsAltKeyEvent(evt, EventType.KeyDown) || (evt.alt && !IsKeyEvent(evt, EventType.KeyUp)))
                 altKeyDown = true;
-            else if (IsAltKeyEvent(evt, EventType.KeyUp))
-                altKeyDown = false;
-            else if (evt.alt)
-                altKeyDown = true;
-            else if (IsReliableModifierEvent(evt))
+            else if (IsAltKeyEvent(evt, EventType.KeyUp) || IsAnyKeyUpWithoutAlt(evt))
                 altKeyDown = false;
 
             return previousAltKeyDown != altKeyDown;
@@ -31,22 +27,14 @@ namespace UnityEditor.U2D.Animation
                 (evt.keyCode == KeyCode.LeftAlt || evt.keyCode == KeyCode.RightAlt);
         }
 
-        private static bool IsReliableModifierEvent(Event evt)
+        private static bool IsKeyEvent(Event evt, EventType eventType)
         {
-            return evt.type == EventType.KeyDown ||
-                evt.type == EventType.KeyUp ||
-                evt.type == EventType.MouseDown ||
-                evt.type == EventType.MouseUp ||
-                evt.type == EventType.MouseMove ||
-                evt.type == EventType.MouseDrag ||
-                evt.type == EventType.ScrollWheel ||
-                evt.rawType == EventType.KeyDown ||
-                evt.rawType == EventType.KeyUp ||
-                evt.rawType == EventType.MouseDown ||
-                evt.rawType == EventType.MouseUp ||
-                evt.rawType == EventType.MouseMove ||
-                evt.rawType == EventType.MouseDrag ||
-                evt.rawType == EventType.ScrollWheel;
+            return evt.type == eventType || evt.rawType == eventType;
+        }
+
+        private static bool IsAnyKeyUpWithoutAlt(Event evt)
+        {
+            return IsKeyEvent(evt, EventType.KeyUp) && !evt.alt;
         }
 
         public static void Reset()
