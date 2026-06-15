@@ -219,7 +219,7 @@ namespace UnityEditor.U2D.Animation
 
         public bool IsViewToolActive()
         {
-            return UnityEditor.Tools.current == Tool.View || isAltDown || mouseButton == 1 || mouseButton == 2;
+            return UnityEditor.Tools.current == Tool.View || mouseButton == 1 || mouseButton == 2;
         }
 
         public bool HasCurrentCamera()
