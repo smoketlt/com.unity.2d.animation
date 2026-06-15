@@ -335,6 +335,16 @@ namespace UnityEditor.U2D.Animation
         void DoCopyPasteKeyboardEventHandling()
         {
             Event evt = Event.current;
+            CopyTool copyTool = skinningCache.GetTool(Tools.CopyPaste) as CopyTool;
+
+            if (copyTool != null && evt.type == EventType.KeyDown && evt.keyCode == KeyCode.V && evt.shift && (evt.control || evt.command))
+            {
+                bool boneReadOnly = skinningCache.bonesReadOnly;
+                copyTool.OnPasteActivated(!boneReadOnly, true, true, false);
+                evt.Use();
+                return;
+            }
+
             if (evt.type == EventType.ValidateCommand)
             {
                 if (evt.commandName == "Copy" || evt.commandName == "Paste")
@@ -344,7 +354,6 @@ namespace UnityEditor.U2D.Animation
 
             if (evt.type == EventType.ExecuteCommand)
             {
-                CopyTool copyTool = skinningCache.GetTool(Tools.CopyPaste) as CopyTool;
                 if (copyTool != null && evt.commandName == "Copy")
                 {
                     copyTool.OnCopyActivated();
@@ -353,7 +362,7 @@ namespace UnityEditor.U2D.Animation
                 else if (copyTool != null && evt.commandName == "Paste")
                 {
                     bool boneReadOnly = skinningCache.bonesReadOnly;
-                    copyTool.OnPasteActivated(!boneReadOnly, true, evt.shift, false);
+                    copyTool.OnPasteActivated(!boneReadOnly, true, false, false);
                     evt.Use();
                 }
             }
