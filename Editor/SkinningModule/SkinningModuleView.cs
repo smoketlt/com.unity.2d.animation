@@ -1,4 +1,5 @@
 using System;
+using Unity.Mathematics;
 using UnityEditor.ShortcutManagement;
 using UnityEditor.U2D.Common;
 using UnityEditor.U2D.Layout;
@@ -17,6 +18,54 @@ namespace UnityEditor.U2D.Animation
         private RigToolbar m_RigToolbar;
 
         private InternalEditorBridge.ShortcutContext m_ShortcutContext;
+        private NewGeometrySnapshot m_NewGeometrySnapshot;
+
+        private class NewGeometrySnapshot
+        {
+            public Vector2[] vertices;
+            public EditableBoneWeight[] vertexWeights;
+            public int[] indices;
+            public int2[] edges;
+
+            public static NewGeometrySnapshot Capture(MeshCache mesh)
+            {
+                return new NewGeometrySnapshot
+                {
+                    vertices = (Vector2[])mesh.vertices.Clone(),
+                    vertexWeights = CloneWeights(mesh.vertexWeights),
+                    indices = (int[])mesh.indices.Clone(),
+                    edges = (int2[])mesh.edges.Clone()
+                };
+            }
+
+            public void Restore(MeshCache mesh)
+            {
+                mesh.SetVertices((Vector2[])vertices.Clone(), CloneWeights(vertexWeights));
+                mesh.SetEdges((int2[])edges.Clone());
+                mesh.SetIndices((int[])indices.Clone());
+            }
+
+            private static EditableBoneWeight[] CloneWeights(EditableBoneWeight[] source)
+            {
+                EditableBoneWeight[] clone = new EditableBoneWeight[source.Length];
+                for (int i = 0; i < source.Length; ++i)
+                    clone[i] = CloneWeight(source[i]);
+
+                return clone;
+            }
+
+            private static EditableBoneWeight CloneWeight(EditableBoneWeight source)
+            {
+                EditableBoneWeight clone = new EditableBoneWeight();
+                if (source == null)
+                    return clone;
+
+                foreach (BoneWeightChannel channel in source)
+                    clone.AddChannel(channel.boneIndex, channel.weight, channel.enabled);
+
+                return clone;
+            }
+        }
 
         private static SkinningModule GetModuleFromContext(ShortcutArguments args)
         {
@@ -351,8 +400,8 @@ namespace UnityEditor.U2D.Animation
             MeshToolWrapper newGeometryTool = skinningCache.GetTool(Tools.CreateEdge) as MeshToolWrapper;
             if (newGeometryTool != null && newGeometryTool.meshTool != null)
             {
-                newGeometryTool.meshTool.newGeometryCompleted += ExitNewGeometryMode;
-                newGeometryTool.meshTool.newGeometryCanceled += ExitNewGeometryMode;
+                newGeometryTool.meshTool.newGeometryCompleted += CompleteNewGeometryMode;
+                newGeometryTool.meshTool.newGeometryCanceled += CancelNewGeometryMode;
             }
             m_MeshToolbar.SetEnabled(!spriteEditor.editingDisabled);
         }
@@ -415,8 +464,13 @@ namespace UnityEditor.U2D.Animation
                 return;
             }
 
-            if (IsNewGeometryToolActive() && !TryCompleteNewGeometry())
+            if (IsNewGeometryToolActive())
+            {
+                if (TryCompleteNewGeometry())
+                    ExitNewGeometryMode();
+
                 return;
+            }
 
             if (currentTool == tool)
                 return;
@@ -456,6 +510,7 @@ namespace UnityEditor.U2D.Animation
 
             using (skinningCache.UndoScope(TextContent.newGeometry))
             {
+                m_NewGeometrySnapshot = NewGeometrySnapshot.Capture(mesh);
                 ActivateTool(tool);
                 skinningCache.RestoreBindPose();
                 UnselectBones();
@@ -493,7 +548,63 @@ namespace UnityEditor.U2D.Animation
                 skinningCache.events.meshChanged.Invoke(mesh);
             }
 
+            m_NewGeometrySnapshot = null;
             return true;
+        }
+
+        private void CompleteNewGeometryMode()
+        {
+            m_NewGeometrySnapshot = null;
+            ExitNewGeometryMode();
+        }
+
+        private void CancelNewGeometryMode()
+        {
+            SpriteCache sprite = skinningCache.selectedSprite;
+            MeshCache mesh = sprite != null ? sprite.GetMesh() : null;
+
+            if (mesh != null && m_NewGeometrySnapshot != null)
+            {
+                using (skinningCache.UndoScope(TextContent.newGeometry))
+                {
+                    m_NewGeometrySnapshot.Restore(mesh);
+                    skinningCache.vertexSelection.Clear();
+                    skinningCache.events.meshChanged.Invoke(mesh);
+                }
+            }
+
+            m_NewGeometrySnapshot = null;
+            ExitNewGeometryMode();
+        }
+
+        private void HandleNewGeometryExitRequest()
+        {
+            MeshToolWrapper newGeometryTool = skinningCache.GetTool(Tools.CreateEdge) as MeshToolWrapper;
+            if (newGeometryTool == null || newGeometryTool.meshTool == null)
+                return;
+
+            MeshTool.NewGeometryExitRequest request = newGeometryTool.meshTool.ConsumeNewGeometryExitRequest();
+            if (request == MeshTool.NewGeometryExitRequest.Completed)
+                CompleteNewGeometryMode();
+            else if (request == MeshTool.NewGeometryExitRequest.Canceled)
+                CancelNewGeometryMode();
+        }
+
+        private void NormalizeRestoredNewGeometryTool()
+        {
+            if (skinningCache.selectedTool == skinningCache.GetTool(Tools.CreateEdge))
+                skinningCache.selectedTool = skinningCache.GetTool(Tools.EditGeometry);
+        }
+
+        private void CancelNewGeometryModeOnDeactivate()
+        {
+            if (!IsNewGeometryToolActive())
+                return;
+
+            if (m_NewGeometrySnapshot != null)
+                CancelNewGeometryMode();
+            else
+                NormalizeRestoredNewGeometryTool();
         }
 
         private void ExitNewGeometryMode()

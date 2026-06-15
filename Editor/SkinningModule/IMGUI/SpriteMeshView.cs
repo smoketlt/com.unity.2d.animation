@@ -249,6 +249,26 @@ namespace UnityEditor.U2D.Animation
             return true;
         }
 
+        public bool DoRemoveNewGeometryVertices()
+        {
+            if (mode != SpriteMeshViewMode.NewGeometry)
+                return false;
+
+            if ((guiWrapper.eventType != EventType.ValidateCommand && guiWrapper.eventType != EventType.ExecuteCommand) ||
+                (guiWrapper.commandName != kSoftDeleteCommandName && guiWrapper.commandName != kDeleteCommandName))
+                return false;
+
+            if (guiWrapper.eventType == EventType.ExecuteCommand)
+            {
+                guiWrapper.SetGuiChanged(true);
+                guiWrapper.UseCurrentEvent();
+                return true;
+            }
+
+            guiWrapper.UseCurrentEvent();
+            return false;
+        }
+
         public bool DoSelectVertex(out bool additive)
         {
             additive = false;

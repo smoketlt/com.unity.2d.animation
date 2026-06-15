@@ -62,9 +62,10 @@ This page documents the Geometry editing workflow: selection, vertex creation, e
 - In `New`, clicks slightly outside the sprite frame are accepted and clamped to the frame so corners and borders are easier to place.
 - In `New`, vertices can be dragged without triangulating the open hull.
 - In `New`, double-clicking a vertex deletes it.
-- In `New`, `Esc` exits to `Modify`.
+- In `New`, `Delete` removes selected vertices without triangulating the open hull.
+- In `New`, `Esc` restores the mesh that existed before entering `New` and exits to `Modify`.
 - In `New`, clicking the first vertex with three or more vertices closes and triangulates the hull.
-- Pressing `New` again, or selecting another mesh tool, also closes and triangulates the hull when at least three vertices exist.
+- Pressing `New` again, or selecting another mesh tool, also closes and triangulates the hull when at least three vertices exist; after completion the active tool is always `Modify`.
 
 ## Create Edge From Create Mode
 
@@ -83,9 +84,13 @@ The flag:
 
 Entering the mode clears the current mesh, clears vertex selection, and leaves an empty open hull. Each empty click adds a vertex. Empty clicks are accepted inside the sprite frame and within a small screen-space radius outside the frame; positions are clamped back to the frame before creating vertices. Each vertex after the first also adds an edge from the previous vertex to the new vertex. The mesh is not triangulated while the hull is open.
 
-The mode is completed by clicking the first vertex or pressing `New` again. Selecting another mesh tool also completes a valid hull before switching tools. Completion adds the closing edge from the last vertex to vertex `0`, triangulates the mesh, sorts triangles by depth, clears selection, and exits to `Modify` when completion was requested through the first vertex or `New`.
+The mode is completed by clicking the first vertex or pressing `New` again. Selecting another mesh tool also completes a valid hull, but completion still exits to `Modify` rather than the requested tool. Completion adds the closing edge from the last vertex to vertex `0`, triangulates the mesh, sorts triangles by depth, clears selection, and exits to `Modify`.
 
-`Esc` exits `New` to `Modify` without forcing hull completion.
+Entering `New` stores a snapshot of the current mesh vertices, weights, edges, and indices. `Esc` restores that snapshot and exits to `Modify` without forcing hull completion.
+
+`Delete` removes selected open-hull vertices. Double-clicking a vertex removes that vertex directly.
+
+Closing/deactivating the Skinning Editor while an open New hull is active also cancels the mode, restores the entry snapshot, and persists `Modify` as the active tool.
 
 While the hull is open, `MeshPreviewTool` falls back to drawing the selected sprite's default textured mesh when the edited mesh has fewer than one triangle. This keeps the image visible after the first vertex is created.
 
@@ -107,3 +112,4 @@ This is why empty left-click and Esc clear selection.
 - `CanCreateEdge()` must avoid leaving persistent edge-preview state after mouse up.
 - Open hull edits must not call normal triangulation until completion; triangulation fallback creates a quad when fewer than three valid vertices exist.
 - Mesh mutations must call triangulation and mesh-changed events through the owning flow.
+- New-mode cancel must restore the entry snapshot and normalize the active/persisted tool back to `Modify`.

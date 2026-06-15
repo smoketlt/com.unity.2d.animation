@@ -334,6 +334,12 @@ namespace UnityEditor.U2D.Animation
                 return;
             }
 
+            if (spriteMeshView.DoRemoveNewGeometryVertices())
+            {
+                RemoveSelectedNewGeometryVertices();
+                return;
+            }
+
             if (spriteMeshData.vertexCount >= 3 && spriteMeshView.DoCompleteNewGeometry())
             {
                 CompleteNewGeometry();
@@ -590,6 +596,23 @@ namespace UnityEditor.U2D.Animation
 
             if (spriteMeshData.vertexCount > 0)
                 selection.Select(Mathf.Clamp(index, 0, spriteMeshData.vertexCount - 1), true);
+
+            cacheUndo.IncrementCurrentGroup();
+        }
+
+        void RemoveSelectedNewGeometryVertices()
+        {
+            if (selection.Count == 0)
+                return;
+
+            int firstSelectedIndex = selection.elements[0];
+
+            cacheUndo.BeginUndoOperation(TextContent.removeVertices);
+            m_SpriteMeshDataController.RemoveVertex(selection.elements);
+            selection.Clear();
+
+            if (spriteMeshData.vertexCount > 0)
+                selection.Select(Mathf.Clamp(firstSelectedIndex, 0, spriteMeshData.vertexCount - 1), true);
 
             cacheUndo.IncrementCurrentGroup();
         }

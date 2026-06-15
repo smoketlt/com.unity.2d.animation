@@ -5,6 +5,13 @@ namespace UnityEditor.U2D.Animation
 {
     internal class MeshTool : BaseTool
     {
+        public enum NewGeometryExitRequest
+        {
+            None,
+            Completed,
+            Canceled
+        }
+
         MeshCache m_Mesh;
         ISelection<int> m_SelectionOverride;
         SpriteMeshController m_SpriteMeshController;
@@ -15,6 +22,7 @@ namespace UnityEditor.U2D.Animation
         ITriangulator m_Triangulator;
         bool m_NewGeometryCompleted;
         bool m_NewGeometryCanceled;
+        NewGeometryExitRequest m_NewGeometryExitRequest = NewGeometryExitRequest.None;
 
         public event Action newGeometryCompleted = () => { };
         public event Action newGeometryCanceled = () => { };
@@ -156,10 +164,23 @@ namespace UnityEditor.U2D.Animation
             EndPositionOverride();
 
             if (newGeometryCompletedThisFrame)
+            {
+                m_NewGeometryExitRequest = NewGeometryExitRequest.Completed;
                 newGeometryCompleted();
+            }
 
             if (newGeometryCanceledThisFrame)
+            {
+                m_NewGeometryExitRequest = NewGeometryExitRequest.Canceled;
                 newGeometryCanceled();
+            }
+        }
+
+        public NewGeometryExitRequest ConsumeNewGeometryExitRequest()
+        {
+            NewGeometryExitRequest request = m_NewGeometryExitRequest;
+            m_NewGeometryExitRequest = NewGeometryExitRequest.None;
+            return request;
         }
 
         public void BeginPositionOverride()

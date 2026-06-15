@@ -43,6 +43,7 @@ namespace UnityEditor.U2D.Animation
         bool DoCreateNewGeometryVertex();
         bool DoCompleteNewGeometry();
         bool DoDeleteNewGeometryVertex();
+        bool DoRemoveNewGeometryVertices();
         bool DoCancelNewGeometry();
         bool DoSelectVertex(out bool additive);
         bool DoMoveVertex(out Vector2 delta);

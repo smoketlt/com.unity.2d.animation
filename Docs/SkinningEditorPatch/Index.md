@@ -45,6 +45,7 @@
 - The Geometry toolbar labels are customized as `Modify`, `Create`, `New`, `Reset`, `Generate`.
 - `New` deletes the current mesh and enters an open hull-authoring mode modeled after Spine 2D.
 - In `New`, the selected sprite remains fully visible, unselected sprites are dimmed, and border clicks are allowed slightly outside the sprite frame and clamped to the frame.
+- Exiting `New` always switches to `Modify`; Esc restores the mesh that existed before entering `New`.
 - `Reset` is a command that resets the current sprite mesh to a four-vertex rectangle; it is no longer the `SplitEdge` mode button.
 - `Alt` temporarily swaps `Modify` and `Create` using shared `SkinningEditorInput.altKeyDown`.
 - In `Create`, dragging from a vertex creates an edge and returns to `Create` after mouse up.

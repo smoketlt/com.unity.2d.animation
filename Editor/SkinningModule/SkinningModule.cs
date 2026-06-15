@@ -86,6 +86,7 @@ namespace UnityEditor.U2D.Animation
                 skinningCache.events.pivotChange.AddListener(OnPivotChanged);
 
                 skinningCache.RestoreFromPersistentState();
+                NormalizeRestoredNewGeometryTool();
                 ActivateTool(skinningCache.selectedTool);
                 skinningCache.RestoreToolStateFromPersistentState();
 
@@ -125,6 +126,7 @@ namespace UnityEditor.U2D.Animation
 
         public override void OnModuleDeactivate()
         {
+            CancelNewGeometryModeOnDeactivate();
             SkinningEditorInput.Reset();
 
             if (m_SpriteOutlineRenderer != null)
@@ -325,6 +327,7 @@ namespace UnityEditor.U2D.Animation
             if (!spriteEditor.editingDisabled)
             {
                 currentTool.DoGUI();
+                HandleNewGeometryExitRequest();
                 DoCopyPasteKeyboardEventHandling();
             }
 

@@ -53,10 +53,11 @@ In `NewGeometry`, normal split/create-edge/create-vertex routing is skipped. The
 
 1. Esc cancel;
 2. double-click vertex delete;
-3. first-vertex click completion when at least three vertices exist;
-4. empty-click vertex creation;
-5. vertex selection;
-6. vertex move without triangulation.
+3. Delete selected open-hull vertices;
+4. first-vertex click completion when at least three vertices exist;
+5. empty-click vertex creation;
+6. vertex selection;
+7. vertex move without triangulation.
 
 ## Edge Creation
 
@@ -73,7 +74,7 @@ In `NewGeometry`, normal split/create-edge/create-vertex routing is skipped. The
 
 `CompleteNewGeometry()` adds the closing edge, triangulates, clears selection, and signals `newGeometryCompleted`. `MeshTool` defers the public completion event until after `EditorGUI.EndChangeCheck()` has allowed `meshChanged` to fire.
 
-`DoCancelNewGeometry()` signals `newGeometryCanceled`; `MeshTool` defers the public cancel event and `SkinningModuleView` exits back to `Modify`.
+`DoCancelNewGeometry()` signals `newGeometryCanceled`; `MeshTool` records a pending cancel request and `SkinningModuleView` restores the pre-New snapshot before exiting back to `Modify`.
 
 ## Change Risks
 
