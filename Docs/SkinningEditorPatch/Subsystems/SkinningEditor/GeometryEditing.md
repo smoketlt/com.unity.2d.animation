@@ -19,7 +19,7 @@ This page documents the Geometry editing workflow: selection, vertex creation, e
 | --- | --- | --- |
 | `Modify` | `Tools.EditGeometry` | `EditGeometry` |
 | `Create` | `Tools.CreateVertex` | `CreateVertex` |
-| `New` | `Tools.CreateEdge` | `CreateEdge` |
+| `New` | `Tools.CreateEdge` | `NewGeometry` |
 | `Reset` | command | not a mode |
 | `Generate` | `Tools.GenerateGeometry` | auto geometry panel/tool |
 
@@ -56,6 +56,11 @@ This page documents the Geometry editing workflow: selection, vertex creation, e
 - In `Create`, dragging from a vertex starts edge creation.
 - In `Create`, vertex moving is disabled so drag from a vertex is not stolen by move behavior.
 - Edge-drag state is reset on mouse up so the tool returns to plain `Create`.
+- In `New`, the current mesh is cleared and clicks define a new open hull.
+- In `New`, vertices can be dragged without triangulating the open hull.
+- In `New`, double-clicking a vertex deletes it.
+- In `New`, clicking the first vertex with three or more vertices closes and triangulates the hull.
+- Pressing `New` again, or selecting another mesh tool, also closes and triangulates the hull when at least three vertices exist.
 
 ## Create Edge From Create Mode
 
@@ -67,6 +72,16 @@ The flag:
 2. allows `CreateEdge` action while dragging;
 3. triggers edge creation on mouse up;
 4. resets after mouse up, even if no edge was created.
+
+## New Mesh Hull Mode
+
+`New` uses `SpriteMeshViewMode.NewGeometry`.
+
+Entering the mode clears the current mesh, clears vertex selection, and leaves an empty open hull. Each empty click adds a vertex. Each vertex after the first also adds an edge from the previous vertex to the new vertex. The mesh is not triangulated while the hull is open.
+
+The mode is completed by clicking the first vertex or pressing `New` again. Selecting another mesh tool also completes a valid hull before switching tools. Completion adds the closing edge from the last vertex to vertex `0`, triangulates the mesh, sorts triangles by depth, clears selection, and exits to `Modify` when completion was requested through the first vertex or `New`.
+
+If the previous mesh had weights, entry uses the same attachment-weights confirmation dialog as Reset because clearing the mesh removes those weights.
 
 ## Selection Clearing
 
@@ -82,4 +97,5 @@ This is why empty left-click and Esc clear selection.
 - Action priority in `SpriteMeshController.OnGUI()` matters.
 - Moving vertex behavior can conflict with edge drag from vertex.
 - `CanCreateEdge()` must avoid leaving persistent edge-preview state after mouse up.
+- Open hull edits must not call normal triangulation until completion; triangulation fallback creates a quad when fewer than three valid vertices exist.
 - Mesh mutations must call triangulation and mesh-changed events through the owning flow.

@@ -202,6 +202,52 @@ namespace UnityEditor.U2D.Animation
             return false;
         }
 
+        public bool DoCreateNewGeometryVertex()
+        {
+            if (mode != SpriteMeshViewMode.NewGeometry)
+                return false;
+
+            if (!frame.Contains(mouseWorldPosition) ||
+                hoveredVertex != -1 ||
+                !guiWrapper.IsMouseDown(0) ||
+                guiWrapper.clickCount > 1)
+                return false;
+
+            guiWrapper.SetGuiChanged(true);
+            guiWrapper.UseCurrentEvent();
+            return true;
+        }
+
+        public bool DoCompleteNewGeometry()
+        {
+            if (mode != SpriteMeshViewMode.NewGeometry)
+                return false;
+
+            if (hoveredVertex != 0 ||
+                !guiWrapper.IsMouseDown(0) ||
+                guiWrapper.clickCount > 1)
+                return false;
+
+            guiWrapper.SetGuiChanged(true);
+            guiWrapper.UseCurrentEvent();
+            return true;
+        }
+
+        public bool DoDeleteNewGeometryVertex()
+        {
+            if (mode != SpriteMeshViewMode.NewGeometry)
+                return false;
+
+            if (hoveredVertex == -1 ||
+                !guiWrapper.IsMouseDown(0) ||
+                guiWrapper.clickCount < 2)
+                return false;
+
+            guiWrapper.SetGuiChanged(true);
+            guiWrapper.UseCurrentEvent();
+            return true;
+        }
+
         public bool DoSelectVertex(out bool additive)
         {
             additive = false;
@@ -404,7 +450,12 @@ namespace UnityEditor.U2D.Animation
                 return canSplitEdge;
 
             if (action == MeshEditorAction.MoveEdge)
+            {
+                if (mode == SpriteMeshViewMode.NewGeometry)
+                    return false;
+
                 return guiWrapper.IsControlNearest(m_HoveredEdgeControlID);
+            }
 
             if (action == MeshEditorAction.SelectVertex)
                 return guiWrapper.IsControlNearest(m_HoveredVertexControlID);
@@ -415,7 +466,12 @@ namespace UnityEditor.U2D.Animation
                     !canCreateEdge && !canSplitEdge;
 
             if (action == MeshEditorAction.Remove)
+            {
+                if (mode == SpriteMeshViewMode.NewGeometry)
+                    return false;
+
                 return true;
+            }
 
             return false;
         }
@@ -490,6 +546,12 @@ namespace UnityEditor.U2D.Animation
                 return false;
             }
 
+            if (mode == SpriteMeshViewMode.NewGeometry)
+            {
+                m_CreateEdgeDragActive = false;
+                return false;
+            }
+
             if (mode == SpriteMeshViewMode.CreateVertex)
             {
                 if (guiWrapper.IsMouseDown(0) && guiWrapper.IsControlNearest(m_HoveredVertexControlID) && hoveredVertex != -1)
@@ -510,6 +572,9 @@ namespace UnityEditor.U2D.Animation
                 return false;
 
             if (mode == SpriteMeshViewMode.EditGeometry)
+                return false;
+
+            if (mode == SpriteMeshViewMode.NewGeometry)
                 return false;
 
             if (mode == SpriteMeshViewMode.SplitEdge)

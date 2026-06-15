@@ -54,11 +54,11 @@ Then it creates the perimeter edges and triangulation can produce the final indi
 
 Use `EditableBoneWeight.Sum()` to detect whether a mesh has meaningful weights. A vertex weight array can exist even when all weights are empty, so array length is not enough.
 
-The Reset command treats a mesh as weighted when any vertex weight has `Sum() > 0f`.
+The Reset and New commands treat a mesh as weighted when any vertex weight has `Sum() > 0f`.
 
-## Weight Loss On Reset
+## Weight Loss On Reset/New
 
-Resetting geometry clears all vertices and creates new vertices with empty weights. This intentionally removes existing skinning weights for the attachment.
+Resetting geometry clears all vertices and creates new vertices with empty weights. New mesh hull mode clears all vertices and then lets the user define new vertices with empty weights. Both operations intentionally remove existing skinning weights for the attachment.
 
 When weights exist, the user must confirm the operation.
 

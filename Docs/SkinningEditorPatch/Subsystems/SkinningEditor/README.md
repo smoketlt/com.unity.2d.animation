@@ -46,7 +46,7 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 
 - `Modify`: edit existing vertices/edges.
 - `Create`: create vertices and drag from vertices to create edges.
-- `New`: explicit create-edge mode.
+- `New`: clears the current mesh and enters open mesh hull creation mode.
 - `Reset`: reset current sprite mesh to a four-corner rectangle.
 - `Generate`: open auto geometry generation.
 - Holding `Alt` in `Modify` temporarily behaves like `Create`.

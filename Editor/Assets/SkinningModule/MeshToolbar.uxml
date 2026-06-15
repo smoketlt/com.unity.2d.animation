@@ -10,7 +10,7 @@
               <ui:Image name="CreateVertexImage" />
               <ui:Label text="Create"/>
           </ui:Button>
-          <ui:Button name="CreateEdge" tooltip="Creates new edges on selected geometry.">
+          <ui:Button name="CreateEdge" tooltip="Deletes the current mesh and enters new mesh hull creation mode. Click vertices to define the hull; click the first vertex or press New again to complete it.">
               <ui:Image name="CreateEdgeImage" />
               <ui:Label text="New"/>
           </ui:Button>

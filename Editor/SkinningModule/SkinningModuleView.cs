@@ -348,6 +348,9 @@ namespace UnityEditor.U2D.Animation
 
             m_MeshToolbar.SetMeshTool += SetMeshTool;
             m_MeshToolbar.ResetGeometry += ResetGeometry;
+            MeshToolWrapper newGeometryTool = skinningCache.GetTool(Tools.CreateEdge) as MeshToolWrapper;
+            if (newGeometryTool != null && newGeometryTool.meshTool != null)
+                newGeometryTool.meshTool.newGeometryCompleted += ExitNewGeometryMode;
             m_MeshToolbar.SetEnabled(!spriteEditor.editingDisabled);
         }
 
@@ -403,6 +406,15 @@ namespace UnityEditor.U2D.Animation
         {
             BaseTool tool = skinningCache.GetTool(toolType);
 
+            if (toolType == Tools.CreateEdge)
+            {
+                ToggleNewGeometryTool(tool);
+                return;
+            }
+
+            if (IsNewGeometryToolActive() && !TryCompleteNewGeometry())
+                return;
+
             if (currentTool == tool)
                 return;
 
@@ -412,6 +424,83 @@ namespace UnityEditor.U2D.Animation
                 skinningCache.RestoreBindPose();
                 UnselectBones();
             }
+        }
+
+        private void ToggleNewGeometryTool(BaseTool tool)
+        {
+            if (currentTool == tool)
+            {
+                if (TryCompleteNewGeometry())
+                    ExitNewGeometryMode();
+                return;
+            }
+
+            BeginNewGeometryTool(tool);
+        }
+
+        private void BeginNewGeometryTool(BaseTool tool)
+        {
+            SpriteCache sprite = skinningCache.selectedSprite;
+            if (sprite == null)
+                return;
+
+            MeshCache mesh = sprite.GetMesh();
+            if (mesh == null)
+                return;
+
+            if (HasWeights(mesh) && !ConfirmResetWeightedGeometry())
+                return;
+
+            using (skinningCache.UndoScope(TextContent.newGeometry))
+            {
+                ActivateTool(tool);
+                skinningCache.RestoreBindPose();
+                UnselectBones();
+                skinningCache.vertexSelection.Clear();
+                mesh.Clear();
+                skinningCache.events.meshChanged.Invoke(mesh);
+            }
+
+            spriteEditor.RequestRepaint();
+        }
+
+        private bool IsNewGeometryToolActive()
+        {
+            return currentTool == skinningCache.GetTool(Tools.CreateEdge);
+        }
+
+        private bool TryCompleteNewGeometry()
+        {
+            SpriteCache sprite = skinningCache.selectedSprite;
+            if (sprite == null)
+                return false;
+
+            MeshCache mesh = sprite.GetMesh();
+            if (mesh == null || mesh.vertexCount < 3)
+                return false;
+
+            using (skinningCache.UndoScope(TextContent.newGeometry))
+            {
+                SpriteMeshDataController spriteMeshDataController = new SpriteMeshDataController();
+                spriteMeshDataController.spriteMeshData = mesh;
+                spriteMeshDataController.CreateEdge(mesh.vertexCount - 1, 0);
+                spriteMeshDataController.Triangulate(new Triangulator());
+                spriteMeshDataController.SortTrianglesByDepth();
+                skinningCache.vertexSelection.Clear();
+                skinningCache.events.meshChanged.Invoke(mesh);
+            }
+
+            return true;
+        }
+
+        private void ExitNewGeometryMode()
+        {
+            BaseTool editGeometryTool = skinningCache.GetTool(Tools.EditGeometry);
+            if (editGeometryTool != null && currentTool != editGeometryTool)
+                ActivateTool(editGeometryTool);
+
+            UpdateToggleState();
+            spriteEditor.RequestRepaint();
         }
 
         private void ResetGeometry()

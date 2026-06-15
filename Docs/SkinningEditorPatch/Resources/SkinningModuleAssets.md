@@ -23,6 +23,8 @@ This page maps UXML/USS/resource files used by the Skinning Editor module.
 
 `MeshToolbar.uxml` still uses the old UXML name `SplitEdge` for the Reset button. C# treats it as `k_ResetGeometryId`.
 
+`MeshToolbar.uxml` also still uses the old UXML name `CreateEdge` for the `New` button. C# still routes it through `Tools.CreateEdge`, but the behavior is new mesh hull creation.
+
 Do not rename the UXML element unless all C# lookups, USS selectors, and metadata references are checked.
 
 ## Panels

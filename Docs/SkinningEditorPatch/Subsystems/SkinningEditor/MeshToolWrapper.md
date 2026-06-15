@@ -38,6 +38,8 @@
 - base `CreateVertex` + Alt -> effective `EditGeometry`
 - any other mode + Alt -> unchanged
 
+`NewGeometry` is not affected by Alt.
+
 ## Change Risks
 
 - Do not duplicate Alt mode checks in `SpriteMeshView` or `SpriteMeshController`.

@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace UnityEditor.U2D.Animation
@@ -12,6 +13,9 @@ namespace UnityEditor.U2D.Animation
         RectVertexSelector m_RectVertexSelector = new RectVertexSelector();
         UnselectTool<int> m_UnselectTool = new UnselectTool<int>();
         ITriangulator m_Triangulator;
+        bool m_NewGeometryCompleted;
+
+        public event Action newGeometryCompleted = () => { };
 
         public MeshCache mesh => m_Mesh;
 
@@ -97,6 +101,7 @@ namespace UnityEditor.U2D.Animation
             m_SpriteMeshController.spriteMeshView = m_SpriteMeshView;
             m_SpriteMeshController.triangulator = m_Triangulator;
             m_SpriteMeshController.cacheUndo = skinningCache;
+            m_SpriteMeshController.newGeometryCompleted = () => m_NewGeometryCompleted = true;
             m_RectSelectionTool.cacheUndo = skinningCache;
             m_RectSelectionTool.rectSelector = m_RectVertexSelector;
             m_RectVertexSelector.selection = selection;
@@ -135,12 +140,18 @@ namespace UnityEditor.U2D.Animation
             if (EditorGUI.EndChangeCheck())
                 UpdateMesh();
 
+            bool newGeometryCompletedThisFrame = m_NewGeometryCompleted;
+            m_NewGeometryCompleted = false;
+
             m_UnselectTool.OnGUI();
             m_RectSelectionTool.OnGUI();
 
             Handles.matrix = handlesMatrix;
 
             EndPositionOverride();
+
+            if (newGeometryCompletedThisFrame)
+                newGeometryCompleted();
         }
 
         public void BeginPositionOverride()

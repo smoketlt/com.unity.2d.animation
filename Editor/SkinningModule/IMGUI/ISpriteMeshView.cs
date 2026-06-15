@@ -7,7 +7,8 @@ namespace UnityEditor.U2D.Animation
         EditGeometry,
         CreateVertex,
         CreateEdge,
-        SplitEdge
+        SplitEdge,
+        NewGeometry
     }
 
     internal enum MeshEditorAction
@@ -40,6 +41,9 @@ namespace UnityEditor.U2D.Animation
         void LayoutVertex(Vector2 position, int index);
         void LayoutEdge(Vector2 startPosition, Vector2 endPosition, int index);
         bool DoCreateVertex();
+        bool DoCreateNewGeometryVertex();
+        bool DoCompleteNewGeometry();
+        bool DoDeleteNewGeometryVertex();
         bool DoSelectVertex(out bool additive);
         bool DoMoveVertex(out Vector2 delta);
         bool DoMoveEdge(out Vector2 delta);

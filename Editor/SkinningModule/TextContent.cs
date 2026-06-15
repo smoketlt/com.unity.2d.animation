@@ -33,6 +33,7 @@ namespace UnityEditor.U2D.Animation
         public static string moveVertices = "Move Vertices";
         public static string createVertex = "Create Vertex";
         public static string createEdge = "Create Edge";
+        public static string newGeometry = "New Geometry";
         public static string splitEdge = "Split Edge";
         public static string resetGeometry = "Reset Geometry";
         public static string removeEdge = "Remove Edge";

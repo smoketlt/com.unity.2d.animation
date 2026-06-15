@@ -43,6 +43,7 @@
 - The expected development branch is `codex/skinning-editor-fork`.
 - The local Unity test project can consume the package through a `file:` dependency pointed at this repository.
 - The Geometry toolbar labels are customized as `Modify`, `Create`, `New`, `Reset`, `Generate`.
+- `New` deletes the current mesh and enters an open hull-authoring mode modeled after Spine 2D.
 - `Reset` is a command that resets the current sprite mesh to a four-vertex rectangle; it is no longer the `SplitEdge` mode button.
 - `Alt` temporarily swaps `Modify` and `Create` using shared `SkinningEditorInput.altKeyDown`.
 - In `Create`, dragging from a vertex creates an edge and returns to `Create` after mouse up.
@@ -54,7 +55,7 @@
 
 - Start with this index and the subsystem README before using broad `rg`.
 - If a behavior touches toolbar state, read `MeshToolbar.md` and `SkinningModule.md`.
-- If a behavior touches mouse hover, drag, vertex size, or action priority, read `GeometryEditing.md`, `SpriteMeshView.md`, and `SpriteMeshController.md`.
+- If a behavior touches mouse hover, drag, new hull mode, vertex size, or action priority, read `GeometryEditing.md`, `SpriteMeshView.md`, and `SpriteMeshController.md`.
 - If a behavior touches `Alt`, read `AltInputModeSwitching.md` before editing source.
 - If a behavior touches weights or confirmation dialogs, read `MeshDataAndWeights.md` and `ResetGeometry.md`.
 - If a task is a continuation of the same active change and all relevant docs were already read in that task, re-reading is optional; if context is uncertain, read the docs again.

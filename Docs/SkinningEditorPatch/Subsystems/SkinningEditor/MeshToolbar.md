@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | `Modify` | `SelectGeometry` | activates `Tools.EditGeometry` |
 | `Create` | `CreateVertex` | activates `Tools.CreateVertex` |
-| `New` | `CreateEdge` | activates `Tools.CreateEdge` |
+| `New` | `CreateEdge` | toggles `Tools.CreateEdge`, which now enters/completes `NewGeometry` hull mode |
 | `Reset` | `SplitEdge` | invokes `ResetGeometry` command |
 | `Generate` | `GenerateGeometry` | activates `Tools.GenerateGeometry` |
 
@@ -48,6 +48,8 @@ For `Modify` and `Create`, checked state is swapped when `SkinningEditorInput.al
 ## Shortcut Notes
 
 `Reset` does not append the old `Split Edge` shortcut to its tooltip. The old `SplitEdge` tool/shortcut still exists in the codebase, but the Geometry toolbar button no longer activates it.
+
+`New` still uses UXML name `CreateEdge` and `Tools.CreateEdge` for compatibility, but its user-facing behavior is new mesh hull creation.
 
 ## Change Risks
 
