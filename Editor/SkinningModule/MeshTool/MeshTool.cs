@@ -102,6 +102,9 @@ namespace UnityEditor.U2D.Animation
             m_RectVertexSelector.selection = selection;
             m_UnselectTool.cacheUndo = skinningCache;
             m_UnselectTool.selection = selection;
+            m_UnselectTool.emptyControlID = defaultControlID;
+            m_UnselectTool.clearOnEscape = true;
+            m_UnselectTool.clearOnPrimaryEmptyClick = true;
 
             m_SpriteMeshController.frame = new Rect(Vector2.zero, m_Mesh.sprite.textureRect.size);
             m_SpriteMeshController.selection = selection;
@@ -132,8 +135,8 @@ namespace UnityEditor.U2D.Animation
             if (EditorGUI.EndChangeCheck())
                 UpdateMesh();
 
-            m_RectSelectionTool.OnGUI();
             m_UnselectTool.OnGUI();
+            m_RectSelectionTool.OnGUI();
 
             Handles.matrix = handlesMatrix;
 

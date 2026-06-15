@@ -187,7 +187,7 @@ namespace UnityEditor.U2D.Animation
 
         public bool DoCreateVertex()
         {
-            if (mode == SpriteMeshViewMode.CreateVertex && IsActionActive(MeshEditorAction.CreateVertex))
+            if ((mode == SpriteMeshViewMode.CreateVertex || IsTemporaryCreateVertexMode()) && IsActionActive(MeshEditorAction.CreateVertex))
                 ConsumeMouseMoveEvents();
 
             if (IsActionTriggered(MeshEditorAction.CreateVertex))
@@ -378,7 +378,12 @@ namespace UnityEditor.U2D.Animation
                     return false;
 
                 if (mode == SpriteMeshViewMode.EditGeometry)
-                    return guiWrapper.IsControlNearest(defaultControlID);
+                {
+                    if (IsTemporaryCreateVertexMode())
+                        return hoveredVertex == -1;
+
+                    return guiWrapper.IsControlNearest(defaultControlID) && guiWrapper.clickCount == 2;
+                }
 
                 if (mode == SpriteMeshViewMode.CreateVertex)
                     return hoveredVertex == -1;
@@ -432,7 +437,7 @@ namespace UnityEditor.U2D.Animation
             if (action == MeshEditorAction.CreateVertex)
             {
                 if (mode == SpriteMeshViewMode.EditGeometry)
-                    return guiWrapper.IsMouseDown(0) && guiWrapper.clickCount == 2;
+                    return guiWrapper.IsMouseDown(0) && (IsTemporaryCreateVertexMode() || guiWrapper.clickCount == 2);
             }
 
             if (action == MeshEditorAction.Remove)
@@ -472,7 +477,7 @@ namespace UnityEditor.U2D.Animation
                 return false;
 
             if (mode == SpriteMeshViewMode.EditGeometry)
-                return guiWrapper.isShiftDown && selection.Count == 1 && !selection.Contains(hoveredVertex);
+                return IsTemporaryCreateEdgeMode() && selection.Count == 1 && !selection.Contains(hoveredVertex);
 
             if (mode == SpriteMeshViewMode.CreateEdge)
                 return selection.Count == 1 && !selection.Contains(hoveredVertex);
@@ -486,7 +491,7 @@ namespace UnityEditor.U2D.Animation
                 return false;
 
             if (mode == SpriteMeshViewMode.EditGeometry)
-                return guiWrapper.isShiftDown && m_NearestEdge != -1 && hoveredVertex == -1 && selection.Count == 0;
+                return IsTemporaryCreateEdgeMode() && m_NearestEdge != -1 && hoveredVertex == -1 && selection.Count == 0;
 
             if (mode == SpriteMeshViewMode.SplitEdge)
                 return m_NearestEdge != -1 && hoveredVertex == -1;
@@ -503,6 +508,16 @@ namespace UnityEditor.U2D.Animation
             float width = kEdgeWidth / Handles.matrix.m00;
 
             DrawingUtility.DrawSolidLine(width, startPosition, endPosition);
+        }
+
+        private bool IsTemporaryCreateVertexMode()
+        {
+            return mode == SpriteMeshViewMode.EditGeometry && guiWrapper.isControlDown && !guiWrapper.isShiftDown;
+        }
+
+        private bool IsTemporaryCreateEdgeMode()
+        {
+            return mode == SpriteMeshViewMode.EditGeometry && guiWrapper.isControlDown && guiWrapper.isShiftDown;
         }
 
         public void DoRepaint()

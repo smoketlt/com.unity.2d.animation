@@ -172,8 +172,7 @@ namespace UnityEditor.U2D.Animation
 
         void PreviewCreateVertex()
         {
-            if (spriteMeshView.mode == SpriteMeshViewMode.CreateVertex &&
-                spriteMeshView.IsActionActive(MeshEditorAction.CreateVertex))
+            if (spriteMeshView.IsActionActive(MeshEditorAction.CreateVertex))
             {
                 Vector2 clampedMousePos = ClampToFrame(spriteMeshView.mouseWorldPosition);
 

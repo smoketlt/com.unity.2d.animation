@@ -18,6 +18,7 @@ namespace UnityEditor.U2D.Animation
         int mouseButton { get; }
         int clickCount { get; }
         bool isShiftDown { get; }
+        bool isControlDown { get; }
         bool isAltDown { get; }
         bool isActionKeyDown { get; }
         EventType eventType { get; }
@@ -71,6 +72,11 @@ namespace UnityEditor.U2D.Animation
         public bool isShiftDown
         {
             get { return Event.current.shift; }
+        }
+
+        public bool isControlDown
+        {
+            get { return Event.current.control; }
         }
 
         public bool isAltDown
