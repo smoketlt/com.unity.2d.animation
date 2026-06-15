@@ -363,7 +363,7 @@ namespace UnityEditor.U2D.Animation
 
         public bool IsActionActive(MeshEditorAction action)
         {
-            if (guiWrapper.isAltDown || !guiWrapper.IsControlHot(0))
+            if (!guiWrapper.IsControlHot(0))
                 return false;
 
             bool canCreateEdge = CanCreateEdge();
@@ -388,6 +388,9 @@ namespace UnityEditor.U2D.Animation
                 if (mode == SpriteMeshViewMode.CreateVertex)
                     return hoveredVertex == -1;
             }
+
+            if (guiWrapper.isAltDown)
+                return false;
 
             if (action == MeshEditorAction.MoveVertex)
                 return guiWrapper.IsControlNearest(m_HoveredVertexControlID);
@@ -477,7 +480,7 @@ namespace UnityEditor.U2D.Animation
                 return false;
 
             if (mode == SpriteMeshViewMode.EditGeometry)
-                return IsTemporaryCreateEdgeMode() && selection.Count == 1 && !selection.Contains(hoveredVertex);
+                return false;
 
             if (mode == SpriteMeshViewMode.CreateEdge)
                 return selection.Count == 1 && !selection.Contains(hoveredVertex);
@@ -491,7 +494,7 @@ namespace UnityEditor.U2D.Animation
                 return false;
 
             if (mode == SpriteMeshViewMode.EditGeometry)
-                return IsTemporaryCreateEdgeMode() && m_NearestEdge != -1 && hoveredVertex == -1 && selection.Count == 0;
+                return false;
 
             if (mode == SpriteMeshViewMode.SplitEdge)
                 return m_NearestEdge != -1 && hoveredVertex == -1;
@@ -512,12 +515,7 @@ namespace UnityEditor.U2D.Animation
 
         private bool IsTemporaryCreateVertexMode()
         {
-            return mode == SpriteMeshViewMode.EditGeometry && guiWrapper.isControlDown && !guiWrapper.isShiftDown;
-        }
-
-        private bool IsTemporaryCreateEdgeMode()
-        {
-            return mode == SpriteMeshViewMode.EditGeometry && guiWrapper.isControlDown && guiWrapper.isShiftDown;
+            return mode == SpriteMeshViewMode.EditGeometry && guiWrapper.isAltDown;
         }
 
         public void DoRepaint()
