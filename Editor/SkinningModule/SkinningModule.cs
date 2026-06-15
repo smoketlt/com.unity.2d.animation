@@ -125,6 +125,8 @@ namespace UnityEditor.U2D.Animation
 
         public override void OnModuleDeactivate()
         {
+            SkinningEditorInput.Reset();
+
             if (m_SpriteOutlineRenderer != null)
                 m_SpriteOutlineRenderer.Dispose();
 
@@ -300,7 +302,7 @@ namespace UnityEditor.U2D.Animation
         public override void DoMainGUI()
         {
             Debug.Assert(currentTool != null);
-            SkinningEditorInput.altKeyDown = Event.current.alt;
+            SkinningEditorInput.Update(Event.current);
 
             DoViewGUI();
 
