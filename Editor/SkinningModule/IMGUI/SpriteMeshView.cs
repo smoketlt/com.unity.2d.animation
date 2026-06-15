@@ -187,7 +187,7 @@ namespace UnityEditor.U2D.Animation
 
         public bool DoCreateVertex()
         {
-            if ((mode == SpriteMeshViewMode.CreateVertex || IsTemporaryCreateVertexMode()) && IsActionActive(MeshEditorAction.CreateVertex))
+            if (mode == SpriteMeshViewMode.CreateVertex && IsActionActive(MeshEditorAction.CreateVertex))
                 ConsumeMouseMoveEvents();
 
             if (IsActionTriggered(MeshEditorAction.CreateVertex))
@@ -378,19 +378,11 @@ namespace UnityEditor.U2D.Animation
                     return false;
 
                 if (mode == SpriteMeshViewMode.EditGeometry)
-                {
-                    if (IsTemporaryCreateVertexMode())
-                        return hoveredVertex == -1;
-
                     return guiWrapper.IsControlNearest(defaultControlID) && guiWrapper.clickCount == 2;
-                }
 
                 if (mode == SpriteMeshViewMode.CreateVertex)
                     return hoveredVertex == -1;
             }
-
-            if (SkinningEditorInput.altKeyDown)
-                return false;
 
             if (action == MeshEditorAction.MoveVertex)
                 return guiWrapper.IsControlNearest(m_HoveredVertexControlID);
@@ -440,7 +432,7 @@ namespace UnityEditor.U2D.Animation
             if (action == MeshEditorAction.CreateVertex)
             {
                 if (mode == SpriteMeshViewMode.EditGeometry)
-                    return guiWrapper.IsMouseDown(0) && (IsTemporaryCreateVertexMode() || guiWrapper.clickCount == 2);
+                    return guiWrapper.IsMouseDown(0) && guiWrapper.clickCount == 2;
             }
 
             if (action == MeshEditorAction.Remove)
@@ -511,11 +503,6 @@ namespace UnityEditor.U2D.Animation
             float width = kEdgeWidth / Handles.matrix.m00;
 
             DrawingUtility.DrawSolidLine(width, startPosition, endPosition);
-        }
-
-        private bool IsTemporaryCreateVertexMode()
-        {
-            return mode == SpriteMeshViewMode.EditGeometry && SkinningEditorInput.altKeyDown;
         }
 
         public void DoRepaint()

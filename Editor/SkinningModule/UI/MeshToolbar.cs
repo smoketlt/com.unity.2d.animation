@@ -77,11 +77,28 @@ namespace UnityEditor.U2D.Animation
         public void UpdateToggleState()
         {
             //TODO: Make UI not be aware of BaseTool, Cache, etc. Use Tool enum
+            bool modifyActive = skinningCache.GetTool(Tools.EditGeometry).isActive;
+            bool createActive = skinningCache.GetTool(Tools.CreateVertex).isActive;
+
+            if (SkinningEditorInput.altKeyDown)
+            {
+                if (modifyActive)
+                {
+                    modifyActive = false;
+                    createActive = true;
+                }
+                else if (createActive)
+                {
+                    modifyActive = true;
+                    createActive = false;
+                }
+            }
+
             Button button = this.Q<Button>(k_SelectGeometryId);
-            SetButtonChecked(button, skinningCache.GetTool(Tools.EditGeometry).isActive);
+            SetButtonChecked(button, modifyActive);
 
             button = this.Q<Button>(k_CreateVertexId);
-            SetButtonChecked(button, skinningCache.GetTool(Tools.CreateVertex).isActive);
+            SetButtonChecked(button, createActive);
 
             button = this.Q<Button>(k_CreateEdgeId);
             SetButtonChecked(button, skinningCache.GetTool(Tools.CreateEdge).isActive);

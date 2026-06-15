@@ -302,7 +302,11 @@ namespace UnityEditor.U2D.Animation
         public override void DoMainGUI()
         {
             Debug.Assert(currentTool != null);
-            SkinningEditorInput.Update(Event.current);
+            if (SkinningEditorInput.Update(Event.current))
+            {
+                UpdateToggleState();
+                spriteEditor.RequestRepaint();
+            }
 
             DoViewGUI();
 

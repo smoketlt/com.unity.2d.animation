@@ -94,8 +94,22 @@ namespace UnityEditor.U2D.Animation
             Debug.Assert(meshTool != null);
 
             meshTool.disable = disableMeshEditor;
-            meshTool.mode = meshMode;
+            meshTool.mode = GetEffectiveMeshMode();
             meshTool.DoGUI();
+        }
+
+        SpriteMeshViewMode GetEffectiveMeshMode()
+        {
+            if (!SkinningEditorInput.altKeyDown)
+                return meshMode;
+
+            if (meshMode == SpriteMeshViewMode.EditGeometry)
+                return SpriteMeshViewMode.CreateVertex;
+
+            if (meshMode == SpriteMeshViewMode.CreateVertex)
+                return SpriteMeshViewMode.EditGeometry;
+
+            return meshMode;
         }
     }
 }
