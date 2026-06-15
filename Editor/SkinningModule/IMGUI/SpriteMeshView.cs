@@ -70,6 +70,7 @@ namespace UnityEditor.U2D.Animation
         private float m_NearestEdgeDistance;
         private int m_NearestVertex = -1;
         private int m_NearestEdge = -1;
+        private bool m_CreateEdgeDragActive;
 
 
         public SpriteMeshViewMode mode { get; set; }
@@ -264,10 +265,14 @@ namespace UnityEditor.U2D.Animation
 
             if (IsActionTriggered(MeshEditorAction.CreateEdge))
             {
+                m_CreateEdgeDragActive = false;
                 guiWrapper.SetGuiChanged(true);
                 guiWrapper.UseCurrentEvent();
                 return true;
             }
+
+            if (mode == SpriteMeshViewMode.CreateVertex && guiWrapper.IsMouseUp(0))
+                m_CreateEdgeDragActive = false;
 
             return false;
         }
@@ -480,10 +485,18 @@ namespace UnityEditor.U2D.Animation
                 return false;
 
             if (mode == SpriteMeshViewMode.EditGeometry)
+            {
+                m_CreateEdgeDragActive = false;
                 return false;
+            }
 
             if (mode == SpriteMeshViewMode.CreateVertex)
-                return selection.Count == 1 && !selection.Contains(hoveredVertex);
+            {
+                if (guiWrapper.IsMouseDown(0) && guiWrapper.IsControlNearest(m_HoveredVertexControlID) && hoveredVertex != -1)
+                    m_CreateEdgeDragActive = true;
+
+                return m_CreateEdgeDragActive && selection.Count == 1 && !selection.Contains(hoveredVertex);
+            }
 
             if (mode == SpriteMeshViewMode.CreateEdge)
                 return selection.Count == 1 && !selection.Contains(hoveredVertex);
