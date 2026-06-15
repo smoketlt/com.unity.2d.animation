@@ -28,6 +28,7 @@ namespace UnityEditor.U2D.Animation
         public EditableBoneWeight[] vertexWeights;
         public int[] indices;
         public int2[] edges;
+        public int[] selectedVertexIndices;
         public List<string> boneWeightGuids;
         public List<string> boneWeightNames;
     }

@@ -339,8 +339,17 @@ namespace UnityEditor.U2D.Animation
 
             if (copyTool != null && evt.type == EventType.KeyDown && evt.keyCode == KeyCode.V && evt.shift && (evt.control || evt.command))
             {
-                bool boneReadOnly = skinningCache.bonesReadOnly;
-                copyTool.OnPasteActivated(!boneReadOnly, true, true, false);
+                if (skinningCache.vertexSelection.Count > 0)
+                {
+                    if (!copyTool.OnPasteMirroredVertexSelectionActivated())
+                        Debug.LogWarning("Mirrored vertex paste requires copied and target vertex selections with the same vertex count.");
+                }
+                else
+                {
+                    bool boneReadOnly = skinningCache.bonesReadOnly;
+                    copyTool.OnPasteActivated(!boneReadOnly, true, true, false);
+                }
+
                 evt.Use();
                 return;
             }

@@ -98,6 +98,7 @@ namespace UnityEditor.U2D.Animation
             skinningSpriteData.vertexWeights = meshTool.mesh.vertexWeights;
             skinningSpriteData.indices = meshTool.mesh.indices;
             skinningSpriteData.edges = meshTool.mesh.edges;
+            skinningSpriteData.selectedVertexIndices = GetSelectedVertexIndicesForCopy();
             skinningSpriteData.boneWeightGuids = new List<string>(meshTool.mesh.bones.Length);
             skinningSpriteData.boneWeightNames = new List<string>(meshTool.mesh.bones.Length);
             foreach (BoneCache bone in meshTool.mesh.bones)
@@ -105,6 +106,16 @@ namespace UnityEditor.U2D.Animation
                 skinningSpriteData.boneWeightGuids.Add(bone.guid);
                 skinningSpriteData.boneWeightNames.Add(bone.name);
             }
+        }
+
+        int[] GetSelectedVertexIndicesForCopy()
+        {
+            if (skinningCache.selectedSprite == null || skinningCache.vertexSelection.Count == 0 || meshTool.mesh == null)
+                return Array.Empty<int>();
+
+            return skinningCache.vertexSelection.elements
+                .Where(index => index >= 0 && index < meshTool.mesh.vertexCount)
+                .ToArray();
         }
 
         public void OnCopyActivated()
@@ -352,6 +363,58 @@ namespace UnityEditor.U2D.Animation
             }
 
             skinningCache.events.paste.Invoke(shouldPasteBones, shouldPasteMesh, shouldFlipX, shouldFlipY);
+        }
+
+        public bool OnPasteMirroredVertexSelectionActivated()
+        {
+            if (meshTool == null || skinningCache.selectedSprite == null || skinningCache.vertexSelection.Count == 0)
+                return false;
+
+            string copyBuffer = m_CopyToolStringStore.stringStore;
+            if (!IsValidCopyData(copyBuffer))
+                return false;
+
+            SkinningCopyData skinningCopyData = SkinningCopyUtility.DeserializeStringToSkinningCopyData(copyBuffer);
+            if (skinningCopyData == null || skinningCopyData.copyData.Count != 1)
+                return false;
+
+            SkinningCopySpriteData copySpriteData = skinningCopyData.copyData[0];
+            int[] sourceIndices = copySpriteData.selectedVertexIndices ?? Array.Empty<int>();
+            if (sourceIndices.Length == 0)
+                return false;
+
+            Vector2[] sourceVertices = copySpriteData.vertices ?? Array.Empty<Vector2>();
+            int[] targetIndices = skinningCache.vertexSelection.elements;
+            if (sourceIndices.Length != targetIndices.Length)
+                return false;
+
+            meshTool.SetupSprite(skinningCache.selectedSprite);
+            if (targetIndices.Any(index => index < 0 || index >= meshTool.mesh.vertexCount) ||
+                sourceIndices.Any(index => index < 0 || index >= sourceVertices.Length))
+                return false;
+
+            Rect spriteRect = skinningCache.selectedSprite.textureRect;
+            Vector2[] mirroredSourcePositions = sourceIndices
+                .Select(index => new Vector2(spriteRect.width - sourceVertices[index].x, sourceVertices[index].y))
+                .OrderByDescending(position => position.y)
+                .ThenBy(position => position.x)
+                .ToArray();
+
+            int[] orderedTargetIndices = targetIndices
+                .OrderByDescending(index => meshTool.mesh.vertices[index].y)
+                .ThenBy(index => meshTool.mesh.vertices[index].x)
+                .ToArray();
+
+            using (skinningCache.UndoScope(TextContent.pasteData))
+            {
+                for (int i = 0; i < orderedTargetIndices.Length; ++i)
+                    meshTool.mesh.vertices[orderedTargetIndices[i]] = mirroredSourcePositions[i];
+
+                meshTool.UpdateMesh();
+            }
+
+            skinningCache.events.paste.Invoke(false, true, true, false);
+            return true;
         }
 
         static bool IsValidCopyData(string copyBuffer)
