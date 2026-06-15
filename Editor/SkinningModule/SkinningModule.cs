@@ -322,9 +322,17 @@ namespace UnityEditor.U2D.Animation
             }
 
             DrawRectGizmos();
+            DisableBaseSpriteEditorAltNavigation();
 
             if (SkinningModuleSettings.compactToolBar != m_CollapseToolbar)
                 UpdateCollapseToolbar();
+        }
+
+        void DisableBaseSpriteEditorAltNavigation()
+        {
+            Event evt = Event.current;
+            if (evt != null && evt.alt && spriteEditor.windowDimension.Contains(evt.mousePosition))
+                evt.modifiers &= ~EventModifiers.Alt;
         }
 
         public override void DoToolbarGUI(Rect drawArea)
