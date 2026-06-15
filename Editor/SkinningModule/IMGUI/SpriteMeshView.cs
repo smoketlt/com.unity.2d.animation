@@ -12,7 +12,7 @@ namespace UnityEditor.U2D.Animation
         static readonly Color kEdgeHoveredColor = Color.yellow;
         static readonly Color kEdgeSelectedColor = Color.yellow;
         const float kEdgeWidth = 2f;
-        const float kVertexRadius = 2.5f;
+        const float kVertexHitRadius = 16f;
 
         private class Styles
         {
@@ -28,18 +28,18 @@ namespace UnityEditor.U2D.Animation
 
                 pointNormalStyle = new GUIStyle();
                 pointNormalStyle.normal.background = pointNormal;
-                pointNormalStyle.fixedWidth = 8f;
-                pointNormalStyle.fixedHeight = 8f;
+                pointNormalStyle.fixedWidth = 16f;
+                pointNormalStyle.fixedHeight = 16f;
 
                 pointHoveredStyle = new GUIStyle();
                 pointHoveredStyle.normal.background = pointHovered;
-                pointHoveredStyle.fixedWidth = 10f;
-                pointHoveredStyle.fixedHeight = 10f;
+                pointHoveredStyle.fixedWidth = 20f;
+                pointHoveredStyle.fixedHeight = 20f;
 
                 pointSelectedStyle = new GUIStyle();
                 pointSelectedStyle.normal.background = pointSelected;
-                pointSelectedStyle.fixedWidth = 10f;
-                pointSelectedStyle.fixedHeight = 10f;
+                pointSelectedStyle.fixedWidth = 20f;
+                pointSelectedStyle.fixedHeight = 20f;
             }
         }
 
@@ -161,7 +161,7 @@ namespace UnityEditor.U2D.Animation
         {
             if (guiWrapper.eventType == EventType.Layout)
             {
-                float distance = guiWrapper.DistanceToCircle(position, kVertexRadius);
+                float distance = guiWrapper.DistanceToCircle(position, kVertexHitRadius);
 
                 if (distance <= m_NearestVertexDistance)
                 {
