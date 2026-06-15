@@ -52,7 +52,13 @@ namespace UnityEditor.U2D.Animation
             button.clickable.clicked += () => { SetMeshTool(Tools.CreateVertex); };
 
             button = this.Q<Button>(k_CreateEdgeId);
-            button.clickable.clicked += () => { SetMeshTool(Tools.CreateEdge); };
+            Button newGeometryButton = button;
+            button.clickable.clicked += () =>
+            {
+                SetMeshTool(Tools.CreateEdge);
+                newGeometryButton.Blur();
+                newGeometryButton.schedule.Execute(newGeometryButton.Blur);
+            };
 
             button = this.Q<Button>(k_ResetGeometryId);
             button.clickable.clicked += () => { ResetGeometry(); };

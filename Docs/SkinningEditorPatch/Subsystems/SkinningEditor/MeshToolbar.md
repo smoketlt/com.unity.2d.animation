@@ -51,6 +51,8 @@ For `Modify` and `Create`, checked state is swapped when `SkinningEditorInput.al
 
 `New` still uses UXML name `CreateEdge` and `Tools.CreateEdge` for compatibility, but its user-facing behavior is new mesh hull creation.
 
+When `New` is clicked, the button blurs itself after dispatching `SetMeshTool(Tools.CreateEdge)`. This prevents the focused toolbar button from swallowing `Esc`; keyboard input should return to the editor view so `Esc` can cancel New mode.
+
 ## Change Risks
 
 - Renaming UXML element names breaks `Q<Button>(...)` lookups.
