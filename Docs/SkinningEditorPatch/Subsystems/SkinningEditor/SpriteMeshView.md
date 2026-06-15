@@ -1,0 +1,63 @@
+# SpriteMeshView
+
+## Purpose
+
+`SpriteMeshView` is the low-level IMGUI view for sprite mesh geometry. It computes hover state, action availability, action triggers, and drawing.
+
+## Source
+
+- `Editor/SkinningModule/IMGUI/SpriteMeshView.cs`
+- interface: `Editor/SkinningModule/IMGUI/ISpriteMeshView.cs`
+
+## Entry Points
+
+- `BeginLayout()`
+- `LayoutVertex(...)`
+- `LayoutEdge(...)`
+- `EndLayout()`
+- `DoCreateVertex()`
+- `DoCreateEdge()`
+- `DoSplitEdge()`
+- `DoSelectVertex(...)`
+- `DoSelectEdge(...)`
+- `DoMoveVertex(...)`
+- `DoMoveEdge(...)`
+- `IsActionActive(...)`
+- `IsActionTriggered(...)`
+- drawing methods
+
+## Inputs
+
+- `mode`
+- `selection`
+- `frame`
+- `defaultControlID`
+- `IGUIWrapper`
+- Unity handle control state
+
+## Outputs
+
+- hovered vertex/edge values;
+- active action decisions;
+- event consumption;
+- GUI changed/repaint requests;
+- preview drawing for vertices and edges.
+
+## Fork-Specific State
+
+- `kVertexHitRadius = 16f`
+- visible vertex dot styles are larger than upstream
+- `m_CreateEdgeDragActive` gates create-edge behavior while dragging from a vertex in `Create`
+
+## Action Notes
+
+- `MoveVertex` is inactive in `CreateVertex` mode so vertex drag can create edges.
+- `CreateEdge` in `CreateVertex` mode triggers on mouse up, not mouse down.
+- `CreateEdge` in explicit `CreateEdge` mode still follows the old selected-start behavior.
+- `CreateVertex` in `EditGeometry` still requires double-click.
+
+## Change Risks
+
+- Handle control IDs are shared with Unity IMGUI; incorrect nearest/hot checks can break all mouse interaction.
+- `ConsumeMouseMoveEvents()` affects preview responsiveness.
+- Avoid direct Alt checks here. Mode switching is handled before this class receives `mode`.
