@@ -385,7 +385,12 @@ namespace UnityEditor.U2D.Animation
             }
 
             if (action == MeshEditorAction.MoveVertex)
+            {
+                if (mode == SpriteMeshViewMode.CreateVertex)
+                    return false;
+
                 return guiWrapper.IsControlNearest(m_HoveredVertexControlID);
+            }
 
             if (action == MeshEditorAction.CreateEdge)
                 return canCreateEdge;
@@ -449,6 +454,9 @@ namespace UnityEditor.U2D.Animation
                 return false;
             }
 
+            if (action == MeshEditorAction.CreateEdge && mode == SpriteMeshViewMode.CreateVertex)
+                return guiWrapper.IsMouseUp(0);
+
             if (action != MeshEditorAction.None)
                 return guiWrapper.IsMouseDown(0);
 
@@ -473,6 +481,9 @@ namespace UnityEditor.U2D.Animation
 
             if (mode == SpriteMeshViewMode.EditGeometry)
                 return false;
+
+            if (mode == SpriteMeshViewMode.CreateVertex)
+                return selection.Count == 1 && !selection.Contains(hoveredVertex);
 
             if (mode == SpriteMeshViewMode.CreateEdge)
                 return selection.Count == 1 && !selection.Contains(hoveredVertex);
