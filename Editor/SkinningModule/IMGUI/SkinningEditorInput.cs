@@ -12,13 +12,17 @@ namespace UnityEditor.U2D.Animation
                 return false;
 
             bool previousAltKeyDown = altKeyDown;
+            bool currentAltKeyDown = evt.alt;
 
-            if (evt.alt)
-                altKeyDown = true;
+            if ((evt.type == EventType.KeyDown || evt.rawType == EventType.KeyDown) &&
+                (evt.keyCode == KeyCode.LeftAlt || evt.keyCode == KeyCode.RightAlt))
+                currentAltKeyDown = true;
 
             if ((evt.type == EventType.KeyUp || evt.rawType == EventType.KeyUp) &&
                 (evt.keyCode == KeyCode.LeftAlt || evt.keyCode == KeyCode.RightAlt))
-                altKeyDown = false;
+                currentAltKeyDown = false;
+
+            altKeyDown = currentAltKeyDown;
 
             return previousAltKeyDown != altKeyDown;
         }
