@@ -350,7 +350,10 @@ namespace UnityEditor.U2D.Animation
             m_MeshToolbar.ResetGeometry += ResetGeometry;
             MeshToolWrapper newGeometryTool = skinningCache.GetTool(Tools.CreateEdge) as MeshToolWrapper;
             if (newGeometryTool != null && newGeometryTool.meshTool != null)
+            {
                 newGeometryTool.meshTool.newGeometryCompleted += ExitNewGeometryMode;
+                newGeometryTool.meshTool.newGeometryCanceled += ExitNewGeometryMode;
+            }
             m_MeshToolbar.SetEnabled(!spriteEditor.editingDisabled);
         }
 

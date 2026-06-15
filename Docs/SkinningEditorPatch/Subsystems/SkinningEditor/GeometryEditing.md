@@ -57,8 +57,12 @@ This page documents the Geometry editing workflow: selection, vertex creation, e
 - In `Create`, vertex moving is disabled so drag from a vertex is not stolen by move behavior.
 - Edge-drag state is reset on mouse up so the tool returns to plain `Create`.
 - In `New`, the current mesh is cleared and clicks define a new open hull.
+- In `New`, the selected sprite texture remains visible while the hull is open.
+- In `New`, other sprites render at 10% opacity.
+- In `New`, clicks slightly outside the sprite frame are accepted and clamped to the frame so corners and borders are easier to place.
 - In `New`, vertices can be dragged without triangulating the open hull.
 - In `New`, double-clicking a vertex deletes it.
+- In `New`, `Esc` exits to `Modify`.
 - In `New`, clicking the first vertex with three or more vertices closes and triangulates the hull.
 - Pressing `New` again, or selecting another mesh tool, also closes and triangulates the hull when at least three vertices exist.
 
@@ -77,9 +81,13 @@ The flag:
 
 `New` uses `SpriteMeshViewMode.NewGeometry`.
 
-Entering the mode clears the current mesh, clears vertex selection, and leaves an empty open hull. Each empty click adds a vertex. Each vertex after the first also adds an edge from the previous vertex to the new vertex. The mesh is not triangulated while the hull is open.
+Entering the mode clears the current mesh, clears vertex selection, and leaves an empty open hull. Each empty click adds a vertex. Empty clicks are accepted inside the sprite frame and within a small screen-space radius outside the frame; positions are clamped back to the frame before creating vertices. Each vertex after the first also adds an edge from the previous vertex to the new vertex. The mesh is not triangulated while the hull is open.
 
 The mode is completed by clicking the first vertex or pressing `New` again. Selecting another mesh tool also completes a valid hull before switching tools. Completion adds the closing edge from the last vertex to vertex `0`, triangulates the mesh, sorts triangles by depth, clears selection, and exits to `Modify` when completion was requested through the first vertex or `New`.
+
+`Esc` exits `New` to `Modify` without forcing hull completion.
+
+While the hull is open, `MeshPreviewTool` falls back to drawing the selected sprite's default textured mesh when the edited mesh has fewer than one triangle. This keeps the image visible after the first vertex is created.
 
 If the previous mesh had weights, entry uses the same attachment-weights confirmation dialog as Reset because clearing the mesh removes those weights.
 

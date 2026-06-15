@@ -5,6 +5,11 @@ namespace UnityEditor.U2D.Animation
 {
     internal class DefaultPreviewBehaviour : IMeshPreviewBehaviour
     {
+        public float GetMeshOpacity(SpriteCache sprite)
+        {
+            return 1f;
+        }
+
         public float GetWeightMapOpacity(SpriteCache sprite)
         {
             return 0f;
@@ -31,6 +36,16 @@ namespace UnityEditor.U2D.Animation
         public bool showWeightMap { get; set; }
         public bool drawWireframe { get; set; }
         public bool overlaySelected { get; set; }
+        public bool dimUnselectedSprites { get; set; }
+
+        public float GetMeshOpacity(SpriteCache sprite)
+        {
+            SkinningCache skinningCache = sprite.skinningCache;
+            if (dimUnselectedSprites && skinningCache.selectedSprite != null && skinningCache.selectedSprite != sprite)
+                return 0.1f;
+
+            return 1f;
+        }
 
         public float GetWeightMapOpacity(SpriteCache sprite)
         {

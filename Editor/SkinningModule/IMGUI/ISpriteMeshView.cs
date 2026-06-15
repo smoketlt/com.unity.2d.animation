@@ -35,7 +35,6 @@ namespace UnityEditor.U2D.Animation
         int hoveredEdge { get; }
         int closestEdge { get; }
 
-        void CancelMode();
         void BeginLayout();
         void EndLayout();
         void LayoutVertex(Vector2 position, int index);
@@ -44,6 +43,7 @@ namespace UnityEditor.U2D.Animation
         bool DoCreateNewGeometryVertex();
         bool DoCompleteNewGeometry();
         bool DoDeleteNewGeometryVertex();
+        bool DoCancelNewGeometry();
         bool DoSelectVertex(out bool additive);
         bool DoMoveVertex(out Vector2 delta);
         bool DoMoveEdge(out Vector2 delta);

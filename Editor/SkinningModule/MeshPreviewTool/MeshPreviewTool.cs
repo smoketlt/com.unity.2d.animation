@@ -215,7 +215,7 @@ namespace UnityEditor.U2D.Animation
             if (meshPreview.canSkin == false || skeleton.isPosePreview == false)
             {
                 m_Material.mainTexture = meshCache.textureDataProvider.texture;
-                m_Material.SetFloat("_Opacity", 1f);
+                m_Material.SetFloat("_Opacity", previewBehaviour.GetMeshOpacity(sprite));
                 m_Material.SetFloat("_VertexColorBlend", 0f);
                 m_Material.color = new Color(1f, 1f, 1f, 1f);
 
@@ -279,14 +279,14 @@ namespace UnityEditor.U2D.Animation
 
             Debug.Assert(meshPreview != null);
 
-            if (meshPreview.mesh == null || meshPreview.mesh.vertexCount == 0)
+            if (meshPreview.mesh == null || meshPreview.mesh.vertexCount == 0 || meshPreview.mesh.triangles.Length < 3)
             {
                 DrawDefaultSpriteMesh(sprite);
             }
             else
             {
                 m_Material.mainTexture = meshCache.textureDataProvider.texture;
-                m_Material.SetFloat("_Opacity", 1f);
+                m_Material.SetFloat("_Opacity", previewBehaviour.GetMeshOpacity(sprite));
                 m_Material.SetFloat("_VertexColorBlend", weightMapOpacity);
 
                 m_Material.color = Color.white;

@@ -28,6 +28,7 @@
 - sets `skeletonTool.mode`;
 - sets `meshTool.disable`;
 - sets `meshTool.mode` to the effective mesh mode;
+- configures mesh preview behavior for the active mesh mode;
 - calls `meshTool.DoGUI()`.
 
 ## Effective Mode Rule
@@ -39,6 +40,10 @@
 - any other mode + Alt -> unchanged
 
 `NewGeometry` is not affected by Alt.
+
+## Preview Behavior
+
+When the configured `meshMode` is `NewGeometry`, `MeshToolWrapper` enables unselected sprite dimming on its `MeshPreviewBehaviour`. The selected sprite stays fully opaque, and other sprites render at 10% opacity.
 
 ## Change Risks
 

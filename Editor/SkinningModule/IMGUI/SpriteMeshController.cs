@@ -20,6 +20,7 @@ namespace UnityEditor.U2D.Animation
         EdgeIntersectionResult m_EdgeIntersectionResult;
 
         public Action newGeometryCompleted = () => { };
+        public Action newGeometryCanceled = () => { };
         public ISpriteMeshView spriteMeshView { get; set; }
         public BaseSpriteMeshData spriteMeshData { get; set; }
         public ISelection<int> selection { get; set; }
@@ -321,6 +322,12 @@ namespace UnityEditor.U2D.Animation
 
         void HandleNewGeometry()
         {
+            if (spriteMeshView.DoCancelNewGeometry())
+            {
+                newGeometryCanceled();
+                return;
+            }
+
             if (spriteMeshView.DoDeleteNewGeometryVertex())
             {
                 DeleteNewGeometryVertex(spriteMeshView.hoveredVertex);

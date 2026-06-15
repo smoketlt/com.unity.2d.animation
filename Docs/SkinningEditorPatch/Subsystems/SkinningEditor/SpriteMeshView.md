@@ -46,9 +46,10 @@
 ## Fork-Specific State
 
 - `kVertexHitRadius = 16f`
+- `kNewGeometryFrameHitRadius = 16f`
 - visible vertex dot styles are larger than upstream
 - `m_CreateEdgeDragActive` gates create-edge behavior while dragging from a vertex in `Create`
-- `NewGeometry` action methods gate open-hull click, completion, and double-click delete behavior
+- `NewGeometry` action methods gate open-hull click, completion, Esc cancel, and double-click delete behavior
 
 ## Action Notes
 
@@ -56,6 +57,8 @@
 - `CreateEdge` in `CreateVertex` mode triggers on mouse up, not mouse down.
 - `CreateVertex` in `EditGeometry` still requires double-click.
 - `NewGeometry` creates vertices on empty clicks, completes on first-vertex click, and deletes vertices on double-click.
+- `NewGeometry` accepts empty clicks slightly outside the sprite frame and clamps created vertices to the frame.
+- `NewGeometry` exits to `Modify` through the controller/tool cancel event when `Esc` is pressed.
 - Normal remove and edge movement are disabled in `NewGeometry`.
 
 ## Change Risks

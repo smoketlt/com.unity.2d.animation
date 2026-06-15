@@ -14,8 +14,10 @@ namespace UnityEditor.U2D.Animation
         UnselectTool<int> m_UnselectTool = new UnselectTool<int>();
         ITriangulator m_Triangulator;
         bool m_NewGeometryCompleted;
+        bool m_NewGeometryCanceled;
 
         public event Action newGeometryCompleted = () => { };
+        public event Action newGeometryCanceled = () => { };
 
         public MeshCache mesh => m_Mesh;
 
@@ -102,6 +104,7 @@ namespace UnityEditor.U2D.Animation
             m_SpriteMeshController.triangulator = m_Triangulator;
             m_SpriteMeshController.cacheUndo = skinningCache;
             m_SpriteMeshController.newGeometryCompleted = () => m_NewGeometryCompleted = true;
+            m_SpriteMeshController.newGeometryCanceled = () => m_NewGeometryCanceled = true;
             m_RectSelectionTool.cacheUndo = skinningCache;
             m_RectSelectionTool.rectSelector = m_RectVertexSelector;
             m_RectVertexSelector.selection = selection;
@@ -141,7 +144,9 @@ namespace UnityEditor.U2D.Animation
                 UpdateMesh();
 
             bool newGeometryCompletedThisFrame = m_NewGeometryCompleted;
+            bool newGeometryCanceledThisFrame = m_NewGeometryCanceled;
             m_NewGeometryCompleted = false;
+            m_NewGeometryCanceled = false;
 
             m_UnselectTool.OnGUI();
             m_RectSelectionTool.OnGUI();
@@ -152,6 +157,9 @@ namespace UnityEditor.U2D.Animation
 
             if (newGeometryCompletedThisFrame)
                 newGeometryCompleted();
+
+            if (newGeometryCanceledThisFrame)
+                newGeometryCanceled();
         }
 
         public void BeginPositionOverride()

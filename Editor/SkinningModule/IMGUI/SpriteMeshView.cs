@@ -13,6 +13,7 @@ namespace UnityEditor.U2D.Animation
         static readonly Color kEdgeSelectedColor = Color.yellow;
         const float kEdgeWidth = 2f;
         const float kVertexHitRadius = 16f;
+        const float kNewGeometryFrameHitRadius = 16f;
 
         private class Styles
         {
@@ -102,18 +103,6 @@ namespace UnityEditor.U2D.Animation
         public SpriteMeshView(IGUIWrapper gw)
         {
             guiWrapper = gw;
-        }
-
-        public void CancelMode()
-        {
-            if (mode != SpriteMeshViewMode.EditGeometry)
-            {
-                if (guiWrapper.IsKeyDown(KeyCode.Escape) || guiWrapper.IsMouseDown(1))
-                {
-                    mode = SpriteMeshViewMode.EditGeometry;
-                    guiWrapper.UseCurrentEvent();
-                }
-            }
         }
 
         public void BeginLayout()
@@ -207,13 +196,25 @@ namespace UnityEditor.U2D.Animation
             if (mode != SpriteMeshViewMode.NewGeometry)
                 return false;
 
-            if (!frame.Contains(mouseWorldPosition) ||
+            if (!IsMouseInsideFrameForNewGeometry() ||
                 hoveredVertex != -1 ||
                 !guiWrapper.IsMouseDown(0) ||
                 guiWrapper.clickCount > 1)
                 return false;
 
             guiWrapper.SetGuiChanged(true);
+            guiWrapper.UseCurrentEvent();
+            return true;
+        }
+
+        public bool DoCancelNewGeometry()
+        {
+            if (mode != SpriteMeshViewMode.NewGeometry)
+                return false;
+
+            if (!guiWrapper.IsKeyDown(KeyCode.Escape))
+                return false;
+
             guiWrapper.UseCurrentEvent();
             return true;
         }
@@ -564,6 +565,18 @@ namespace UnityEditor.U2D.Animation
                 return selection.Count == 1 && !selection.Contains(hoveredVertex);
 
             return false;
+        }
+
+        private bool IsMouseInsideFrameForNewGeometry()
+        {
+            if (frame.Contains(mouseWorldPosition))
+                return true;
+
+            Vector2 nearestFramePoint = new Vector2(
+                Mathf.Clamp(mouseWorldPosition.x, frame.xMin, frame.xMax),
+                Mathf.Clamp(mouseWorldPosition.y, frame.yMin, frame.yMax));
+
+            return guiWrapper.DistanceToCircle(nearestFramePoint, kNewGeometryFrameHitRadius) <= 0f;
         }
 
         private bool CanSplitEdge()

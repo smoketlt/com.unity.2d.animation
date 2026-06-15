@@ -66,6 +66,7 @@ namespace UnityEditor.U2D.Animation
             m_MeshPreviewBehaviour.drawWireframe = true;
             m_MeshPreviewBehaviour.showWeightMap = false;
             m_MeshPreviewBehaviour.overlaySelected = false;
+            m_MeshPreviewBehaviour.dimUnselectedSprites = meshMode == SpriteMeshViewMode.NewGeometry;
         }
 
         protected override void OnDeactivate()

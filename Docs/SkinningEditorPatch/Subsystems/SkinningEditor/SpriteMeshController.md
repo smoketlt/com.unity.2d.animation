@@ -51,11 +51,12 @@ This order is part of the interaction contract. Changing it can alter whether a 
 
 In `NewGeometry`, normal split/create-edge/create-vertex routing is skipped. The controller instead handles:
 
-1. double-click vertex delete;
-2. first-vertex click completion when at least three vertices exist;
-3. empty-click vertex creation;
-4. vertex selection;
-5. vertex move without triangulation.
+1. Esc cancel;
+2. double-click vertex delete;
+3. first-vertex click completion when at least three vertices exist;
+4. empty-click vertex creation;
+5. vertex selection;
+6. vertex move without triangulation.
 
 ## Edge Creation
 
@@ -71,6 +72,8 @@ In `NewGeometry`, normal split/create-edge/create-vertex routing is skipped. The
 ## New Geometry Completion
 
 `CompleteNewGeometry()` adds the closing edge, triangulates, clears selection, and signals `newGeometryCompleted`. `MeshTool` defers the public completion event until after `EditorGUI.EndChangeCheck()` has allowed `meshChanged` to fire.
+
+`DoCancelNewGeometry()` signals `newGeometryCanceled`; `MeshTool` defers the public cancel event and `SkinningModuleView` exits back to `Modify`.
 
 ## Change Risks
 
