@@ -353,7 +353,7 @@ namespace UnityEditor.U2D.Animation
                 else if (copyTool != null && evt.commandName == "Paste")
                 {
                     bool boneReadOnly = skinningCache.bonesReadOnly;
-                    copyTool.OnPasteActivated(!boneReadOnly, true, false, false);
+                    copyTool.OnPasteActivated(!boneReadOnly, true, evt.shift, false);
                     evt.Use();
                 }
             }
