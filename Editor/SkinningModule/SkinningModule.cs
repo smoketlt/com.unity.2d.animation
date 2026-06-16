@@ -309,6 +309,7 @@ namespace UnityEditor.U2D.Animation
                 UpdateToggleState();
                 spriteEditor.RequestRepaint();
             }
+            DisableAltNavigationForTemporaryGeometryMode();
 
             DoViewGUI();
 
@@ -332,6 +333,7 @@ namespace UnityEditor.U2D.Animation
             }
 
             DrawRectGizmos();
+            ConsumeUnhandledAltMouseNavigation();
             DisableBaseSpriteEditorAltNavigation();
 
             if (SkinningModuleSettings.compactToolBar != m_CollapseToolbar)
@@ -340,9 +342,52 @@ namespace UnityEditor.U2D.Animation
 
         void DisableBaseSpriteEditorAltNavigation()
         {
+            DisableBaseSpriteEditorAltNavigation(true);
+        }
+
+        void DisableBaseSpriteEditorAltNavigation(bool requireMouseInWindow)
+        {
             Event evt = Event.current;
-            if (evt != null && evt.alt && spriteEditor.windowDimension.Contains(evt.mousePosition))
-                evt.modifiers &= ~EventModifiers.Alt;
+            if (evt == null || (!evt.alt && !SkinningEditorInput.altKeyDown))
+                return;
+
+            if (requireMouseInWindow && !spriteEditor.windowDimension.Contains(evt.mousePosition))
+                return;
+
+            evt.modifiers &= ~EventModifiers.Alt;
+        }
+
+        void DisableAltNavigationForTemporaryGeometryMode()
+        {
+            if (!SkinningEditorInput.altKeyDown || !IsModifyCreateGeometryToolActive())
+                return;
+
+            DisableBaseSpriteEditorAltNavigation(false);
+        }
+
+        void ConsumeUnhandledAltMouseNavigation()
+        {
+            Event evt = Event.current;
+            if (evt == null || !IsModifyCreateGeometryToolActive() || (!evt.alt && !SkinningEditorInput.altKeyDown))
+                return;
+
+            if (!IsMouseNavigationEvent(evt))
+                return;
+
+            evt.Use();
+        }
+
+        static bool IsMouseNavigationEvent(Event evt)
+        {
+            return evt.type == EventType.MouseDown ||
+                evt.type == EventType.MouseDrag ||
+                evt.type == EventType.MouseUp;
+        }
+
+        bool IsModifyCreateGeometryToolActive()
+        {
+            return currentTool == skinningCache.GetTool(Tools.EditGeometry) ||
+                currentTool == skinningCache.GetTool(Tools.CreateVertex);
         }
 
         public override void DoToolbarGUI(Rect drawArea)
