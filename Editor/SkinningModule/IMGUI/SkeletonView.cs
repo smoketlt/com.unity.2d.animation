@@ -8,6 +8,7 @@ namespace UnityEditor.U2D.Animation
         internal const string softDeleteCommandName = "SoftDelete";
 
         const float k_PickingRadius = 5f;
+        const float k_CreateBoneDragThreshold = 3f;
         static readonly int k_BodyHashCode = "Body".GetHashCode();
         static readonly int k_JointHashCode = "Joint".GetHashCode();
         static readonly int k_TailHashCode = "Tail".GetHashCode();
@@ -39,6 +40,11 @@ namespace UnityEditor.U2D.Animation
         int m_HoveredBodyControlID = -1;
         int m_HoveredJointControlID = -1;
         int m_HoveredTailControlID = -1;
+        bool m_PendingCreateBoneFromExistingBone;
+        int m_PendingCreateBoneBoneID = 0;
+        Vector2 m_PendingCreateBoneMousePosition;
+        Vector3 m_PendingCreateBoneStartPosition;
+        SliderData m_PendingCreateBoneSliderData = SliderData.zero;
         float m_NearestDistance;
         float m_NearestBodyDistance;
         float m_NearestJointDistance;
@@ -308,11 +314,44 @@ namespace UnityEditor.U2D.Animation
             if (IsActionActive(SkeletonAction.CreateBone))
                 ConsumeMouseMoveEvents();
 
+            if (mode == SkeletonMode.CreateBone &&
+                !m_GUIWrapper.isAltDown &&
+                m_GUIWrapper.IsControlHot(0) &&
+                m_GUIWrapper.IsMultiStepControlHot(0))
+            {
+                if (m_GUIWrapper.IsMouseDown(0) && !CanCreateBone() && hoveredBoneID != InvalidID)
+                {
+                    m_PendingCreateBoneFromExistingBone = true;
+                    m_PendingCreateBoneBoneID = hoveredBoneID;
+                    m_PendingCreateBoneMousePosition = m_GUIWrapper.mousePosition;
+                    m_PendingCreateBoneStartPosition = position;
+                    m_PendingCreateBoneSliderData = m_HoveredSliderData;
+                }
+                else if (m_PendingCreateBoneFromExistingBone && m_GUIWrapper.eventType == EventType.MouseDrag && m_GUIWrapper.mouseButton == 0)
+                {
+                    if ((m_GUIWrapper.mousePosition - m_PendingCreateBoneMousePosition).magnitude >= k_CreateBoneDragThreshold)
+                    {
+                        position = m_PendingCreateBoneStartPosition;
+                        m_HotSliderData = m_PendingCreateBoneSliderData;
+                        m_HotBoneID = m_PendingCreateBoneBoneID;
+                        m_PendingCreateBoneFromExistingBone = false;
+                        m_GUIWrapper.SetMultiStepControlHot(m_CreateBoneControlID);
+                        m_GUIWrapper.UseCurrentEvent();
+                        return true;
+                    }
+                }
+                else if (m_GUIWrapper.IsMouseUp(0) || m_GUIWrapper.IsEventOutsideWindow())
+                {
+                    m_PendingCreateBoneFromExistingBone = false;
+                }
+            }
+
             if (IsActionTriggering(SkeletonAction.CreateBone))
             {
                 m_HotBoneID = hoveredBoneID;
                 m_GUIWrapper.SetMultiStepControlHot(m_CreateBoneControlID);
                 m_GUIWrapper.UseCurrentEvent();
+                m_PendingCreateBoneFromExistingBone = false;
                 return true;
             }
 
@@ -375,12 +414,14 @@ namespace UnityEditor.U2D.Animation
         {
             if (force)
             {
+                m_PendingCreateBoneFromExistingBone = false;
                 m_GUIWrapper.SetMultiStepControlHot(0);
                 return true;
             }
 
             if ((!m_GUIWrapper.IsMultiStepControlHot(0) && (m_GUIWrapper.IsMouseDown(1) || m_GUIWrapper.IsKeyDown(KeyCode.Escape))))
             {
+                m_PendingCreateBoneFromExistingBone = false;
                 m_GUIWrapper.SetMultiStepControlHot(0);
                 m_GUIWrapper.UseCurrentEvent();
                 return true;
@@ -498,7 +539,7 @@ namespace UnityEditor.U2D.Animation
                 return true;
 
             if (action == SkeletonAction.CreateBone)
-                return m_GUIWrapper.IsMouseDown(0);
+                return m_GUIWrapper.IsMouseUp(0);
 
             return m_GUIWrapper.IsMouseUp(0);
         }
@@ -512,8 +553,8 @@ namespace UnityEditor.U2D.Animation
         {
             Vector3 endPosition = position + right * length;
             Quaternion rotation = Quaternion.LookRotation(forward, Vector3.Cross(right, forward));
-            Color boneJointColor = new Color(0f, 0f, 0f, 0.75f * color.a);
-            Color tailColor = new Color(0f, 0f, 0f, 0.75f * color.a);
+            Color boneJointColor = color;
+            Color tailColor = color;
             Color hoveredColor = Handles.preselectionColor;
             Color selectedColor = Handles.selectedColor;
             bool drawRectCap = false;

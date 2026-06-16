@@ -10,6 +10,7 @@ namespace UnityEditor.U2D.Animation
     {
         static readonly string k_DefaultRootName = "root";
         static readonly string k_DefaultBoneName = "bone";
+        const float k_MinCreateBoneLength = 0.01f;
         static Regex s_Regex = new Regex(@"\w+_\d+$", RegexOptions.IgnoreCase);
 
         [SerializeField]
@@ -322,16 +323,28 @@ namespace UnityEditor.U2D.Animation
                     if (isChained)
                         m_CreateBoneStartPosition = m_PrevCreatedBone.endPosition;
 
+                    position = GetCreateBoneEndPosition(m_CreateBoneStartPosition, position);
+
                     string name = AutoBoneName(parentBone, skeleton.bones);
                     BoneCache bone = m_Skeleton.CreateBone(parentBone, m_CreateBoneStartPosition, position, isChained, name);
 
-                    m_PrevCreatedBone = bone;
-                    m_CreateBoneStartPosition = bone.endPosition;
+                    selectedBone = bone;
+                    m_PrevCreatedBone = null;
+                    view.DoCancelMultistepAction(true);
 
                     InvokeTopologyChanged();
                     InvokePoseChanged();
                 }
             }
+        }
+
+        Vector3 GetCreateBoneEndPosition(Vector3 startPosition, Vector3 endPosition)
+        {
+            Vector3 direction = endPosition - startPosition;
+            if (direction.sqrMagnitude >= k_MinCreateBoneLength * k_MinCreateBoneLength)
+                return endPosition;
+
+            return startPosition + Vector3.right * k_MinCreateBoneLength;
         }
 
         void HandleSplitBone()

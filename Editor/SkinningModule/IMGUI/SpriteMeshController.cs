@@ -269,13 +269,14 @@ namespace UnityEditor.U2D.Animation
             for (int i = 0; i < spriteMeshData.vertexCount; i++)
             {
                 Vector2 position = spriteMeshData.vertices[i];
+                EditableBoneWeight weight = spriteMeshData.vertexWeights[i];
 
                 if (selection.Contains(i))
-                    spriteMeshView.DrawVertexSelected(position);
+                    spriteMeshView.DrawVertexSelected(position, weight);
                 else if (i == spriteMeshView.hoveredVertex && spriteMeshView.IsActionHot(MeshEditorAction.None))
-                    spriteMeshView.DrawVertexHovered(position);
+                    spriteMeshView.DrawVertexHovered(position, weight);
                 else
-                    spriteMeshView.DrawVertex(position);
+                    spriteMeshView.DrawVertex(position, weight);
             }
         }
 

@@ -3,13 +3,19 @@
   <aui:VisibilityToolWindow name="VisibilityToolWindow" picking-mode="Ignore">
     <ui:PopupWindow name="PopupWindow" text="Visibility">
         <ui:VisualElement name="OpacitySliderGroup">
-            <ui:VisualElement name="BoneOpacitySliderGroup" >
-                <ui:Image name="BoneOpacitySliderIcon" tooltip="Adjust Bone opacity"/>
-                <ui:Slider name ="BoneOpacitySlider" low-value="0" high-value="1" direction="Horizontal" tooltip="Adjust Bone opacity"/>
+            <ui:VisualElement name="OpacitySliderRow">
+                <ui:VisualElement name="BoneOpacitySliderGroup" >
+                    <ui:Image name="BoneOpacitySliderIcon" tooltip="Adjust Bone opacity"/>
+                    <ui:Slider name ="BoneOpacitySlider" low-value="0" high-value="1" direction="Horizontal" tooltip="Adjust Bone opacity"/>
+                </ui:VisualElement>
+                <ui:VisualElement name="MeshOpacitySliderGroup">
+                    <ui:Image name="MeshOpacitySliderIcon" tooltip="Adjust Weight opacity"/>
+                    <ui:Slider name ="MeshOpacitySlider" low-value="0" high-value="1" direction="Horizontal" tooltip="Adjust Weight opacity"/>
+                </ui:VisualElement>
             </ui:VisualElement>
-            <ui:VisualElement name="MeshOpacitySliderGroup">
-                <ui:Image name="MeshOpacitySliderIcon" tooltip="Adjust Weight opacity"/>
-                <ui:Slider name ="MeshOpacitySlider" low-value="0" high-value="1" direction="Horizontal" tooltip="Adjust Weight opacity"/>
+            <ui:VisualElement name="SpriteOpacitySliderGroup">
+                <ui:Image name="SpriteOpacitySliderIcon" tooltip="Adjust Sprite opacity"/>
+                <ui:Slider name ="SpriteOpacitySlider" low-value="0" high-value="1" direction="Horizontal" tooltip="Adjust Sprite opacity"/>
             </ui:VisualElement>
         </ui:VisualElement>
       <ui:VisualElement name ="VisibilityToolSelection" />

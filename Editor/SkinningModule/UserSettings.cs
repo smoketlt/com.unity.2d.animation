@@ -40,6 +40,7 @@ namespace UnityEditor.U2D.Animation
     {
         public const string kBoneOpacitykey = UserSettings.kSettingsUniqueKey + "VisibilityToolSettings.boneOpacity";
         public const string kMeshOpacityKey = UserSettings.kSettingsUniqueKey + "VisibilityToolSettings.meshOpacity";
+        public const string kSpriteOpacityKey = UserSettings.kSettingsUniqueKey + "VisibilityToolSettings.spriteOpacity";
 
         public static float boneOpacity
         {
@@ -51,6 +52,12 @@ namespace UnityEditor.U2D.Animation
         {
             get => EditorPrefs.GetFloat(kMeshOpacityKey, 0.5f);
             set => EditorPrefs.SetFloat(kMeshOpacityKey, value);
+        }
+
+        public static float spriteOpacity
+        {
+            get => EditorPrefs.GetFloat(kSpriteOpacityKey, 0.35f);
+            set => EditorPrefs.SetFloat(kSpriteOpacityKey, value);
         }
     }
 

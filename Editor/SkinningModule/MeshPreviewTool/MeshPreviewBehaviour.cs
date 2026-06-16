@@ -37,12 +37,13 @@ namespace UnityEditor.U2D.Animation
         public bool drawWireframe { get; set; }
         public bool overlaySelected { get; set; }
         public bool dimUnselectedSprites { get; set; }
+        public float unselectedSpriteOpacity { get; set; } = 0.1f;
 
         public float GetMeshOpacity(SpriteCache sprite)
         {
             SkinningCache skinningCache = sprite.skinningCache;
             if (dimUnselectedSprites && skinningCache.selectedSprite != null && skinningCache.selectedSprite != sprite)
-                return 0.1f;
+                return unselectedSpriteOpacity;
 
             return 1f;
         }

@@ -8,6 +8,7 @@
 | Skinning Editor architecture | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/SkinningModule/SkinningModule*.cs` |
 | Geometry toolbar behavior | [Subsystems/SkinningEditor/MeshToolbar](Subsystems/SkinningEditor/MeshToolbar.md) | `Editor/SkinningModule/UI/MeshToolbar.cs`, `Editor/Assets/SkinningModule/MeshToolbar.uxml` |
 | Modify/Create/New/Reset/Generate workflow | [Subsystems/SkinningEditor/GeometryEditing](Subsystems/SkinningEditor/GeometryEditing.md) | `Editor/SkinningModule/MeshTool/**`, `Editor/SkinningModule/IMGUI/SpriteMesh*.cs` |
+| Skeleton bone drawing and Create Bone behavior | [Subsystems/SkinningEditor/SkeletonBoneEditing](Subsystems/SkinningEditor/SkeletonBoneEditing.md) | `Editor/SkinningModule/IMGUI/SkeletonView.cs`, `Editor/SkinningModule/IMGUI/SkeletonController.cs`, `Editor/SkinningModule/BoneDrawingUtility.cs` |
 | Alt temporary mode switching | [Subsystems/SkinningEditor/AltInputModeSwitching](Subsystems/SkinningEditor/AltInputModeSwitching.md) | `SkinningEditorInput.cs`, `MeshToolWrapper.cs`, `MeshToolbar.cs` |
 | Reset geometry command | [Subsystems/SkinningEditor/ResetGeometry](Subsystems/SkinningEditor/ResetGeometry.md) | `SkinningModuleView.cs`, `SpriteMeshDataController.cs`, `MeshCache.cs` |
 | Vertex dots, hit radius, mesh interaction | [Subsystems/SkinningEditor/GeometryEditing](Subsystems/SkinningEditor/GeometryEditing.md) | `SpriteMeshView.cs`, `SpriteMeshController.cs` |
@@ -15,6 +16,7 @@
 | Copy/paste, mirrored paste, selected-vertex paste | [Subsystems/SkinningEditor/CopyPasteGeometry](Subsystems/SkinningEditor/CopyPasteGeometry.md) | `Editor/SkinningModule/CopyTool.cs` |
 | Auto geometry generation | [Subsystems/SkinningEditor/GenerateGeometryTool](Subsystems/SkinningEditor/GenerateGeometryTool.md) | `Editor/SkinningModule/GenerateGeometryTool.cs` |
 | Weight generation/normalization/clearing | [Subsystems/SkinningEditor/GenerateWeightsTool](Subsystems/SkinningEditor/GenerateWeightsTool.md) | `Editor/SkinningModule/GenerateWeightsTool.cs` |
+| Visibility window, opacity sliders, bone/sprite visibility lists | [Subsystems/SkinningEditor/VisibilityTool](Subsystems/SkinningEditor/VisibilityTool.md) | `Editor/SkinningModule/VisibilityTool/**`, `Editor/Assets/SkinningModule/VisibilityToolWindow.uxml` |
 | UXML/USS resources | [Resources/SkinningModuleAssets](Resources/SkinningModuleAssets.md) | `Editor/Assets/SkinningModule/**` |
 | Regression sweep before push | [QualityAuditPlaybook](QualityAuditPlaybook.md) | diff, Unity compile, local Unity test project |
 
@@ -30,12 +32,15 @@
 | `SpriteMeshView` | Low-level IMGUI hit testing, hover state, action activation and drawing | `Editor/SkinningModule/IMGUI/SpriteMeshView.cs` |
 | `SpriteMeshController` | Mesh operation controller: select, move, create vertex, create edge, split, remove, triangulate | `Editor/SkinningModule/IMGUI/SpriteMeshController.cs` |
 | `SpriteMeshDataController` | Geometry data mutation and triangulation helper | `Editor/SkinningModule/SpriteMeshData/SpriteMeshDataController.cs` |
+| `SkeletonView` | Low-level IMGUI hit testing, action activation, and bone drawing bridge | `Editor/SkinningModule/IMGUI/SkeletonView.cs` |
+| `SkeletonController` | Bone selection, transform, creation, split, remove, and skeleton event handling | `Editor/SkinningModule/IMGUI/SkeletonController.cs` |
 | `MeshCache` | Per-sprite mesh data and bone compatibility adapter | `Editor/SkinningModule/SkinningCache/MeshCache.cs` |
 | `BaseSpriteMeshData` | Serialized vertices, weights, edges, indices, outline edges | `Editor/SkinningModule/SpriteMeshData/SpriteMeshData.cs` |
 | `CopyTool` | Copy/paste data workflows including mirrored geometry paste | `Editor/SkinningModule/CopyTool.cs` |
 | `GenerateGeometryTool` | Auto outline/triangulation/weight generation flow | `Editor/SkinningModule/GenerateGeometryTool.cs` |
 | `GenerateWeightsTool` | Weight generation, normalization, and clearing panel | `Editor/SkinningModule/GenerateWeightsTool.cs` |
 | `SkinningEditorInput` | Fork-specific shared modifier-key status for Skinning Editor tools | `Editor/SkinningModule/IMGUI/SkinningEditorInput.cs` |
+| `VisibilityTool` | Visibility popup window, tab state, and opacity slider preview behavior | `Editor/SkinningModule/VisibilityTool/VisibilityTool.cs` |
 
 ## Current Fork Behavior
 

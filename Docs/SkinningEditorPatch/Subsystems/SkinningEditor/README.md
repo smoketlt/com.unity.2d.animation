@@ -12,6 +12,7 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 - mesh data mutation: `SpriteMeshDataController`, `MeshCache`, `BaseSpriteMeshData`
 - copy/paste geometry: `CopyTool`
 - custom input state: `SkinningEditorInput`
+- skeleton bone creation and drawing: `SkeletonView`, `SkeletonController`, `BoneDrawingUtility`
 
 ## Reading Order
 
@@ -20,10 +21,12 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 3. [MeshToolbar](MeshToolbar.md)
 4. [GeometryEditing](GeometryEditing.md)
 5. [MeshDataAndWeights](MeshDataAndWeights.md)
-6. [AltInputModeSwitching](AltInputModeSwitching.md) when Alt or mode swap behavior is involved
-7. [ResetGeometry](ResetGeometry.md) when Reset or weight confirmation is involved
-8. [CopyPasteGeometry](CopyPasteGeometry.md) when clipboard workflows are involved
-9. [GenerateGeometryTool](GenerateGeometryTool.md) or [GenerateWeightsTool](GenerateWeightsTool.md) when generated mesh/weights are involved
+6. [SkeletonBoneEditing](SkeletonBoneEditing.md) when Create Bone gestures or bone drawing are involved
+7. [AltInputModeSwitching](AltInputModeSwitching.md) when Alt or mode swap behavior is involved
+8. [ResetGeometry](ResetGeometry.md) when Reset or weight confirmation is involved
+9. [CopyPasteGeometry](CopyPasteGeometry.md) when clipboard workflows are involved
+10. [GenerateGeometryTool](GenerateGeometryTool.md) or [GenerateWeightsTool](GenerateWeightsTool.md) when generated mesh/weights are involved
+11. [VisibilityTool](VisibilityTool.md) when changing the Visibility popup, opacity sliders, or visibility lists
 
 ## Entity Pages
 
@@ -35,12 +38,14 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 - [SpriteMeshController](SpriteMeshController.md)
 - [SpriteMeshDataController](SpriteMeshDataController.md)
 - [MeshDataAndWeights](MeshDataAndWeights.md)
+- [SkeletonBoneEditing](SkeletonBoneEditing.md)
 - [AltInputModeSwitching](AltInputModeSwitching.md)
 - [ResetGeometry](ResetGeometry.md)
 - [CopyTool](CopyTool.md)
 - [CopyPasteGeometry](CopyPasteGeometry.md)
 - [GenerateGeometryTool](GenerateGeometryTool.md)
 - [GenerateWeightsTool](GenerateWeightsTool.md)
+- [VisibilityTool](VisibilityTool.md)
 
 ## Current User-Facing Geometry Semantics
 

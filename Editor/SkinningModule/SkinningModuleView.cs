@@ -311,6 +311,50 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
+        [Shortcut(ShortcutIds.hideShowSelected, typeof(InternalEditorBridge.ShortcutContext), KeyCode.H)]
+        private static void HideShowSelectedKey(ShortcutArguments args)
+        {
+            SkinningModule sm = GetModuleFromContext(args);
+            if (sm != null && !sm.spriteEditor.editingDisabled && sm.ToggleSelectedVisibility())
+                sm.skinningCache.events.shortcut.Invoke("h");
+        }
+
+        private bool ToggleSelectedVisibility()
+        {
+            BoneCache[] selectedBones = skinningCache.skeletonSelection.elements;
+            if (selectedBones.Length > 0)
+            {
+                bool visible = false;
+                for (int i = 0; i < selectedBones.Length; ++i)
+                    visible |= selectedBones[i].isVisible;
+
+                using (skinningCache.UndoScope(TextContent.visibilityChange))
+                {
+                    bool newVisibility = !visible;
+                    for (int i = 0; i < selectedBones.Length; ++i)
+                        selectedBones[i].isVisible = newVisibility;
+
+                    skinningCache.BoneVisibilityChanged();
+                }
+
+                spriteEditor.RequestRepaint();
+                return true;
+            }
+
+            SpriteCache selectedSprite = skinningCache.selectedSprite;
+            CharacterPartCache characterPart = selectedSprite != null ? selectedSprite.GetCharacterPart() : null;
+            if (skinningCache.mode == SkinningMode.Character && characterPart != null)
+            {
+                using (skinningCache.UndoScope(TextContent.spriteVisibility))
+                    characterPart.isVisible = !characterPart.isVisible;
+
+                spriteEditor.RequestRepaint();
+                return true;
+            }
+
+            return false;
+        }
+
         private void AddMainUI(VisualElement mainView)
         {
             VisualTreeAsset visualTree = ResourceLoader.Load<VisualTreeAsset>("LayoutOverlay/LayoutOverlay.uxml");

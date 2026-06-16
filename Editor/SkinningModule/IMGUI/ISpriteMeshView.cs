@@ -29,6 +29,8 @@ namespace UnityEditor.U2D.Animation
         SpriteMeshViewMode mode { get; set; }
         ISelection<int> selection { get; set; }
         int defaultControlID { get; set; }
+        bool drawVertexWeights { get; set; }
+        BoneCache[] vertexWeightBones { get; set; }
         Rect frame { get; set; }
         Vector2 mouseWorldPosition { get; }
         int hoveredVertex { get; }
@@ -53,8 +55,11 @@ namespace UnityEditor.U2D.Animation
         bool DoSelectEdge(out bool additive);
         bool DoRemove();
         void DrawVertex(Vector2 position);
+        void DrawVertex(Vector2 position, EditableBoneWeight weight);
         void DrawVertexHovered(Vector2 position);
+        void DrawVertexHovered(Vector2 position, EditableBoneWeight weight);
         void DrawVertexSelected(Vector2 position);
+        void DrawVertexSelected(Vector2 position, EditableBoneWeight weight);
         void BeginDrawEdges();
         void EndDrawEdges();
         void DrawEdge(Vector2 startPosition, Vector2 endPosition);

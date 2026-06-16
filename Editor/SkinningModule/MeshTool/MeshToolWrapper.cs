@@ -9,6 +9,7 @@ namespace UnityEditor.U2D.Animation
         private SkeletonTool m_SkeletonTool;
         private SpriteMeshViewMode m_MeshMode;
         private bool m_Disable = false;
+        private bool m_DrawVertexWeights = false;
         private SkeletonMode m_SkeletonMode;
         protected MeshPreviewBehaviour m_MeshPreviewBehaviour = new MeshPreviewBehaviour();
 
@@ -34,6 +35,12 @@ namespace UnityEditor.U2D.Animation
         {
             get { return m_Disable; }
             set { m_Disable = value; }
+        }
+
+        protected bool drawVertexWeights
+        {
+            get { return m_DrawVertexWeights; }
+            set { m_DrawVertexWeights = value; }
         }
 
         public SkeletonMode skeletonMode
@@ -67,6 +74,7 @@ namespace UnityEditor.U2D.Animation
             m_MeshPreviewBehaviour.showWeightMap = false;
             m_MeshPreviewBehaviour.overlaySelected = false;
             m_MeshPreviewBehaviour.dimUnselectedSprites = meshMode == SpriteMeshViewMode.NewGeometry;
+            m_MeshPreviewBehaviour.unselectedSpriteOpacity = 0.1f;
         }
 
         protected override void OnDeactivate()
@@ -95,6 +103,7 @@ namespace UnityEditor.U2D.Animation
             Debug.Assert(meshTool != null);
 
             meshTool.disable = disableMeshEditor;
+            meshTool.drawVertexWeights = drawVertexWeights;
             meshTool.mode = GetEffectiveMeshMode();
             meshTool.DoGUI();
         }

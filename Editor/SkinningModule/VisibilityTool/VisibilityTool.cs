@@ -20,6 +20,7 @@ namespace UnityEditor.U2D.Animation
         VisualElement m_Container;
         Slider m_BoneOpacitySlider;
         Slider m_MeshOpacitySlider;
+        Slider m_SpriteOpacitySlider;
         private LayoutOverlay m_Layout;
 
         List<Button> m_Tabs;
@@ -27,10 +28,13 @@ namespace UnityEditor.U2D.Animation
 
         public event Action<float> onBoneOpacitySliderChange = (f) => { };
         public event Action<float> onMeshOpacitySliderChange = (f) => { };
+        public event Action<float> onSpriteOpacitySliderChange = (f) => { };
         public event Action onBoneOpacitySliderChangeBegin = () => { };
         public event Action onBoneOpacitySliderChangeEnd = () => { };
         public event Action onMeshOpacitySliderChangeBegin = () => { };
         public event Action onMeshOpacitySliderChangeEnd = () => { };
+        public event Action onSpriteOpacitySliderChangeBegin = () => { };
+        public event Action onSpriteOpacitySliderChangeEnd = () => { };
 
         public static VisibilityToolWindow CreateFromUXML()
         {
@@ -54,6 +58,8 @@ namespace UnityEditor.U2D.Animation
             m_BoneOpacitySlider.RegisterValueChangedCallback(OnBoneOpacitySliderValueChangd);
             m_MeshOpacitySlider = this.Q<Slider>("MeshOpacitySlider");
             m_MeshOpacitySlider.RegisterValueChangedCallback(OnMeshOpacitySliderValueChangd);
+            m_SpriteOpacitySlider = this.Q<Slider>("SpriteOpacitySlider");
+            m_SpriteOpacitySlider.RegisterValueChangedCallback(OnSpriteOpacitySliderValueChangd);
             RegisterCallback<MouseDownEvent>(OpacityChangeBegin, TrickleDown.TrickleDown);
             RegisterCallback<MouseCaptureOutEvent>(OpacityChangeEnd, TrickleDown.TrickleDown);
 
@@ -103,6 +109,8 @@ namespace UnityEditor.U2D.Animation
                 onBoneOpacitySliderChangeBegin();
             else if (IsOpacityTarget(evt.target, m_MeshOpacitySlider))
                 onMeshOpacitySliderChangeBegin();
+            else if (IsOpacityTarget(evt.target, m_SpriteOpacitySlider))
+                onSpriteOpacitySliderChangeBegin();
         }
 
         void OpacityChangeEnd(MouseCaptureOutEvent evt)
@@ -111,6 +119,8 @@ namespace UnityEditor.U2D.Animation
                 onBoneOpacitySliderChangeEnd();
             else if (IsOpacityTarget(evt.target, m_MeshOpacitySlider))
                 onMeshOpacitySliderChangeEnd();
+            else if (IsOpacityTarget(evt.target, m_SpriteOpacitySlider))
+                onSpriteOpacitySliderChangeEnd();
         }
 
         void OnBoneOpacitySliderValueChangd(ChangeEvent<float> evt)
@@ -123,6 +133,11 @@ namespace UnityEditor.U2D.Animation
             onMeshOpacitySliderChange(evt.newValue);
         }
 
+        void OnSpriteOpacitySliderValueChangd(ChangeEvent<float> evt)
+        {
+            onSpriteOpacitySliderChange(evt.newValue);
+        }
+
         public void SetBoneOpacitySliderValue(float value)
         {
             m_BoneOpacitySlider.value = value;
@@ -133,6 +148,12 @@ namespace UnityEditor.U2D.Animation
         {
             m_MeshOpacitySlider.value = value;
             m_MeshOpacitySlider.MarkDirtyRepaint();
+        }
+
+        public void SetSpriteOpacitySliderValue(float value)
+        {
+            m_SpriteOpacitySlider.value = value;
+            m_SpriteOpacitySlider.MarkDirtyRepaint();
         }
 
         public void AddToolTab(string name, string tooltip, Action onClick)
@@ -219,12 +240,16 @@ namespace UnityEditor.U2D.Animation
         protected override void OnActivate()
         {
             m_MeshPreviewBehaviour.showWeightMap = true;
+            m_MeshPreviewBehaviour.dimUnselectedSprites = true;
+            m_MeshPreviewBehaviour.unselectedSpriteOpacity = VisibilityToolSettings.spriteOpacity;
             m_Controller.Activate();
+            skinningCache.events.meshPreviewBehaviourChange.Invoke(m_MeshPreviewBehaviour);
         }
 
         protected override void OnDeactivate()
         {
             m_Controller.Deactivate();
+            skinningCache.events.meshPreviewBehaviourChange.Invoke(null);
         }
 
         int IVisibilityToolModel.currentToolIndex
@@ -243,6 +268,12 @@ namespace UnityEditor.U2D.Animation
         {
             get { return VisibilityToolSettings.meshOpacity; }
             set { VisibilityToolSettings.meshOpacity = value; }
+        }
+
+        float IVisibilityToolModel.spriteOpacityValue
+        {
+            get { return VisibilityToolSettings.spriteOpacity; }
+            set { VisibilityToolSettings.spriteOpacity = value; }
         }
 
         UndoScope IVisibilityToolModel.UndoScope(string value)
@@ -271,6 +302,7 @@ namespace UnityEditor.U2D.Animation
         int currentToolIndex { get; set; }
         float meshOpacityValue { get; set; }
         float boneOpacityValue { get; set; }
+        float spriteOpacityValue { get; set; }
         UndoScope UndoScope(string value);
         void BeginUndoOperation(string value);
         IVisibilityToolWindow view { get; }
@@ -283,12 +315,16 @@ namespace UnityEditor.U2D.Animation
         void SetToolAvailable(int i, bool available);
         void SetBoneOpacitySliderValue(float value);
         void SetMeshOpacitySliderValue(float value);
+        void SetSpriteOpacitySliderValue(float value);
         event Action<float> onBoneOpacitySliderChange;
         event Action<float> onMeshOpacitySliderChange;
+        event Action<float> onSpriteOpacitySliderChange;
         event Action onBoneOpacitySliderChangeBegin;
         event Action onBoneOpacitySliderChangeEnd;
         event Action onMeshOpacitySliderChangeBegin;
         event Action onMeshOpacitySliderChangeEnd;
+        event Action onSpriteOpacitySliderChangeBegin;
+        event Action onSpriteOpacitySliderChangeEnd;
         void Show();
         void Hide();
         void SetActiveTab(int index);
@@ -342,10 +378,13 @@ namespace UnityEditor.U2D.Animation
 
             m_Model.view.SetBoneOpacitySliderValue(m_Model.boneOpacityValue);
             m_Model.view.SetMeshOpacitySliderValue(m_Model.meshOpacityValue);
+            m_Model.view.SetSpriteOpacitySliderValue(m_Model.spriteOpacityValue);
             m_Model.view.onBoneOpacitySliderChange -= OnBoneOpacityChange;
             m_Model.view.onMeshOpacitySliderChange -= OnMeshOpacityChange;
+            m_Model.view.onSpriteOpacitySliderChange -= OnSpriteOpacityChange;
             m_Model.view.onBoneOpacitySliderChange += OnBoneOpacityChange;
             m_Model.view.onMeshOpacitySliderChange += OnMeshOpacityChange;
+            m_Model.view.onSpriteOpacitySliderChange += OnSpriteOpacityChange;
             m_Model.view.onBoneOpacitySliderChangeBegin -= OnBoneOpacityChangeBegin;
             m_Model.view.onBoneOpacitySliderChangeBegin += OnBoneOpacityChangeBegin;
             m_Model.view.onBoneOpacitySliderChangeEnd -= OnBoneOpacityChangeEnd;
@@ -354,6 +393,10 @@ namespace UnityEditor.U2D.Animation
             m_Model.view.onMeshOpacitySliderChangeBegin += OnMeshOpacityChangeBegin;
             m_Model.view.onMeshOpacitySliderChangeEnd -= OnMeshOpacityChangeEnd;
             m_Model.view.onMeshOpacitySliderChangeEnd += OnMeshOpacityChangeEnd;
+            m_Model.view.onSpriteOpacitySliderChangeBegin -= OnSpriteOpacityChangeBegin;
+            m_Model.view.onSpriteOpacitySliderChangeBegin += OnSpriteOpacityChangeBegin;
+            m_Model.view.onSpriteOpacitySliderChangeEnd -= OnSpriteOpacityChangeEnd;
+            m_Model.view.onSpriteOpacitySliderChangeEnd += OnSpriteOpacityChangeEnd;
         }
 
         public void Deactivate()
@@ -365,10 +408,13 @@ namespace UnityEditor.U2D.Animation
 
             m_Model.view.onBoneOpacitySliderChange -= OnBoneOpacityChange;
             m_Model.view.onMeshOpacitySliderChange -= OnMeshOpacityChange;
+            m_Model.view.onSpriteOpacitySliderChange -= OnSpriteOpacityChange;
             m_Model.view.onBoneOpacitySliderChangeBegin -= OnBoneOpacityChangeBegin;
             m_Model.view.onBoneOpacitySliderChangeEnd -= OnBoneOpacityChangeEnd;
             m_Model.view.onMeshOpacitySliderChangeBegin -= OnMeshOpacityChangeBegin;
             m_Model.view.onMeshOpacitySliderChangeEnd -= OnMeshOpacityChangeEnd;
+            m_Model.view.onSpriteOpacitySliderChangeBegin -= OnSpriteOpacityChangeBegin;
+            m_Model.view.onSpriteOpacitySliderChangeEnd -= OnSpriteOpacityChangeEnd;
         }
 
         void OnBoneOpacityChangeBegin()
@@ -394,7 +440,17 @@ namespace UnityEditor.U2D.Animation
 
         void OnMeshOpacityChangeEnd()
         {
-            m_Model.skinningCache.events.meshPreviewBehaviourChange.Invoke(null);
+            m_Model.skinningCache.events.meshPreviewBehaviourChange.Invoke(m_MeshPreviewBehaviour());
+        }
+
+        void OnSpriteOpacityChangeBegin()
+        {
+            m_Model.skinningCache.events.meshPreviewBehaviourChange.Invoke(m_MeshPreviewBehaviour());
+        }
+
+        void OnSpriteOpacityChangeEnd()
+        {
+            m_Model.skinningCache.events.meshPreviewBehaviourChange.Invoke(m_MeshPreviewBehaviour());
         }
 
         private void OnBoneOpacityChange(float value)
@@ -405,6 +461,14 @@ namespace UnityEditor.U2D.Animation
         private void OnMeshOpacityChange(float value)
         {
             m_Model.meshOpacityValue = value;
+        }
+
+        private void OnSpriteOpacityChange(float value)
+        {
+            m_Model.spriteOpacityValue = value;
+            MeshPreviewBehaviour previewBehaviour = m_MeshPreviewBehaviour() as MeshPreviewBehaviour;
+            if (previewBehaviour != null)
+                previewBehaviour.unselectedSpriteOpacity = value;
         }
 
         private void OnToolAvailabilityChange(int toolIndex)

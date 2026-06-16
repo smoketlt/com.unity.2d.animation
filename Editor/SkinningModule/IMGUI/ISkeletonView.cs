@@ -23,7 +23,7 @@ namespace UnityEditor.U2D.Animation
         Selection = SkeletonAction.Select,
         EditPose = Selection | SkeletonAction.RotateBone | SkeletonAction.MoveBone,
         EditJoints = Selection | SkeletonAction.FreeMoveBone | SkeletonAction.MoveEndPosition | SkeletonAction.MoveJoint | SkeletonAction.Remove,
-        CreateBone = Selection | SkeletonAction.MoveJoint | SkeletonAction.Remove | SkeletonAction.CreateBone,
+        CreateBone = Selection | SkeletonAction.Remove | SkeletonAction.CreateBone,
         SplitBone = Selection | SkeletonAction.MoveEndPosition | SkeletonAction.MoveJoint | SkeletonAction.Remove | SkeletonAction.SplitBone,
     }
 

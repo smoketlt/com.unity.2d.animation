@@ -19,6 +19,7 @@
 - toolbar handlers: `SetMeshTool(...)`, `SetSkeletonTool(...)`, `SetWeightTool(...)`
 - new hull handlers: `ToggleNewGeometryTool(...)`, `BeginNewGeometryTool(...)`, `TryCompleteNewGeometry(...)`, `ExitNewGeometryMode()`
 - command handler: `ResetGeometry()`
+- visibility shortcut command: `ToggleSelectedVisibility()`
 
 ## Inputs
 
@@ -33,6 +34,7 @@
 - activates/deactivates cached tools;
 - updates toolbar checked state;
 - handles copy/paste keyboard commands;
+- handles `H` hide/show selected visibility toggling;
 - suppresses base Sprite Editor Alt panning after Skinning Editor input;
 - starts and completes `New` hull-authoring mode;
 - resets mesh geometry through `ResetGeometry()`;

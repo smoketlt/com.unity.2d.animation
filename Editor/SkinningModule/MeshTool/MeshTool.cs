@@ -39,6 +39,11 @@ namespace UnityEditor.U2D.Animation
             set => m_SpriteMeshController.disable = value;
         }
 
+        public bool drawVertexWeights
+        {
+            set => m_SpriteMeshView.drawVertexWeights = value;
+        }
+
         public ISelection<int> selectionOverride
         {
             get => m_SelectionOverride;
@@ -125,6 +130,7 @@ namespace UnityEditor.U2D.Animation
             m_SpriteMeshController.frame = new Rect(Vector2.zero, m_Mesh.sprite.textureRect.size);
             m_SpriteMeshController.selection = selection;
             m_SpriteMeshView.defaultControlID = defaultControlID;
+            m_SpriteMeshView.vertexWeightBones = m_Mesh.bones;
             m_RectVertexSelector.spriteMeshData = m_Mesh;
         }
 

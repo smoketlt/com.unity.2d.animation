@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace UnityEditor.U2D.Animation
@@ -14,6 +16,10 @@ namespace UnityEditor.U2D.Animation
         const float kEdgeWidth = 2f;
         const float kVertexHitRadius = 16f;
         const float kNewGeometryFrameHitRadius = 16f;
+        const float kWeightVertexRadius = 16f;
+        const float kMinWeightSlice = 0.001f;
+        const int kWeightVertexTextureSize = 32;
+        const int kMaxWeightVertexTextureCacheSize = 512;
 
         private class Styles
         {
@@ -65,6 +71,8 @@ namespace UnityEditor.U2D.Animation
         int m_MoveVertexControlID = -1;
         Color m_TempColor;
         SliderData m_HotSliderData = SliderData.zero;
+        readonly List<BoneWeightData> m_WeightVertexSlices = new List<BoneWeightData>(4);
+        readonly Dictionary<int, Texture2D> m_WeightVertexTextureCache = new Dictionary<int, Texture2D>();
         MeshEditorAction m_PreviousActiveAction = MeshEditorAction.None;
         private Vector2 m_MouseWorldPosition;
         private float m_NearestVertexDistance;
@@ -77,6 +85,8 @@ namespace UnityEditor.U2D.Animation
         public SpriteMeshViewMode mode { get; set; }
         public ISelection<int> selection { get; set; }
         public int defaultControlID { get; set; }
+        public bool drawVertexWeights { get; set; }
+        public BoneCache[] vertexWeightBones { get; set; }
         public Rect frame { get; set; }
         private IGUIWrapper guiWrapper { get; set; }
 
@@ -390,14 +400,47 @@ namespace UnityEditor.U2D.Animation
             DrawingUtility.DrawGUIStyleCap(0, position, Quaternion.identity, 1f, styles.pointNormalStyle);
         }
 
+        public void DrawVertex(Vector2 position, EditableBoneWeight weight)
+        {
+            if (drawVertexWeights)
+            {
+                DrawWeightedVertex(position, weight, 0.5f);
+                return;
+            }
+
+            DrawVertex(position);
+        }
+
         public void DrawVertexHovered(Vector2 position)
         {
             DrawingUtility.DrawGUIStyleCap(0, position, Quaternion.identity, 1f, styles.pointHoveredStyle);
         }
 
+        public void DrawVertexHovered(Vector2 position, EditableBoneWeight weight)
+        {
+            if (drawVertexWeights)
+            {
+                DrawWeightedVertex(position, weight, 0.5f);
+                return;
+            }
+
+            DrawVertexHovered(position);
+        }
+
         public void DrawVertexSelected(Vector2 position)
         {
             DrawingUtility.DrawGUIStyleCap(0, position, Quaternion.identity, 1f, styles.pointSelectedStyle);
+        }
+
+        public void DrawVertexSelected(Vector2 position, EditableBoneWeight weight)
+        {
+            if (drawVertexWeights)
+            {
+                DrawWeightedVertex(position, weight, 1f);
+                return;
+            }
+
+            DrawVertexSelected(position);
         }
 
         public void BeginDrawEdges()
@@ -625,6 +668,200 @@ namespace UnityEditor.U2D.Animation
             float width = kEdgeWidth / Handles.matrix.m00;
 
             DrawingUtility.DrawSolidLine(width, startPosition, endPosition);
+        }
+
+        private void DrawWeightedVertex(Vector2 position, EditableBoneWeight weight, float opacity)
+        {
+            if (Event.current.type != EventType.Repaint)
+                return;
+
+            BuildWeightVertexSlices(weight);
+
+            Handles.BeginGUI();
+
+            Vector2 guiPosition = HandleUtility.WorldToGUIPoint(position);
+            Rect rect = new Rect(
+                guiPosition.x - kWeightVertexRadius,
+                guiPosition.y - kWeightVertexRadius,
+                kWeightVertexRadius * 2f,
+                kWeightVertexRadius * 2f);
+
+            Color guiColor = GUI.color;
+            GUI.color = new Color(guiColor.r, guiColor.g, guiColor.b, guiColor.a * opacity);
+            GUI.DrawTexture(rect, GetWeightVertexTexture(), ScaleMode.StretchToFill, true);
+            GUI.color = guiColor;
+
+            Handles.EndGUI();
+        }
+
+        private void BuildWeightVertexSlices(EditableBoneWeight weight)
+        {
+            m_WeightVertexSlices.Clear();
+
+            if (weight == null || vertexWeightBones == null)
+                return;
+
+            foreach (BoneWeightChannel channel in weight)
+            {
+                if (!channel.enabled ||
+                    channel.weight <= kMinWeightSlice ||
+                    channel.boneIndex < 0 ||
+                    channel.boneIndex >= vertexWeightBones.Length)
+                    continue;
+
+                int existingIndex = m_WeightVertexSlices.FindIndex(slice => slice.boneIndex == channel.boneIndex);
+                if (existingIndex >= 0)
+                {
+                    BoneWeightData existingSlice = m_WeightVertexSlices[existingIndex];
+                    existingSlice.weight += channel.weight;
+                    m_WeightVertexSlices[existingIndex] = existingSlice;
+                }
+                else
+                {
+                    m_WeightVertexSlices.Add(new BoneWeightData
+                    {
+                        boneIndex = channel.boneIndex,
+                        weight = channel.weight
+                    });
+                }
+            }
+
+            m_WeightVertexSlices.Sort(CompareWeightVertexSlices);
+        }
+
+        private int CompareWeightVertexSlices(BoneWeightData left, BoneWeightData right)
+        {
+            string leftName = vertexWeightBones[left.boneIndex] != null ? vertexWeightBones[left.boneIndex].name : string.Empty;
+            string rightName = vertexWeightBones[right.boneIndex] != null ? vertexWeightBones[right.boneIndex].name : string.Empty;
+            int result = string.Compare(leftName, rightName, StringComparison.Ordinal);
+
+            if (result == 0)
+                result = left.boneIndex.CompareTo(right.boneIndex);
+
+            return result;
+        }
+
+        private Texture2D GetWeightVertexTexture()
+        {
+            int hash = GetWeightVertexTextureHash();
+            if (m_WeightVertexTextureCache.TryGetValue(hash, out Texture2D texture) && texture != null)
+                return texture;
+
+            if (m_WeightVertexTextureCache.Count > kMaxWeightVertexTextureCacheSize)
+                ClearWeightVertexTextureCache();
+
+            texture = CreateWeightVertexTexture();
+            m_WeightVertexTextureCache[hash] = texture;
+            return texture;
+        }
+
+        private int GetWeightVertexTextureHash()
+        {
+            unchecked
+            {
+                int hash = 17;
+                float totalWeight = GetWeightVertexTotalWeight();
+                if (totalWeight <= 0f)
+                    return hash;
+
+                float displayTotalWeight = Mathf.Max(1f, totalWeight);
+                for (int i = 0; i < m_WeightVertexSlices.Count; ++i)
+                {
+                    BoneWeightData slice = m_WeightVertexSlices[i];
+                    Color32 color = vertexWeightBones[slice.boneIndex].bindPoseColor;
+                    int normalizedWeight = Mathf.RoundToInt(slice.weight / displayTotalWeight * 1000f);
+
+                    hash = hash * 31 + slice.boneIndex;
+                    hash = hash * 31 + normalizedWeight;
+                    hash = hash * 31 + color.r;
+                    hash = hash * 31 + color.g;
+                    hash = hash * 31 + color.b;
+                }
+
+                return hash;
+            }
+        }
+
+        private Texture2D CreateWeightVertexTexture()
+        {
+            Texture2D texture = new Texture2D(kWeightVertexTextureSize, kWeightVertexTextureSize, TextureFormat.RGBA32, false)
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+
+            Color[] pixels = new Color[kWeightVertexTextureSize * kWeightVertexTextureSize];
+            float totalWeight = GetWeightVertexTotalWeight();
+            float displayTotalWeight = Mathf.Max(1f, totalWeight);
+            float center = (kWeightVertexTextureSize - 1) * 0.5f;
+            float radius = kWeightVertexTextureSize * 0.5f - 0.5f;
+
+            for (int y = 0; y < kWeightVertexTextureSize; ++y)
+            {
+                for (int x = 0; x < kWeightVertexTextureSize; ++x)
+                {
+                    float dx = x - center;
+                    float dy = y - center;
+                    float distance = Mathf.Sqrt(dx * dx + dy * dy);
+
+                    Color color = Color.clear;
+                    if (distance <= radius)
+                    {
+                        color = totalWeight > 0f ? GetWeightVertexPixelColor(dx, dy, displayTotalWeight) : Color.black;
+                        color.a = Mathf.Clamp01(radius - distance + 1f);
+                    }
+
+                    pixels[y * kWeightVertexTextureSize + x] = color;
+                }
+            }
+
+            texture.SetPixels(pixels);
+            texture.Apply(false, true);
+            return texture;
+        }
+
+        private float GetWeightVertexTotalWeight()
+        {
+            float totalWeight = 0f;
+            for (int i = 0; i < m_WeightVertexSlices.Count; ++i)
+                totalWeight += m_WeightVertexSlices[i].weight;
+
+            return totalWeight;
+        }
+
+        private Color GetWeightVertexPixelColor(float dx, float dy, float displayTotalWeight)
+        {
+            float angle = Mathf.Atan2(dx, dy) * Mathf.Rad2Deg;
+            if (angle < 0f)
+                angle += 360f;
+
+            float currentAngle = 0f;
+            for (int i = 0; i < m_WeightVertexSlices.Count; ++i)
+            {
+                BoneWeightData slice = m_WeightVertexSlices[i];
+                currentAngle += 360f * slice.weight / displayTotalWeight;
+
+                if (angle <= currentAngle)
+                {
+                    Color color = vertexWeightBones[slice.boneIndex].bindPoseColor;
+                    color.a = 1f;
+                    return color;
+                }
+            }
+
+            return Color.black;
+        }
+
+        private void ClearWeightVertexTextureCache()
+        {
+            foreach (Texture2D texture in m_WeightVertexTextureCache.Values)
+            {
+                if (texture != null)
+                    UnityEngine.Object.DestroyImmediate(texture);
+            }
+
+            m_WeightVertexTextureCache.Clear();
         }
 
         public void DoRepaint()

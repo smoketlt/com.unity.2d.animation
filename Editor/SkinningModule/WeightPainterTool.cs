@@ -15,11 +15,19 @@ namespace UnityEditor.U2D.Animation
 
     internal class WeightPainterTool : MeshToolWrapper
     {
+        const float kWeightSliderVertexHitRadius = 16f;
+        const float kWeightSliderDragWeightPerPixel = 0.0025f;
+
         private WeightPainterPanel m_WeightPainterPanel;
         private WeightEditor m_WeightEditor = new WeightEditor();
         private Brush m_Brush = new Brush(new GUIWrapper());
         private ISelection<int> m_BrushSelection = new IndexedSelection();
         private CircleVertexSelector m_CircleVertexSelector = new CircleVertexSelector();
+        private readonly List<int> m_WeightSliderBoneIndices = new List<int>(4);
+        private readonly List<int> m_WeightSliderSelectedChannels = new List<int>(4);
+        private readonly List<int> m_WeightSliderOtherChannels = new List<int>(4);
+        private bool m_WeightSliderDragActive;
+        private bool m_WeightSliderDragUndoStarted;
 
         public WeightPainterMode paintMode
         {
@@ -103,6 +111,9 @@ namespace UnityEditor.U2D.Animation
         protected override void OnDeactivate()
         {
             base.OnDeactivate();
+
+            m_WeightSliderDragActive = false;
+            m_WeightSliderDragUndoStarted = false;
 
             skinningCache.events.selectedSpriteChanged.RemoveListener(OnSelectedSpriteChanged);
             skinningCache.events.skinningModeChanged.RemoveListener(OnSkinningModeChanged);
@@ -358,6 +369,14 @@ namespace UnityEditor.U2D.Animation
             if (useBrush)
                 meshTool.selectionOverride = m_BrushSelection;
 
+            drawVertexWeights = !useBrush;
+
+            if (!useBrush)
+                BeginWeightSliderDragIfNeeded();
+
+            if (!useBrush)
+                HandleWeightSliderDrag();
+
             DoSkeletonGUI();
             DoMeshGUI();
 
@@ -385,6 +404,275 @@ namespace UnityEditor.U2D.Animation
 
                 Handles.matrix = handlesMatrix;
             }
+        }
+
+        private void BeginWeightSliderDragIfNeeded()
+        {
+            Event evt = Event.current;
+
+            if (evt.type != EventType.MouseDown || evt.button != 0)
+                return;
+
+            m_WeightSliderDragActive = false;
+            m_WeightSliderDragUndoStarted = false;
+
+            if (GetWeightSliderBoneIndices().Count == 0 || GetWeightSliderVertexAtMouse() == -1)
+                return;
+
+            m_WeightSliderDragActive = true;
+        }
+
+        private void HandleWeightSliderDrag()
+        {
+            Event evt = Event.current;
+
+            if (!m_WeightSliderDragActive)
+                return;
+
+            if (evt.rawType == EventType.MouseUp)
+            {
+                EndWeightSliderDrag();
+                return;
+            }
+
+            if (evt.type != EventType.MouseDrag || evt.button != 0)
+                return;
+
+            float deltaWeight = -evt.delta.y * kWeightSliderDragWeightPerPixel;
+            if (Mathf.Approximately(deltaWeight, 0f))
+                return;
+
+            if (AddWeightToSelectedVertices(deltaWeight))
+            {
+                meshTool.UpdateWeights();
+                evt.Use();
+            }
+        }
+
+        private void EndWeightSliderDrag()
+        {
+            if (m_WeightSliderDragUndoStarted)
+            {
+                MeshCache mesh = meshTool.mesh;
+                if (mesh != null)
+                {
+                    SpriteMeshDataController controller = new SpriteMeshDataController();
+                    controller.spriteMeshData = mesh;
+                    controller.SortTrianglesByDepth();
+                    meshTool.UpdateWeights();
+                }
+            }
+
+            m_WeightSliderDragActive = false;
+            m_WeightSliderDragUndoStarted = false;
+        }
+
+        private List<int> GetWeightSliderBoneIndices()
+        {
+            m_WeightSliderBoneIndices.Clear();
+
+            MeshCache mesh = meshTool.mesh;
+            if (mesh == null)
+                return m_WeightSliderBoneIndices;
+
+            BoneCache[] meshBones = mesh.bones;
+            BoneCache[] selectedBones = skinningCache.skeletonSelection.elements.ToSpriteSheetIfNeeded();
+
+            for (int i = 0; i < selectedBones.Length; ++i)
+            {
+                BoneCache selectedBone = selectedBones[i];
+                int boneIndex = Array.IndexOf(meshBones, selectedBone);
+
+                if (boneIndex != -1 && !m_WeightSliderBoneIndices.Contains(boneIndex))
+                    m_WeightSliderBoneIndices.Add(boneIndex);
+            }
+
+            return m_WeightSliderBoneIndices;
+        }
+
+        private int GetWeightSliderVertexAtMouse()
+        {
+            MeshCache mesh = meshTool.mesh;
+            if (mesh == null)
+                return -1;
+
+            Matrix4x4 handlesMatrix = Handles.matrix;
+            Handles.matrix *= mesh.sprite.GetLocalToWorldMatrixFromMode();
+            meshTool.BeginPositionOverride();
+
+            Vector2 mousePosition = Event.current.mousePosition;
+            Vector2[] vertices = mesh.vertices;
+            int nearestVertex = -1;
+            float nearestDistance = kWeightSliderVertexHitRadius;
+
+            for (int i = 0; i < mesh.vertexCount; ++i)
+            {
+                float distance = Vector2.Distance(HandleUtility.WorldToGUIPoint(vertices[i]), mousePosition);
+                if (distance <= nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearestVertex = i;
+                }
+            }
+
+            meshTool.EndPositionOverride();
+            Handles.matrix = handlesMatrix;
+            return nearestVertex;
+        }
+
+        private bool AddWeightToSelectedVertices(float deltaWeight)
+        {
+            MeshCache mesh = meshTool.mesh;
+            List<int> boneIndices = GetWeightSliderBoneIndices();
+
+            if (mesh == null || boneIndices.Count == 0 || skinningCache.vertexSelection.Count == 0)
+                return false;
+
+            bool changed = false;
+            int[] vertexIndices = skinningCache.vertexSelection.elements;
+
+            for (int i = 0; i < vertexIndices.Length; ++i)
+            {
+                int vertexIndex = vertexIndices[i];
+                if (vertexIndex < 0 || vertexIndex >= mesh.vertexCount)
+                    continue;
+
+                EditableBoneWeight weight = mesh.vertexWeights[vertexIndex];
+                if (!CanTransferSelectedBoneWeight(weight, boneIndices, deltaWeight))
+                    continue;
+
+                if (!m_WeightSliderDragUndoStarted)
+                {
+                    skinningCache.BeginUndoOperation(TextContent.editWeights);
+                    m_WeightSliderDragUndoStarted = true;
+                }
+
+                bool vertexChanged = TransferSelectedBoneWeight(weight, boneIndices, deltaWeight);
+
+                if (vertexChanged)
+                {
+                    weight.Clamp(4);
+                    weight.FilterChannels(0f);
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        private bool CanTransferSelectedBoneWeight(EditableBoneWeight weight, List<int> boneIndices, float deltaWeight)
+        {
+            float selectedWeight = 0f;
+            float otherWeight = 0f;
+
+            for (int i = 0; i < weight.Count; ++i)
+            {
+                BoneWeightChannel channel = weight[i];
+                if (!channel.enabled || channel.weight <= 0f)
+                    continue;
+
+                if (boneIndices.Contains(channel.boneIndex))
+                    selectedWeight += channel.weight;
+                else
+                    otherWeight += channel.weight;
+            }
+
+            if (deltaWeight > 0f)
+                return otherWeight > 0f;
+
+            return selectedWeight > 0f && otherWeight > 0f;
+        }
+
+        private bool TransferSelectedBoneWeight(EditableBoneWeight weight, List<int> boneIndices, float deltaWeight)
+        {
+            BuildWeightTransferChannels(weight, boneIndices, deltaWeight > 0f);
+
+            if (m_WeightSliderSelectedChannels.Count == 0 || m_WeightSliderOtherChannels.Count == 0)
+                return false;
+
+            float selectedWeight = SumChannelWeights(weight, m_WeightSliderSelectedChannels);
+            float otherWeight = SumChannelWeights(weight, m_WeightSliderOtherChannels);
+
+            if (deltaWeight > 0f)
+                return TransferWeight(weight, m_WeightSliderOtherChannels, otherWeight, m_WeightSliderSelectedChannels, selectedWeight, Mathf.Min(deltaWeight, otherWeight));
+
+            return TransferWeight(weight, m_WeightSliderSelectedChannels, selectedWeight, m_WeightSliderOtherChannels, otherWeight, Mathf.Min(-deltaWeight, selectedWeight));
+        }
+
+        private void BuildWeightTransferChannels(EditableBoneWeight weight, List<int> boneIndices, bool createMissingSelectedChannels)
+        {
+            m_WeightSliderSelectedChannels.Clear();
+            m_WeightSliderOtherChannels.Clear();
+
+            for (int i = 0; i < weight.Count; ++i)
+            {
+                BoneWeightChannel channel = weight[i];
+                if (!channel.enabled || channel.weight <= 0f)
+                    continue;
+
+                if (boneIndices.Contains(channel.boneIndex))
+                    m_WeightSliderSelectedChannels.Add(i);
+                else
+                    m_WeightSliderOtherChannels.Add(i);
+            }
+
+            if (!createMissingSelectedChannels)
+                return;
+
+            for (int i = 0; i < boneIndices.Count; ++i)
+            {
+                if (weight.GetChannelFromBoneIndex(boneIndices[i]) != -1)
+                    continue;
+
+                weight.AddChannel(boneIndices[i], 0f, true);
+                int channel = weight.GetChannelFromBoneIndex(boneIndices[i]);
+                if (channel != -1)
+                    m_WeightSliderSelectedChannels.Add(channel);
+            }
+        }
+
+        private float SumChannelWeights(EditableBoneWeight weight, List<int> channels)
+        {
+            float sum = 0f;
+            for (int i = 0; i < channels.Count; ++i)
+                sum += weight[channels[i]].weight;
+
+            return sum;
+        }
+
+        private bool TransferWeight(EditableBoneWeight weight, List<int> fromChannels, float fromWeight, List<int> toChannels, float toWeight, float transferWeight)
+        {
+            if (transferWeight <= 0f || fromWeight <= 0f || toChannels.Count == 0)
+                return false;
+
+            for (int i = 0; i < fromChannels.Count; ++i)
+            {
+                BoneWeightChannel channel = weight[fromChannels[i]];
+                channel.weight = Mathf.Max(0f, channel.weight - transferWeight * channel.weight / fromWeight);
+                channel.enabled = channel.weight > 0f;
+            }
+
+            if (toWeight > 0f)
+            {
+                for (int i = 0; i < toChannels.Count; ++i)
+                {
+                    BoneWeightChannel channel = weight[toChannels[i]];
+                    channel.weight = Mathf.Clamp01(channel.weight + transferWeight * channel.weight / toWeight);
+                    channel.enabled = channel.weight > 0f;
+                }
+            }
+            else
+            {
+                float distributedWeight = transferWeight / toChannels.Count;
+                for (int i = 0; i < toChannels.Count; ++i)
+                {
+                    BoneWeightChannel channel = weight[toChannels[i]];
+                    channel.weight = Mathf.Clamp01(channel.weight + distributedWeight);
+                    channel.enabled = channel.weight > 0f;
+                }
+            }
+
+            return true;
         }
     }
 }
