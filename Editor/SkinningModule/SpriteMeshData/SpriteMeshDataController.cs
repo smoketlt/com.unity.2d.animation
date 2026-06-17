@@ -84,17 +84,8 @@ namespace UnityEditor.U2D.Animation
             //We need to delete the edges that reference the index
             if (FindEdgesContainsIndex(index, out List<int2> edgesWithIndex))
             {
-                //If there are 2 edges referencing the same index we are removing, we can create a new one that connects the endpoints ("Unsplit").
-                if (edgesWithIndex.Count == 2)
-                {
-                    int2 first = edgesWithIndex[0];
-                    int2 second = edgesWithIndex[1];
-
-                    int index1 = first.x != index ? first.x : first.y;
-                    int index2 = second.x != index ? second.x : second.y;
-
-                    CreateEdge(index1, index2);
-                }
+                if (TryGetVertexRemovalReplacementEdge(index, edgesWithIndex, out int2 replacementEdge))
+                    CreateEdge(replacementEdge.x, replacementEdge.y);
 
                 //remove found edges
                 for (int i = 0; i < edgesWithIndex.Count; i++)
@@ -119,6 +110,36 @@ namespace UnityEditor.U2D.Animation
             spriteMeshData.RemoveVertex(index);
         }
 
+        bool TryGetVertexRemovalReplacementEdge(int index, List<int2> edgesWithIndex, out int2 replacementEdge)
+        {
+            replacementEdge = new int2(-1, -1);
+
+            List<int2> outlineEdgesWithIndex = new List<int2>();
+            for (int i = 0; i < spriteMeshData.outlineEdges.Length; ++i)
+            {
+                int2 edge = spriteMeshData.outlineEdges[i];
+                if (edge.x == index || edge.y == index)
+                    outlineEdgesWithIndex.Add(edge);
+            }
+
+            if (outlineEdgesWithIndex.Count == 2)
+                return TryCreateReplacementEdge(index, outlineEdgesWithIndex[0], outlineEdgesWithIndex[1], out replacementEdge);
+
+            if (edgesWithIndex.Count == 2)
+                return TryCreateReplacementEdge(index, edgesWithIndex[0], edgesWithIndex[1], out replacementEdge);
+
+            return false;
+        }
+
+        static bool TryCreateReplacementEdge(int index, int2 first, int2 second, out int2 replacementEdge)
+        {
+            int index1 = first.x != index ? first.x : first.y;
+            int index2 = second.x != index ? second.x : second.y;
+
+            replacementEdge = new int2(index1, index2);
+            return index1 != index2;
+        }
+
         public void RemoveVertex(IEnumerable<int> indices)
         {
             List<int> sortedIndexList = new List<int>(indices);
@@ -134,11 +155,13 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        void RemoveEdge(int2 edge)
+        public void RemoveEdge(int2 edge)
         {
             Debug.Assert(spriteMeshData != null);
             List<int2> listOfEdges = new List<int2>(spriteMeshData.edges);
-            listOfEdges.Remove(edge);
+            listOfEdges.RemoveAll(e =>
+                (e.x == edge.x && e.y == edge.y) ||
+                (e.x == edge.y && e.y == edge.x));
             spriteMeshData.SetEdges(listOfEdges.ToArray());
         }
 
@@ -509,9 +532,9 @@ namespace UnityEditor.U2D.Animation
             isBoneIndexMixed = false;
             isWeightMixed = false;
 
-            int[] indices = selection.elements;
+            int[] validIndices = GetValidSelectionElements(selection);
 
-            foreach (int i in indices)
+            foreach (int i in validIndices)
             {
                 EditableBoneWeight editableBoneWeight = spriteMeshData.vertexWeights[i];
 
@@ -558,9 +581,9 @@ namespace UnityEditor.U2D.Animation
             bool boneIndexChanged = oldBoneIndex != newBoneIndex;
             bool weightChanged = Mathf.Abs(oldWeight - newWeight) > Mathf.Epsilon;
 
-            int[] indices = selection.elements;
+            int[] validIndices = GetValidSelectionElements(selection);
 
-            foreach (int i in indices)
+            foreach (int i in validIndices)
             {
                 EditableBoneWeight editableBoneWeight = spriteMeshData.vertexWeights[i];
 
@@ -589,9 +612,9 @@ namespace UnityEditor.U2D.Animation
             weight = 0f;
             isWeightMixed = false;
 
-            int[] indices = selection.elements;
+            int[] validIndices = GetValidSelectionElements(selection);
 
-            foreach (int i in indices)
+            foreach (int i in validIndices)
             {
                 EditableBoneWeight editableBoneWeight = spriteMeshData.vertexWeights[i];
                 float boneWeight = GetBoneWeight(editableBoneWeight, boneIndex);
@@ -620,10 +643,25 @@ namespace UnityEditor.U2D.Animation
             if (!weightChanged)
                 return;
 
+            int[] validIndices = GetValidSelectionElements(selection);
+
+            foreach (int i in validIndices)
+                SetBoneWeight(spriteMeshData.vertexWeights[i], boneIndex, newWeight, spriteMeshData.boneCount);
+        }
+
+        int[] GetValidSelectionElements(ISelection<int> selection)
+        {
             int[] indices = selection.elements;
+            List<int> validIndices = new List<int>(indices.Length);
+            int weightCount = spriteMeshData.vertexWeights.Length;
 
             foreach (int i in indices)
-                SetBoneWeight(spriteMeshData.vertexWeights[i], boneIndex, newWeight, spriteMeshData.boneCount);
+            {
+                if (i >= 0 && i < weightCount)
+                    validIndices.Add(i);
+            }
+
+            return validIndices.ToArray();
         }
 
         static float GetBoneWeight(EditableBoneWeight editableBoneWeight, int boneIndex)

@@ -26,6 +26,7 @@ This page maps the editor-side architecture used by the forked Skinning Editor p
 - geometry view/controller: `SpriteMeshView.cs`, `SpriteMeshController.cs`
 - mesh data: `SpriteMeshData.cs`, `SpriteMeshDataController.cs`, `MeshCache.cs`
 - input patch: `SkinningEditorInput.cs`
+- top informational overlay: `SkinningEditorInfoOverlay.cs`
 
 ## Tool Model
 
@@ -47,6 +48,10 @@ The forked toolbar uses user-facing labels:
 
 ## Fork-Specific Architecture
 
+### Viewport draw order
+
+`SkinningModule.DoMainGUI()` draws sprite rect gizmos after mesh preview overlays and before the active tool GUI. This keeps sprite bounds visible above the preview/wireframe while letting tool handles, including Weight Slider vertex pies, draw above the blue sprite bounds rectangle.
+
 ### Shared Alt state
 
 `SkinningEditorInput` owns the shared `Alt` key state. `MeshToolWrapper` reads this state and computes the effective mode. `SpriteMeshView` does not query Alt directly for mode switching.
@@ -66,6 +71,12 @@ The `Reset` toolbar button is now a command handled by `SkinningModuleView.Reset
 These panels initially appear centered along the bottom edge. `LayoutOverlayUtility.MakeDraggableOverlayPanel(...)` adds a title-bar drag handle to each panel and `OverlayPanelDragger` switches the panel to absolute positioning after the first drag, clamped inside the bottom overlay. Tools call `LayoutOverlayUtility.ResetDraggableOverlayPanel(...)` before hiding their panel so a dragged panel returns to the normal bottom-center layout the next time that tool is shown.
 
 The Visibility popup remains in `rightOverlay` because it is a tall list window with its own resizer and right-side workflow.
+
+### Top informational overlay
+
+`SkinningEditorInfoOverlay` is a static UI Toolkit helper for temporary text hints at the top of the Skinning Editor. Call `Show(layoutOverlay, text)` or `Show(host, text)` to create or update the dark-backed label, and call `Hide(...)` or `Remove(...)` when the active tool no longer needs the message. The overlay uses `PickingMode.Ignore` so it does not block editor input.
+
+All primary Skinning Editor modes show a short hint through this overlay when activated. Shared mesh modes are handled in `MeshToolWrapper`, shared skeleton modes are handled in `SkeletonToolWrapper`, and specialized tools such as Weight Slider, Weight Brush, Auto Weights, Generate Geometry, Influence, Visibility, Pivot, Reparent, and Copy/Paste replace the shared text with tool-specific text from `SkinningEditorInfoText`.
 
 ## Change Risks
 

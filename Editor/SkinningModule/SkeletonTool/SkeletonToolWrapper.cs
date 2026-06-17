@@ -35,12 +35,14 @@ namespace UnityEditor.U2D.Animation
         protected override void OnActivate()
         {
             Debug.Assert(skeletonTool != null);
+            ShowInfoOverlay(SkinningEditorInfoText.ForSkeletonMode(mode, editBindPose));
             skeletonTool.enableBoneInspector = true;
             skeletonTool.Activate();
         }
 
         protected override void OnDeactivate()
         {
+            HideInfoOverlay();
             skeletonTool.enableBoneInspector = false;
             skeletonTool.Deactivate();
         }

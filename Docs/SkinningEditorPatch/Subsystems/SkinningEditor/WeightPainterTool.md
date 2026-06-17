@@ -24,6 +24,8 @@ The mode popup uses an explicit `PopupField<string>` backed by `WeightEditorMode
 - `GrowAndShrink`: grow or shrink existing weight channels without creating missing channels.
 - `Smooth`: smooth selected or brush-covered vertex weights.
 
+The core difference between `AddAndSubtract` and `GrowAndShrink` is channel creation. `AddAndSubtract` can add the selected bone to vertices that do not already have that bone weight, then normalizes/compensates other channels. `GrowAndShrink` only changes vertices where the selected bone already has a weight channel; vertices without that channel are skipped instead of gaining a new influence.
+
 ## Bone Selection Clearing
 
 All Weight toolbar modes use `SkeletonTool` for bone picking. Weight Slider, Weight Brush, Auto Weights, Bone Influence, and Sprite Influence enable `SkeletonTool` bone unselection so `Esc` and primary empty click clear the selected bones through `UnselectTool<BoneCache>`. Right-click does not clear selected bones.
@@ -53,6 +55,30 @@ Weight Slider also exposes a `Smooth` button under the `Amount` slider. Each cli
 ## Vertex Weight List
 
 In Weight Slider mode, the Vertex Weight list displays every bone assigned to the current sprite mesh. Rows are not based on the currently enabled channels of the selected vertex, so assigned bones remain visible even when their current weight is `0`.
+
+Weight Slider viewport vertices draw as compact weighted color pies. Unselected weighted vertices are 30% smaller than the previous fork size, while selected weighted vertices draw 20% larger than unselected weighted vertices. The Weight Slider vertex hit radius remains larger than the visible dot so selection and drag targeting stay forgiving.
+
+Weight Brush uses the same weighted color pie vertex display as Weight Slider, so brush-painted vertices show their current weight distribution directly in the viewport. Brush-covered vertices are tracked internally for painting but do not replace the persistent viewport vertex selection.
+
+When Weight Brush has no selected vertices, all weighted vertex pies draw at full opacity for readability. Once one or more vertices are selected, unselected vertex pies return to the lower opacity used by Weight Slider so the persistent selection remains visually distinct.
+
+Weight Brush shows the same assigned-bone weight list used by Weight Slider. The brush controls are labeled `Strength`, `Size`, and `Feather`, in that order. `Strength` is the per-stroke weight amount, `Size` is the outer brush radius, and `Feather` controls the edge falloff band.
+
+The Weight Brush viewport gizmo draws two wire circles plus a strength arc: an outer circle for the full brush area, a grey inner circle for the start of the feather band, and a reddish-orange outer arc showing `Strength`. The outer brush-area circle uses the selected weight bone's weight-map color and is hidden when no valid weight bone is selected. The strength arc starts at the top of the brush and fills clockwise; `100%` draws a full ring and low values draw only a short start segment. Vertices inside the grey circle receive full `Strength`; vertices between the grey and outer circles receive linearly faded strength toward the edge.
+
+When `Strength`, `Size`, or `Feather` is changed from the panel, Weight Brush temporarily previews the same gizmo at the center of the current viewport so the user can judge the edited brush settings without moving the mouse into the canvas.
+
+Weight Brush also supports viewport parameter hotkeys: hold `S` and move the mouse left/right or hold `Ctrl` and scroll to decrease/increase `Strength`, hold `B` and move left/right or hold `Shift` and scroll to decrease/increase `Size`, and hold `F` and move left/right or hold `Shift` + `Ctrl` and scroll to decrease/increase `Feather`. These viewport hotkeys update the panel values without showing the temporary center-viewport preview; the live brush under the cursor remains visible instead.
+
+When Weight Slider or Weight Brush is activated, `SkinningEditorInfoOverlay` shows a short top hint. The Weight Brush hint covers bone target selection, `Alt` vertex selection, brush parameter hotkeys, temporary Smooth, and subtract painting.
+
+In Weight Brush mode, `Alt` + primary click toggles the nearest viewport vertex in the persistent vertex selection, and `Alt` + primary drag rectangle-selects viewport vertices. If one or more vertices are selected, brush strokes only affect selected vertices covered by the brush circle; with no selected vertices, brush strokes affect every vertex covered by the brush circle.
+
+Holding `Shift` while using Weight Brush temporarily edits in `Smooth` mode and the panel's `Mode` popup displays `Smooth` while the key is held. Releasing `Shift` returns the brush to the panel's previously selected mode; if `Shift` changes during an active stroke, the current edit segment is closed and a new segment starts with the effective mode.
+
+In Weight Brush `Smooth`, if more than one mesh bone is selected, smoothing only changes those selected bone channels and preserves the other channels on each affected vertex. If zero or one mesh bone is selected, smoothing uses all mesh bone channels.
+
+Weight Brush keeps the brush gizmo visible and paintable while hovering bones. A primary click with no `Alt`, `Ctrl`/`Command`, or `Shift` modifier on a bone selects that bone, but holding the primary button and dragging from a bone starts a brush stroke instead of selecting the bone.
 
 Each row shows a small color swatch button tinted with the bone's bind-pose color, a standard text bone-name button, followed by a weight slider and numeric field for that bone. The swatch uses an embedded white 16x16 rectangle PNG as the tint mask, and locked rows draw a separate embedded 16x16 lock PNG over it. The bone-name button uses standard label text color; selected bones show a dark-grey row background.
 

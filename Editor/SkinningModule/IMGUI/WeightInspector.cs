@@ -298,7 +298,12 @@ namespace UnityEditor.U2D.Animation
 
             int[] indices = selection.elements;
             for (int i = 0; i < indices.Length; ++i)
+            {
+                if (indices[i] < 0 || indices[i] >= spriteMeshData.vertexWeights.Length)
+                    continue;
+
                 SetBoneWeightRespectingLocks(spriteMeshData.vertexWeights[indices[i]], boneIndex, newWeight, spriteMeshData.boneCount);
+            }
         }
 
         private void SetBoneWeightRespectingLocks(EditableBoneWeight editableBoneWeight, int boneIndex, float newWeight, int boneCount)

@@ -62,5 +62,15 @@ namespace UnityEditor.U2D.Animation
         protected virtual void OnActivate() { }
         protected virtual void OnDeactivate() { }
         protected virtual void OnGUI() { }
+
+        protected void ShowInfoOverlay(string text)
+        {
+            SkinningEditorInfoOverlay.Show(layoutOverlay, text);
+        }
+
+        protected void HideInfoOverlay()
+        {
+            SkinningEditorInfoOverlay.Hide(layoutOverlay);
+        }
     }
 }

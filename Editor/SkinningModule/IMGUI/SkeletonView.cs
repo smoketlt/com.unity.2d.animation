@@ -571,9 +571,9 @@ namespace UnityEditor.U2D.Animation
 
         }
 
-        public void DrawBoneParentLink(Vector3 parentPosition, Vector3 position, Vector3 forward, Color color)
+        public void DrawBoneParentLink(Vector3 parentEndPosition, Vector3 position, Vector3 forward, Color color)
         {
-            BoneDrawingUtility.DrawBone(position, parentPosition, forward, color);
+            BoneDrawingUtility.DrawBoneParentLink(position, parentEndPosition, forward, color);
         }
 
         public void DrawBoneOutline(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, float outlineScale)

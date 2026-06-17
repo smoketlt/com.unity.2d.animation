@@ -3,7 +3,7 @@
 /**********************************************************************************************************************/
 
 #WeightPainterPanel.BrushMode {
-  height: 165px;
+  height: 255px;
 }
 
 #WeightPainterPanel.SliderMode {
@@ -35,8 +35,8 @@
 }
 
 #WeightPainterPanel.SliderMode #Size.form-row,
-#WeightPainterPanel.SliderMode #Hardness.form-row,
-#WeightPainterPanel.SliderMode #Step.form-row {
+#WeightPainterPanel.SliderMode #Strength.form-row,
+#WeightPainterPanel.SliderMode #Feather.form-row {
   display: none;
 }
 
@@ -44,14 +44,6 @@
     flex : 1;
     margin-left : 4px;
     margin-right : 4px;
-}
-
-
-.BrushMode #WeightsInspector{
-    display: none;
-    margin-left : 0;
-    margin-right : 0;
-    flex : 0;
 }
 
 
@@ -70,10 +62,4 @@
 
 .SliderMode #divider{
     height : 2px;
-}
-
-.BrushMode #divider{
-    display: none;
-    margin-top:0;
-    margin-bottom:0;
 }

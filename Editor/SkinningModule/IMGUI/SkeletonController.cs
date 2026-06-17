@@ -11,6 +11,7 @@ namespace UnityEditor.U2D.Animation
         static readonly string k_DefaultRootName = "root";
         static readonly string k_DefaultBoneName = "bone";
         const float k_MinCreateBoneLength = 0.01f;
+        const float k_BoneTailMarkerOffset = 5f;
         static Regex s_Regex = new Regex(@"\w+_\d+$", RegexOptions.IgnoreCase);
 
         [SerializeField]
@@ -53,6 +54,7 @@ namespace UnityEditor.U2D.Animation
         public ISkeletonStyle styleOverride { get; set; }
         public IBoneSelection selection { get; set; }
         public bool editBindPose { get; set; }
+        public bool suppressBoneSelection { get; set; }
 
         public SkeletonCache skeleton
         {
@@ -129,6 +131,9 @@ namespace UnityEditor.U2D.Animation
 
         void HandleSelectBone()
         {
+            if (suppressBoneSelection)
+                return;
+
             if (view.DoSelectBone(out int instanceID, out bool additive))
             {
                 BoneCache bone = GetBone(instanceID).ToCharacterIfNeeded();
@@ -409,7 +414,7 @@ namespace UnityEditor.U2D.Animation
                     {
                         BoneCache root = rootBone;
                         if (root != null)
-                            view.DrawBoneParentLink(root.position, endPoint, Vector3.forward, style.GetParentLinkPreviewColor(skeleton.boneCount));
+                            view.DrawBoneParentLink(GetBoneTailMarkerPosition(root), endPoint, Vector3.forward, style.GetParentLinkPreviewColor(skeleton.boneCount));
                     }
                 }
             }
@@ -421,7 +426,8 @@ namespace UnityEditor.U2D.Animation
                 if (bone.isVisible == false || bone.parentBone == null || bone.parentBone.chainedChild == bone)
                     continue;
 
-                view.DrawBoneParentLink(bone.parent.position, bone.position, Vector3.forward, style.GetParentLinkColor(bone));
+                bool isSelected = selection.Contains(bone.ToCharacterIfNeeded());
+                view.DrawBoneParentLink(GetBoneTailMarkerPosition(bone.parentBone), bone.position, Vector3.forward, style.GetParentLinkColor(bone, isSelected));
             }
 
             for (int i = 0; i < skeleton.boneCount; ++i)
@@ -432,9 +438,7 @@ namespace UnityEditor.U2D.Animation
                     continue;
 
                 bool isSelected = selection.Contains(bone.ToCharacterIfNeeded());
-                bool isHovered = hoveredBody == bone && view.IsActionHot(SkeletonAction.None) && isNotOnVisualElement;
-
-                DrawBoneOutline(bone, style.GetOutlineColor(bone, isSelected, isHovered), style.GetOutlineScale(isSelected));
+                DrawBoneOutline(bone, style.GetOutlineColor(bone, isSelected, false), style.GetOutlineScale(isSelected));
             }
 
             for (int i = 0; i < skeleton.boneCount; ++i)
@@ -444,18 +448,48 @@ namespace UnityEditor.U2D.Animation
                 if ((view.IsActionActive(SkeletonAction.SplitBone) && hoveredBone == bone && isNotOnVisualElement) || bone.isVisible == false)
                     continue;
 
-                DrawBone(bone, style.GetColor(bone));
+                Color color = style.GetColor(bone);
+                if (IsBoneHovered(bone))
+                    color = GetHoveredBoneColor(color);
+
+                DrawBone(bone, color);
             }
+        }
+
+        bool IsBoneHovered(BoneCache bone)
+        {
+            return view.IsActionHot(SkeletonAction.None) && hoveredBone == bone && !skinningCache.IsOnVisualElement();
+        }
+
+        static Color GetHoveredBoneColor(Color baseColor)
+        {
+            Color color = Color.white;
+            color.a = baseColor.a;
+            return color;
         }
 
         void DrawBone(BoneCache bone, Color color)
         {
             bool isSelected = selection.Contains(bone.ToCharacterIfNeeded());
             bool isNotOnVisualElement = !skinningCache.IsOnVisualElement();
-            bool isJointHovered = view.IsActionHot(SkeletonAction.None) && hoveredJoint == bone && isNotOnVisualElement;
-            bool isTailHovered = view.IsActionHot(SkeletonAction.None) && hoveredTail == bone && isNotOnVisualElement;
+            bool isHovered = hoveredBone == bone && view.IsActionHot(SkeletonAction.None) && isNotOnVisualElement;
+            bool isJointHovered = !isHovered && view.IsActionHot(SkeletonAction.None) && hoveredJoint == bone && isNotOnVisualElement;
+            bool isTailHovered = !isHovered && view.IsActionHot(SkeletonAction.None) && hoveredTail == bone && isNotOnVisualElement;
 
             view.DrawBone(bone.position, bone.right, Vector3.forward, bone.length, color, bone.chainedChild != null, isSelected, isJointHovered, isTailHovered, bone == hotBone);
+        }
+
+        static Vector3 GetBoneTailMarkerPosition(BoneCache bone)
+        {
+            Vector3 endPosition = bone.endPosition;
+            Vector2 startGUI = HandleUtility.WorldToGUIPoint(bone.position);
+            Vector2 endGUI = HandleUtility.WorldToGUIPoint(endPosition);
+            float guiLength = (endGUI - startGUI).magnitude;
+            if (guiLength <= 0f)
+                return endPosition;
+
+            float worldPerGuiPixel = bone.length / guiLength;
+            return endPosition - bone.right * (k_BoneTailMarkerOffset * worldPerGuiPixel);
         }
 
         void DrawBoneOutline(BoneCache bone, Color color, float outlineScale)

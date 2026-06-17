@@ -272,6 +272,7 @@ namespace UnityEditor.U2D.Animation
         protected override void OnActivate()
         {
             base.OnActivate();
+            ShowInfoOverlay(SkinningEditorInfoText.GenerateGeometry);
             UpdateButton();
             Show();
             skinningCache.events.selectedSpriteChanged.AddListener(OnSelectedSpriteChanged);

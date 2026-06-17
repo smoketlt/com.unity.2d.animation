@@ -6,11 +6,14 @@ namespace UnityEditor.U2D.Animation
     internal class Brush
     {
         private static readonly float kWheelSizeSpeed = 1f;
+        private const float kDeferredStrokeDragThreshold = 3f;
         private static readonly int kBrushHashCode = "Brush".GetHashCode();
         private IGUIWrapper m_GUIWrapper;
         private float m_DeltaAcc = 0f;
         private int m_ControlID = -1;
         private SliderData m_SliderData = SliderData.zero;
+        private bool m_StrokeStarted;
+        private Vector2 m_StrokeStartMousePosition;
 
         public event Action<Brush> onMove = (b) => { };
         public event Action<Brush> onSize = (b) => { };
@@ -26,7 +29,7 @@ namespace UnityEditor.U2D.Animation
         }
         public bool isActivable
         {
-            get { return m_GUIWrapper.IsControlHot(0) && m_GUIWrapper.IsControlNearest(m_ControlID); }
+            get { return !IsAltDown() && m_GUIWrapper.IsControlHot(0) && (m_GUIWrapper.IsControlNearest(m_ControlID) || captureMouseWhenNotNearest); }
         }
 
         public int controlID
@@ -35,8 +38,11 @@ namespace UnityEditor.U2D.Animation
         }
 
         public float hardness { get; set; }
+        public float feather { get; set; }
         public float step { get; set; }
         public float size { get; set; }
+        public bool captureMouseWhenNotNearest { get; set; }
+        public bool deferStrokeStartUntilDrag { get; set; }
         public Vector3 position
         {
             get { return m_SliderData.position; }
@@ -55,7 +61,7 @@ namespace UnityEditor.U2D.Animation
 
             EventType eventType = m_GUIWrapper.eventType;
 
-            if (!m_GUIWrapper.isAltDown)
+            if (!IsAltDown() && !captureMouseWhenNotNearest)
                 m_GUIWrapper.LayoutControl(controlID, 0f);
 
             if (isActivable)
@@ -65,9 +71,15 @@ namespace UnityEditor.U2D.Animation
                 if (m_GUIWrapper.IsMouseDown(0))
                 {
                     m_DeltaAcc = 0f;
-                    onStrokeBegin(this);
-                    onStrokeStep(this);
+                    m_StrokeStarted = false;
+                    m_StrokeStartMousePosition = m_GUIWrapper.mousePosition;
+                    if (captureMouseWhenNotNearest)
+                        m_GUIWrapper.SetControlHot(controlID);
+                    if (!deferStrokeStartUntilDrag)
+                        StartStroke();
                     m_GUIWrapper.SetGuiChanged(true);
+                    if (captureMouseWhenNotNearest)
+                        m_GUIWrapper.UseCurrentEvent();
                 }
 
                 if (eventType == EventType.MouseMove)
@@ -86,42 +98,96 @@ namespace UnityEditor.U2D.Animation
             }
 
             if (isHot && m_GUIWrapper.IsMouseUp(0))
-                onStrokeEnd(this);
+            {
+                bool strokeStarted = m_StrokeStarted;
+                if (m_StrokeStarted)
+                    onStrokeEnd(this);
+                m_StrokeStarted = false;
+                if (captureMouseWhenNotNearest)
+                {
+                    m_GUIWrapper.SetControlHot(0);
+                    if (!deferStrokeStartUntilDrag || strokeStarted)
+                        m_GUIWrapper.UseCurrentEvent();
+                }
+            }
 
             if (m_GUIWrapper.IsRepainting() && (isHot || isActivable))
                 onRepaint(this);
 
+            if (captureMouseWhenNotNearest)
+            {
+                if (isHot && eventType == EventType.MouseDrag && m_GUIWrapper.mouseButton == 0)
+                {
+                    if (deferStrokeStartUntilDrag &&
+                        !m_StrokeStarted &&
+                        (m_GUIWrapper.mousePosition - m_StrokeStartMousePosition).magnitude < kDeferredStrokeDragThreshold)
+                    {
+                        m_GUIWrapper.UseCurrentEvent();
+                        return;
+                    }
+
+                    Vector3 mouseWorldPosition = m_GUIWrapper.GUIToWorld(m_GUIWrapper.mousePosition);
+                    MoveStroke(mouseWorldPosition);
+                    m_GUIWrapper.UseCurrentEvent();
+                }
+
+                return;
+            }
+
             Vector3 position;
             if (m_GUIWrapper.DoSlider(m_ControlID, m_SliderData, out position))
             {
-                step = Mathf.Max(step, 1f);
-
-                Vector3 delta = position - m_SliderData.position;
-                Vector3 direction = delta.normalized;
-                float magnitude = delta.magnitude;
-
-                m_SliderData.position -= direction * m_DeltaAcc;
-
-                m_DeltaAcc += magnitude;
-
-                if (m_DeltaAcc >= step)
-                {
-                    Vector3 stepVector = direction * step;
-
-                    while (m_DeltaAcc >= step)
-                    {
-                        m_SliderData.position += stepVector;
-
-                        onMove(this);
-                        onStrokeStep(this);
-
-                        m_DeltaAcc -= step;
-                    }
-                }
-
-                m_SliderData.position = position;
-                onStrokeDelta(this);
+                MoveStroke(position);
             }
+        }
+
+        private void StartStroke()
+        {
+            if (m_StrokeStarted)
+                return;
+
+            m_StrokeStarted = true;
+            onStrokeBegin(this);
+            onStrokeStep(this);
+        }
+
+        private void MoveStroke(Vector3 position)
+        {
+            if (!m_StrokeStarted)
+                StartStroke();
+
+            step = Mathf.Max(step, 1f);
+
+            Vector3 delta = position - m_SliderData.position;
+            Vector3 direction = delta.normalized;
+            float magnitude = delta.magnitude;
+
+            m_SliderData.position -= direction * m_DeltaAcc;
+
+            m_DeltaAcc += magnitude;
+
+            if (m_DeltaAcc >= step)
+            {
+                Vector3 stepVector = direction * step;
+
+                while (m_DeltaAcc >= step)
+                {
+                    m_SliderData.position += stepVector;
+
+                    onMove(this);
+                    onStrokeStep(this);
+
+                    m_DeltaAcc -= step;
+                }
+            }
+
+            m_SliderData.position = position;
+            onStrokeDelta(this);
+        }
+
+        private bool IsAltDown()
+        {
+            return m_GUIWrapper.isAltDown || SkinningEditorInput.altKeyDown;
         }
     }
 }

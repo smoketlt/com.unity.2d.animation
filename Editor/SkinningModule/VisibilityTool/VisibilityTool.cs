@@ -226,6 +226,7 @@ namespace UnityEditor.U2D.Animation
 
         public override void Initialize(LayoutOverlay layout)
         {
+            base.Initialize(layout);
             m_ToolView.Initialize(layout);
         }
 
@@ -239,6 +240,7 @@ namespace UnityEditor.U2D.Animation
 
         protected override void OnActivate()
         {
+            ShowInfoOverlay(SkinningEditorInfoText.Visibility);
             m_MeshPreviewBehaviour.showWeightMap = true;
             m_MeshPreviewBehaviour.dimUnselectedSprites = true;
             m_MeshPreviewBehaviour.unselectedSpriteOpacity = VisibilityToolSettings.spriteOpacity;
@@ -248,6 +250,7 @@ namespace UnityEditor.U2D.Animation
 
         protected override void OnDeactivate()
         {
+            HideInfoOverlay();
             m_Controller.Deactivate();
             skinningCache.events.meshPreviewBehaviourChange.Invoke(null);
         }

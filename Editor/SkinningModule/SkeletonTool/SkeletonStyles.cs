@@ -7,7 +7,7 @@ namespace UnityEditor.U2D.Animation
     {
         Color GetColor(BoneCache bone);
         Color GetPreviewColor(int index);
-        Color GetParentLinkColor(BoneCache bone);
+        Color GetParentLinkColor(BoneCache bone, bool isSelected);
         Color GetParentLinkPreviewColor(int index);
         Color GetOutlineColor(BoneCache bone, bool isSelected, bool isHovered);
         Color GetPreviewOutlineColor(int index);
@@ -29,14 +29,15 @@ namespace UnityEditor.U2D.Animation
             return GetBoneColorRaw(index);
         }
 
-        public Color GetParentLinkColor(BoneCache bone)
+        public Color GetParentLinkColor(BoneCache bone, bool isSelected)
         {
-            return SetAlpha(GetBoneColorRaw(bone), 0.2f * GetAlpha(bone), VisibilityToolSettings.boneOpacity);
+            float alpha = isSelected ? 1f : 0.45f * GetAlpha(bone);
+            return SetAlpha(GetBoneColorRaw(bone), alpha, VisibilityToolSettings.boneOpacity);
         }
 
         public Color GetParentLinkPreviewColor(int index)
         {
-            return SetAlpha(GetBoneColorRaw(index), 0.2f, 1f);
+            return SetAlpha(GetBoneColorRaw(index), 0.45f, 1f);
         }
 
         public Color GetOutlineColor(BoneCache bone, bool isSelected, bool isHovered)

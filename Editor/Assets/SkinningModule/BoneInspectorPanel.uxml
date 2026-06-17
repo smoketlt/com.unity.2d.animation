@@ -11,6 +11,7 @@
         <eui:Vector2Field name="BonePositionField" class="form-editor"/>
       </ui:VisualElement>
       <eui:FloatField name="BoneRotationField" label = "Rotation" tooltip ="Rotation of the bone"/>
+      <eui:FloatField name="BoneLengthField" label = "Length" tooltip ="Length of the bone"/>
       <eui:ColorField name="BoneColorField" label = "Bone Color" show-alpha = "false" tooltip ="Color of the bone"/>
       <ui:VisualElement name="BoneDepth" class="form-row">
         <ui:Label name="BoneDepthLabel" text="Depth" tooltip ="Depth value of the bone"/>

@@ -12,10 +12,6 @@
         <!-- No factory method for PopupField here -->
       </ui:VisualElement>
 
-      <ui:VisualElement name="Size" class="form-row">
-        <eui:IntegerField name="SizeField" class="form-integerfield" value="25" label="Size" tooltip ="Brush size"/>
-      </ui:VisualElement>
-
       <ui:VisualElement name="Amount" class="form-row">
         <ui:VisualElement class="form-editor">
           <ui:Slider name="AmountSlider" class="named-slider" direction="Horizontal" low-value="-1" high-value="1" label="Amount" tooltip ="Weight amount" />
@@ -26,20 +22,23 @@
         <ui:Button name="SmoothButton" class="button" text="Smooth" tooltip="Smooth weights using neighboring vertices" />
         <ui:Button name="PruneButton" class="button" text="Prune" tooltip="Remove small and excess weights" />
       </ui:VisualElement>
-        <ui:VisualElement name="divider" />
-        <aui:WeightInspectorIMGUIPanel name ="WeightsInspector" />
-      <ui:VisualElement name="Hardness" class="form-row">
+      <ui:VisualElement name="Strength" class="form-row">
         <ui:VisualElement class="form-editor">
-          <ui:Slider name="HardnessSlider" class="named-slider" direction="Horizontal" low-value="1" high-value="100" label="Hardness" tooltip ="Brush hardness" />
-          <eui:IntegerField name="HardnessField" class="slider-field" value="1" />
+          <ui:Slider name="StrengthSlider" class="named-slider" direction="Horizontal" low-value="1" high-value="100" label="Strength" tooltip ="Brush strength" />
+          <eui:IntegerField name="StrengthField" class="slider-field" value="1" />
         </ui:VisualElement>
       </ui:VisualElement>
-      <ui:VisualElement name="Step" class="form-row">
+      <ui:VisualElement name="Size" class="form-row">
+        <eui:IntegerField name="SizeField" class="form-integerfield" value="25" label="Size" tooltip ="Brush size"/>
+      </ui:VisualElement>
+      <ui:VisualElement name="Feather" class="form-row">
         <ui:VisualElement class="form-editor">
-          <ui:Slider name="StepSlider" class="named-slider" direction="Horizontal" low-value="1" high-value="100" label="Step" tooltip ="Brush step size" />
-          <eui:IntegerField name="StepField" class="slider-field" value="1" />
+          <ui:Slider name="FeatherSlider" class="named-slider" direction="Horizontal" low-value="0" high-value="100" label="Feather" tooltip ="Brush edge feather" />
+          <eui:IntegerField name="FeatherField" class="slider-field" value="20" />
         </ui:VisualElement>
       </ui:VisualElement>
+      <ui:VisualElement name="divider" />
+      <aui:WeightInspectorIMGUIPanel name ="WeightsInspector" />
     </ui:PopupWindow>
   </aui:WeightPainterPanel>
 </UXML>

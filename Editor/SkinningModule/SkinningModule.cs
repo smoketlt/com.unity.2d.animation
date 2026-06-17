@@ -324,6 +324,7 @@ namespace UnityEditor.U2D.Animation
                 m_SpriteOutlineRenderer.RenderSpriteOutline(spriteEditor, skinningCache.selectedSprite);
 
             m_MeshPreviewTool.OverlayWireframe();
+            DrawRectGizmos();
 
             if (!spriteEditor.editingDisabled)
             {
@@ -332,7 +333,6 @@ namespace UnityEditor.U2D.Animation
                 DoCopyPasteKeyboardEventHandling();
             }
 
-            DrawRectGizmos();
             ConsumeUnhandledAltMouseNavigation();
             DisableBaseSpriteEditorAltNavigation();
 

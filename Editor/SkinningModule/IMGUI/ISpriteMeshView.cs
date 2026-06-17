@@ -30,6 +30,7 @@ namespace UnityEditor.U2D.Animation
         ISelection<int> selection { get; set; }
         int defaultControlID { get; set; }
         bool drawVertexWeights { get; set; }
+        float vertexWeightOpacity { get; set; }
         BoneCache[] vertexWeightBones { get; set; }
         Rect frame { get; set; }
         Vector2 mouseWorldPosition { get; }

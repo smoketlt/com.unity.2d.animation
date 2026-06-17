@@ -56,6 +56,10 @@ Use `EditableBoneWeight.Sum()` to detect whether a mesh has meaningful weights. 
 
 The Reset and New commands treat a mesh as weighted when any vertex weight has `Sum() > 0f`.
 
+## Selection Safety
+
+Weight multi-edit reads and writes ignore selected vertex indices that are no longer valid for the current `vertexWeights` array. This prevents the Weight Inspector from throwing when geometry deletion or retriangulation changes the mesh before another UI panel has repainted with the cleaned selection.
+
 ## Weight Slider Vertex Display
 
 In Weight Slider mode, mesh vertices replace the regular cyan/yellow handles with large circular weight pies. The pie diameter is twice the previous regular vertex size. Each enabled weight channel contributes a colored slice using the bound bone's `bindPoseColor`; duplicate channels for the same bone are merged before drawing. Slices are ordered by bone name and then bone index so colors do not flip while weights change. Slice angles use absolute weight share up to `1.0`; any unassigned remainder is black. Vertices with no enabled weight draw as a black circle.

@@ -41,6 +41,7 @@ namespace UnityEditor.U2D.Animation
 
         protected override void OnActivate()
         {
+            weightPainterTool.paintMode = paintMode;
             weightPainterTool.Activate();
             weightPainterTool.panelTitle = m_Title;
         }

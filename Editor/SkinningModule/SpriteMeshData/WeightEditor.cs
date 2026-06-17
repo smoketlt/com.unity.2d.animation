@@ -23,6 +23,7 @@ namespace UnityEditor.U2D.Animation
         public WeightEditorMode mode { get; set; }
         public int boneIndex { get; set; }
         public int[] lockedBoneIndices { get; set; }
+        public int[] smoothBoneIndices { get; set; }
         public ISelection<int> selection { get; set; }
         public bool emptySelectionEditsAll { get; set; }
         public bool autoNormalize { get; set; }
@@ -50,7 +51,7 @@ namespace UnityEditor.U2D.Animation
             currentMode = mode;
             useRelativeValues = relative;
 
-            if (!useRelativeValues)
+            if (!useRelativeValues || mode == WeightEditorMode.Smooth)
                 StoreBoneWeights();
 
             if (mode == WeightEditorMode.Smooth)
@@ -164,9 +165,68 @@ namespace UnityEditor.U2D.Animation
                     EditableBoneWeight editableBoneWeight = spriteMeshData.vertexWeights[i];
                     BoneWeight lockedSourceWeight = m_StoredBoneWeights.Count == spriteMeshData.vertexCount ? m_StoredBoneWeights[i] : editableBoneWeight.ToBoneWeight(false);
                     editableBoneWeight.SetFromBoneWeight(boneWeight);
+                    RestoreNonSmoothWeights(editableBoneWeight, lockedSourceWeight);
                     RestoreLockedWeights(editableBoneWeight, lockedSourceWeight);
                 }
             }
+        }
+
+        private void RestoreNonSmoothWeights(EditableBoneWeight editableBoneWeight, BoneWeight sourceWeight)
+        {
+            if (smoothBoneIndices == null || smoothBoneIndices.Length == 0)
+                return;
+
+            float[] weights = new float[boneCount];
+            for (int i = 0; i < editableBoneWeight.Count; ++i)
+            {
+                BoneWeightChannel channel = editableBoneWeight[i];
+                if (channel.enabled && channel.boneIndex >= 0 && channel.boneIndex < boneCount)
+                    weights[channel.boneIndex] += channel.weight;
+            }
+
+            float preservedWeight = 0f;
+            for (int i = 0; i < boneCount; ++i)
+            {
+                if (IsSmoothBone(i))
+                    continue;
+
+                weights[i] = GetBoneWeight(sourceWeight, i);
+                preservedWeight += weights[i];
+            }
+
+            float smoothWeight = 0f;
+            for (int i = 0; i < boneCount; ++i)
+                if (IsSmoothBone(i))
+                    smoothWeight += weights[i];
+
+            float smoothTargetWeight = Mathf.Max(0f, 1f - preservedWeight);
+            if (smoothWeight <= 0f && smoothTargetWeight > 0f)
+            {
+                for (int i = 0; i < boneCount; ++i)
+                {
+                    if (!IsSmoothBone(i))
+                        continue;
+
+                    weights[i] = GetBoneWeight(sourceWeight, i);
+                    smoothWeight += weights[i];
+                }
+            }
+
+            if (smoothWeight > 0f)
+            {
+                for (int i = 0; i < boneCount; ++i)
+                    if (IsSmoothBone(i))
+                        weights[i] *= smoothTargetWeight / smoothWeight;
+            }
+
+            editableBoneWeight.Clear();
+            for (int i = 0; i < weights.Length; ++i)
+                if (weights[i] > 0f)
+                    editableBoneWeight.AddChannel(i, weights[i], true);
+
+            editableBoneWeight.UnifyChannelsWithSameBoneIndex();
+            editableBoneWeight.Clamp(4);
+            editableBoneWeight.FilterChannels(0f);
         }
 
         private void CompensateOtherChannelsRespectingLocks(EditableBoneWeight editableBoneWeight, int masterChannel)
@@ -276,6 +336,18 @@ namespace UnityEditor.U2D.Animation
 
             for (int i = 0; i < lockedBoneIndices.Length; ++i)
                 if (lockedBoneIndices[i] == boneIndex)
+                    return true;
+
+            return false;
+        }
+
+        private bool IsSmoothBone(int boneIndex)
+        {
+            if (smoothBoneIndices == null || smoothBoneIndices.Length == 0)
+                return true;
+
+            for (int i = 0; i < smoothBoneIndices.Length; ++i)
+                if (smoothBoneIndices[i] == boneIndex)
                     return true;
 
             return false;

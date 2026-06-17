@@ -321,6 +321,7 @@ namespace UnityEditor.U2D.Animation
 
         protected override void OnActivate()
         {
+            ShowInfoOverlay(SkinningEditorInfoText.BoneInfluence);
             m_Controller.Activate();
             if (skeletonTool != null)
                 skeletonTool.Activate();
@@ -328,6 +329,7 @@ namespace UnityEditor.U2D.Animation
 
         protected override void OnDeactivate()
         {
+            HideInfoOverlay();
             m_Controller.Deactivate();
             if (skeletonTool != null)
                 skeletonTool.Deactivate();
@@ -335,6 +337,7 @@ namespace UnityEditor.U2D.Animation
 
         public override void Initialize(LayoutOverlay layout)
         {
+            base.Initialize(layout);
             if (m_View == null)
             {
                 m_View = InfluenceWindow.CreateFromUxml();

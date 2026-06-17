@@ -48,6 +48,7 @@
 - `kVertexHitRadius = 16f`
 - `kNewGeometryFrameHitRadius = 16f`
 - visible vertex dot styles are larger than upstream
+- Weight Slider weighted vertex dots use a smaller viewport radius, with selected dots 20% larger than unselected dots
 - `m_CreateEdgeDragActive` gates create-edge behavior while dragging from a vertex in `Create`
 - `NewGeometry` action methods gate open-hull click, completion, Esc cancel, and double-click delete behavior
 

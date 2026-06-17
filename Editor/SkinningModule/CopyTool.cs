@@ -73,12 +73,14 @@ namespace UnityEditor.U2D.Animation
 
         public override void Initialize(LayoutOverlay layout)
         {
+            base.Initialize(layout);
             m_CopyToolView.Initialize(layout);
         }
 
         protected override void OnActivate()
         {
             base.OnActivate();
+            ShowInfoOverlay(SkinningEditorInfoText.CopyPaste);
             m_CopyToolView.Show(skinningCache.bonesReadOnly);
         }
 

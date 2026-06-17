@@ -44,6 +44,11 @@ namespace UnityEditor.U2D.Animation
             set => m_SpriteMeshView.drawVertexWeights = value;
         }
 
+        public float vertexWeightOpacity
+        {
+            set => m_SpriteMeshView.vertexWeightOpacity = value;
+        }
+
         public ISelection<int> selectionOverride
         {
             get => m_SelectionOverride;

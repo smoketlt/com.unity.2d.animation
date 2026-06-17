@@ -11,6 +11,12 @@ namespace UnityEditor.U2D.Animation
         const float kEndCapSize = 10f;
         const float kSliceOverlap = 0f;
         const float kMinimumTexturedBoneLength = kHeadLength + kEndCapSize + 2f;
+        const float kParentLinkDashLength = 4f;
+        const float kParentLinkDashGap = 3f;
+        const float kParentLinkLineWidth = 2f;
+        const float kParentLinkArrowLength = 12f;
+        const float kParentLinkArrowHalfWidth = 6f;
+        const float kParentLinkMinimumArrowLength = 5f;
 
         static readonly int[] s_BonePartIndices = { 0, 1, 2, 0, 2, 3 };
         static readonly Vector2[] s_BonePartUVs =
@@ -51,6 +57,24 @@ namespace UnityEditor.U2D.Animation
             DrawTexturedBone(position, endPosition, forward, color, endCapColor, false, scale);
         }
 
+        public static void DrawBoneParentLink(Vector3 position, Vector3 endPosition, Vector3 forward, Color color)
+        {
+            if (Event.current.type != EventType.Repaint)
+                return;
+
+            Vector3 link = endPosition - position;
+            if (link.sqrMagnitude <= Mathf.Epsilon)
+                return;
+
+            Color handlesColor = Handles.color;
+            Handles.color = color;
+            DrawingUtility.BeginSolidLines();
+            DrawParentLinkDashes(position, endPosition, forward);
+            DrawParentLinkArrow(position, endPosition, forward);
+            DrawingUtility.EndLines();
+            Handles.color = handlesColor;
+        }
+
         public static void DrawBoneOutline(Vector3 position, Vector3 endPosition, Vector3 forward, Color color, float outlineScale = 1.35f, float scale = 1.0f)
         {
             DrawTextureAt(position, B_Circle_Selected, color, kCircleSize * scale, kCircleSize * scale);
@@ -85,6 +109,59 @@ namespace UnityEditor.U2D.Animation
             DrawBonePartTexture(position, endPosition, forward, length, color, 0f, kHeadLength * scale, kHeadWidth * scale, head);
             DrawBonePartTexture(position, endPosition, forward, length, color, kHeadLength * scale - kSliceOverlap * scale, kHeadLength * scale + stretchLength + kSliceOverlap * scale, kStretchWidth * scale, stretch);
             DrawBonePartTexture(position, endPosition, forward, length, endCapColor, length - kEndCapSize * scale, length, kEndCapSize * scale, endCap);
+        }
+
+        static void DrawParentLinkDashes(Vector3 position, Vector3 endPosition, Vector3 forward)
+        {
+            Vector2 startGUI = HandleUtility.WorldToGUIPoint(position);
+            Vector2 endGUI = HandleUtility.WorldToGUIPoint(endPosition);
+            float guiLength = (endGUI - startGUI).magnitude;
+            if (guiLength <= 0f)
+                return;
+
+            Vector3 link = endPosition - position;
+            Vector3 direction = link.normalized;
+            float worldPerGuiPixel = link.magnitude / guiLength;
+            float arrowLength = GetParentLinkArrowLength(guiLength);
+            float dashedLength = Mathf.Max(0f, guiLength - arrowLength);
+
+            for (float dashStart = 0f; dashStart < dashedLength; dashStart += kParentLinkDashLength + kParentLinkDashGap)
+            {
+                float dashEnd = Mathf.Min(dashStart + kParentLinkDashLength, dashedLength);
+                Vector3 start = position + direction * (dashStart * worldPerGuiPixel);
+                Vector3 end = position + direction * (dashEnd * worldPerGuiPixel);
+                DrawingUtility.DrawSolidLine(kParentLinkLineWidth * worldPerGuiPixel, start, end);
+            }
+        }
+
+        static void DrawParentLinkArrow(Vector3 position, Vector3 endPosition, Vector3 forward)
+        {
+            Vector2 startGUI = HandleUtility.WorldToGUIPoint(position);
+            Vector2 endGUI = HandleUtility.WorldToGUIPoint(endPosition);
+            float guiLength = (endGUI - startGUI).magnitude;
+            float arrowLength = GetParentLinkArrowLength(guiLength);
+            if (arrowLength <= 0f)
+                return;
+
+            Vector3 link = endPosition - position;
+            Vector3 direction = link.normalized;
+            Vector3 normal = Vector3.Cross(forward, direction).normalized;
+            float worldPerGuiPixel = link.magnitude / guiLength;
+            Vector3 arrowBack = endPosition - direction * (arrowLength * worldPerGuiPixel);
+            Vector3 arrowWing = normal * (kParentLinkArrowHalfWidth * (arrowLength / kParentLinkArrowLength) * worldPerGuiPixel);
+
+            GL.Color(Handles.color);
+            GL.Vertex(endPosition);
+            GL.Vertex(arrowBack + arrowWing);
+            GL.Vertex(arrowBack - arrowWing);
+        }
+
+        static float GetParentLinkArrowLength(float guiLength)
+        {
+            if (guiLength < kParentLinkMinimumArrowLength)
+                return 0f;
+
+            return Mathf.Min(kParentLinkArrowLength, guiLength * 0.45f);
         }
 
         static void DrawBonePartTexture(Vector3 position, Vector3 endPosition, Vector3 forward, float length, Color color, float startDistance, float endDistance, float width, Texture2D texture)

@@ -45,6 +45,7 @@ namespace UnityEditor.U2D.Animation
 
         public override void Initialize(LayoutOverlay layout)
         {
+            base.Initialize(layout);
             if (m_View == null)
             {
                 m_View = BoneReparentToolWindow.CreateFromUXML();
@@ -60,6 +61,7 @@ namespace UnityEditor.U2D.Animation
 
         protected override void OnActivate()
         {
+            ShowInfoOverlay(SkinningEditorInfoText.ReparentBone);
             m_View.SetHiddenFromLayout(false);
             m_Controller.Activate();
             skeletonTool.Activate();
@@ -67,6 +69,7 @@ namespace UnityEditor.U2D.Animation
 
         protected override void OnDeactivate()
         {
+            HideInfoOverlay();
             m_View.SetHiddenFromLayout(true);
             m_Controller.Deactivate();
             skeletonTool.Deactivate();

@@ -16,8 +16,9 @@ namespace UnityEditor.U2D.Animation
         const float kEdgeWidth = 2f;
         const float kVertexHitRadius = 16f;
         const float kNewGeometryFrameHitRadius = 16f;
-        const float kWeightVertexRadius = 16f;
-        const float kWeightVertexSelectedOutlineRadius = 19f;
+        const float kWeightVertexRadius = 11.2f;
+        const float kWeightVertexSelectedRadius = kWeightVertexRadius * 1.2f;
+        const float kWeightVertexSelectedOutlineRadius = kWeightVertexSelectedRadius + 3f;
         const float kMinWeightSlice = 0.001f;
         const int kWeightVertexTextureSize = 32;
         const int kMaxWeightVertexTextureCacheSize = 512;
@@ -88,6 +89,7 @@ namespace UnityEditor.U2D.Animation
         public ISelection<int> selection { get; set; }
         public int defaultControlID { get; set; }
         public bool drawVertexWeights { get; set; }
+        public float vertexWeightOpacity { get; set; } = 0.5f;
         public BoneCache[] vertexWeightBones { get; set; }
         public Rect frame { get; set; }
         private IGUIWrapper guiWrapper { get; set; }
@@ -406,7 +408,7 @@ namespace UnityEditor.U2D.Animation
         {
             if (drawVertexWeights)
             {
-                DrawWeightedVertex(position, weight, 0.5f, false);
+                DrawWeightedVertex(position, weight, vertexWeightOpacity, false);
                 return;
             }
 
@@ -422,7 +424,7 @@ namespace UnityEditor.U2D.Animation
         {
             if (drawVertexWeights)
             {
-                DrawWeightedVertex(position, weight, 0.5f, false);
+                DrawWeightedVertex(position, weight, vertexWeightOpacity, false);
                 return;
             }
 
@@ -682,11 +684,12 @@ namespace UnityEditor.U2D.Animation
             Handles.BeginGUI();
 
             Vector2 guiPosition = HandleUtility.WorldToGUIPoint(position);
+            float vertexRadius = selected ? kWeightVertexSelectedRadius : kWeightVertexRadius;
             Rect rect = new Rect(
-                guiPosition.x - kWeightVertexRadius,
-                guiPosition.y - kWeightVertexRadius,
-                kWeightVertexRadius * 2f,
-                kWeightVertexRadius * 2f);
+                guiPosition.x - vertexRadius,
+                guiPosition.y - vertexRadius,
+                vertexRadius * 2f,
+                vertexRadius * 2f);
             Rect selectedOutlineRect = new Rect(
                 guiPosition.x - kWeightVertexSelectedOutlineRadius,
                 guiPosition.y - kWeightVertexSelectedOutlineRadius,

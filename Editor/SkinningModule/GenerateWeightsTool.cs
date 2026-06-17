@@ -52,6 +52,7 @@ namespace UnityEditor.U2D.Animation
         protected override void OnActivate()
         {
             base.OnActivate();
+            ShowInfoOverlay(SkinningEditorInfoText.GenerateWeights);
             m_GenerateWeightsPanel.SetHiddenFromLayout(false);
             skinningCache.events.skinningModeChanged.AddListener(OnModeChanged);
             skinningCache.events.selectedSpriteChanged.AddListener(OnSpriteSelectionChanged);

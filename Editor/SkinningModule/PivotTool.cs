@@ -122,6 +122,7 @@ namespace UnityEditor.U2D.Animation
             if (skinningCache.hasCharacter)
             {
                 base.OnActivate();
+                ShowInfoOverlay(SkinningEditorInfoText.Pivot);
                 m_PivotRect = new Rect(0, 0, skinningCache.character.dimension.x, skinningCache.character.dimension.y);
                 m_LastSelectedSprite = skinningCache.selectedSprite;
                 m_InspectorPanel.SetHiddenFromLayout(false);

@@ -19,6 +19,7 @@
 | Bone Influence/Sprite Influence assignment and auto weights | [Subsystems/SkinningEditor/BoneInfluence](Subsystems/SkinningEditor/BoneInfluence.md) | `Editor/SkinningModule/SpriteBoneInfluence/**`, `Editor/SkinningModule/SkinningCache/SpriteCacheExtensions.cs` |
 | Weight Slider/Brush modes and painter panel | [Subsystems/SkinningEditor/WeightPainterTool](Subsystems/SkinningEditor/WeightPainterTool.md) | `Editor/SkinningModule/WeightPainterTool.cs`, `Editor/SkinningModule/UI/WeightPainterPanel.cs` |
 | Visibility window, opacity sliders, bone/sprite visibility lists | [Subsystems/SkinningEditor/VisibilityTool](Subsystems/SkinningEditor/VisibilityTool.md) | `Editor/SkinningModule/VisibilityTool/**`, `Editor/Assets/SkinningModule/VisibilityToolWindow.uxml` |
+| Top informational overlay text | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/SkinningModule/UI/SkinningEditorInfoOverlay.cs` |
 | Skinning panel placement and draggable bottom overlays | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/LayoutOverlay/**`, `Editor/Assets/LayoutOverlay/**` |
 | UXML/USS resources | [Resources/SkinningModuleAssets](Resources/SkinningModuleAssets.md) | `Editor/Assets/SkinningModule/**` |
 | Regression sweep before push | [QualityAuditPlaybook](QualityAuditPlaybook.md) | diff, Unity compile, local Unity test project |
@@ -47,6 +48,7 @@
 | `SkinningEditorInput` | Fork-specific shared modifier-key status for Skinning Editor tools | `Editor/SkinningModule/IMGUI/SkinningEditorInput.cs` |
 | `VisibilityTool` | Visibility popup window, tab state, and opacity slider preview behavior | `Editor/SkinningModule/VisibilityTool/VisibilityTool.cs` |
 | `LayoutOverlay` | Shared toolbar and overlay host, including the Skinning bottom draggable panel area | `Editor/LayoutOverlay/LayoutOverlay.cs`, `Editor/Assets/LayoutOverlay/LayoutOverlay.uxml` |
+| `SkinningEditorInfoOverlay` | Static helper for showing dark-backed text at the top of the Skinning Editor overlay | `Editor/SkinningModule/UI/SkinningEditorInfoOverlay.cs` |
 
 ## Current Fork Behavior
 

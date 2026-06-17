@@ -32,9 +32,11 @@ namespace UnityEditor.U2D.Animation
         private WeightPainterMode m_PaintMode;
         private WeightEditorMode m_Mode = WeightEditorMode.AddAndSubtract;
         private PopupField<string> m_ModeField;
-        private IntegerField m_HardnessField;
-        private IntegerField m_StepField;
+        private IntegerField m_StrengthField;
+        private IntegerField m_FeatherField;
         private IntegerField m_SizeField;
+        private Slider m_StrengthSlider;
+        private Slider m_FeatherSlider;
         private FloatField m_AmountField;
         private Slider m_AmountSlider;
         private Button m_SmoothButton;
@@ -54,6 +56,7 @@ namespace UnityEditor.U2D.Animation
         public event Action<int, bool> boneButtonClicked = (boneIndex, additive) => {};
         public event Action<int> lockButtonClicked = (boneIndex) => {};
         public event Action weightsChanged = () => { };
+        public event Action brushPreviewChanged = () => { };
 
         public WeightPainterMode paintMode
         {
@@ -88,9 +91,13 @@ namespace UnityEditor.U2D.Animation
             set
             {
                 m_Mode = value;
-                if (m_ModeField != null)
-                    m_ModeField.SetValueWithoutNotify(GetModeLabel(value));
+                SetModeFieldValue(value);
             }
+        }
+
+        public void SetModeDisplayOverride(bool active, WeightEditorMode overrideMode)
+        {
+            SetModeFieldValue(active ? overrideMode : m_Mode);
         }
 
         public int boneIndex
@@ -104,16 +111,25 @@ namespace UnityEditor.U2D.Animation
             set { m_SizeField.value = value; }
         }
 
-        public int hardness
+        public int strength
         {
-            get { return m_HardnessField.value; }
-            set { m_HardnessField.value = value; }
+            get { return m_StrengthField.value; }
+            set { m_StrengthField.value = value; }
         }
 
-        public int step
+        public int feather
         {
-            get { return m_StepField.value; }
-            set { m_StepField.value = value; }
+            get { return m_FeatherField.value; }
+            set { m_FeatherField.value = value; }
+        }
+
+        public void SetBrushParametersWithoutPreview(int strengthValue, int sizeValue, int featherValue)
+        {
+            m_StrengthField.SetValueWithoutNotify(strengthValue);
+            m_StrengthSlider.SetValueWithoutNotify(strengthValue);
+            m_SizeField.SetValueWithoutNotify(sizeValue);
+            m_FeatherField.SetValueWithoutNotify(featherValue);
+            m_FeatherSlider.SetValueWithoutNotify(featherValue);
         }
 
         public bool normalize
@@ -146,8 +162,10 @@ namespace UnityEditor.U2D.Animation
             m_ModeField = this.Q<PopupField<string>>("ModeField");
             m_BonePopupContainer = this.Q<VisualElement>("BoneEnumPopup");
             m_SizeField = this.Q<IntegerField>("SizeField");
-            m_HardnessField = this.Q<IntegerField>("HardnessField");
-            m_StepField = this.Q<IntegerField>("StepField");
+            m_StrengthField = this.Q<IntegerField>("StrengthField");
+            m_FeatherField = this.Q<IntegerField>("FeatherField");
+            m_StrengthSlider = this.Q<Slider>("StrengthSlider");
+            m_FeatherSlider = this.Q<Slider>("FeatherSlider");
             m_AmountSlider = this.Q<Slider>("AmountSlider");
             m_AmountField = this.Q<FloatField>("AmountField");
             m_SmoothButton = this.Q<Button>("SmoothButton");
@@ -156,8 +174,11 @@ namespace UnityEditor.U2D.Animation
             m_WeightInspectorPanel = this.Q<WeightInspectorIMGUIPanel>("WeightsInspector");
             m_PopupWindow = this.Q<UnityEngine.UIElements.PopupWindow>();
 
-            LinkSliderToIntegerField(this.Q<Slider>("HardnessSlider"), m_HardnessField);
-            LinkSliderToIntegerField(this.Q<Slider>("StepSlider"), m_StepField);
+            LinkSliderToIntegerField(m_StrengthSlider, m_StrengthField);
+            LinkSliderToIntegerField(m_FeatherSlider, m_FeatherField);
+            m_StrengthField.RegisterValueChangedCallback((evt) => brushPreviewChanged());
+            m_SizeField.RegisterValueChangedCallback((evt) => brushPreviewChanged());
+            m_FeatherField.RegisterValueChangedCallback((evt) => brushPreviewChanged());
 
             m_ModeField.RegisterValueChangedCallback((evt) =>
             {
@@ -312,6 +333,12 @@ namespace UnityEditor.U2D.Animation
         {
             int index = Array.IndexOf(k_ModeValues, mode);
             return index == -1 ? k_ModeLabels[0] : k_ModeLabels[index];
+        }
+
+        private void SetModeFieldValue(WeightEditorMode displayMode)
+        {
+            if (m_ModeField != null)
+                m_ModeField.SetValueWithoutNotify(GetModeLabel(displayMode));
         }
 
         private static WeightEditorMode GetModeValue(string label)

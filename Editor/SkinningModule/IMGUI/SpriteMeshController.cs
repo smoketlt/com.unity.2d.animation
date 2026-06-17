@@ -110,7 +110,7 @@ namespace UnityEditor.U2D.Animation
         {
             foreach (int index in selection.elements)
             {
-                if (index >= spriteMeshData.vertexCount)
+                if (index < 0 || index >= spriteMeshData.vertexCount)
                 {
                     selection.Clear();
                     break;
@@ -655,9 +655,18 @@ namespace UnityEditor.U2D.Animation
 
         void RemoveSelectedVertices()
         {
-            cacheUndo.BeginUndoOperation(IsEdgeSelected() ? TextContent.removeEdge : TextContent.removeVertices);
-
             int[] verticesToRemove = selection.elements;
+
+            if (IsEdgeSelected())
+            {
+                cacheUndo.BeginUndoOperation(TextContent.removeEdge);
+                m_SpriteMeshDataController.RemoveEdge(new int2(verticesToRemove[0], verticesToRemove[1]));
+                Triangulate();
+                selection.Clear();
+                return;
+            }
+
+            cacheUndo.BeginUndoOperation(TextContent.removeVertices);
 
             int noOfVertsToDelete = verticesToRemove.Length;
             int noOfVertsInMesh = m_SpriteMeshDataController.spriteMeshData.vertexCount;

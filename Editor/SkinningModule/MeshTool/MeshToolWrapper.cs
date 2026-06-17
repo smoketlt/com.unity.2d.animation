@@ -10,6 +10,7 @@ namespace UnityEditor.U2D.Animation
         private SpriteMeshViewMode m_MeshMode;
         private bool m_Disable = false;
         private bool m_DrawVertexWeights = false;
+        private float m_VertexWeightOpacity = 0.5f;
         private SkeletonMode m_SkeletonMode;
         private bool m_ClearBoneSelectionOnEscape;
         private bool m_ClearBoneSelectionOnPrimaryEmptyClick;
@@ -44,6 +45,12 @@ namespace UnityEditor.U2D.Animation
         {
             get { return m_DrawVertexWeights; }
             set { m_DrawVertexWeights = value; }
+        }
+
+        protected float vertexWeightOpacity
+        {
+            get { return m_VertexWeightOpacity; }
+            set { m_VertexWeightOpacity = value; }
         }
 
         protected bool clearBoneSelectionOnEscape
@@ -88,6 +95,7 @@ namespace UnityEditor.U2D.Animation
         protected override void OnActivate()
         {
             Debug.Assert(meshTool != null);
+            ShowInfoOverlay(SkinningEditorInfoText.ForMeshMode(meshMode));
             skeletonTool.enableBoneInspector = false;
             skeletonTool.Activate();
             meshTool.Activate();
@@ -100,6 +108,7 @@ namespace UnityEditor.U2D.Animation
 
         protected override void OnDeactivate()
         {
+            HideInfoOverlay();
             skeletonTool.Deactivate();
             meshTool.Deactivate();
         }
@@ -129,6 +138,7 @@ namespace UnityEditor.U2D.Animation
 
             meshTool.disable = disableMeshEditor;
             meshTool.drawVertexWeights = drawVertexWeights;
+            meshTool.vertexWeightOpacity = vertexWeightOpacity;
             meshTool.mode = GetEffectiveMeshMode();
             meshTool.DoGUI();
         }
