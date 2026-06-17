@@ -16,15 +16,29 @@ namespace UnityEditor.U2D.Animation
         public class WeightPainterPanelUxmlTraits : UxmlTraits {}
 #endif
         public static readonly string kNone = "None";
+        static readonly WeightEditorMode[] k_ModeValues =
+        {
+            WeightEditorMode.AddAndSubtract,
+            WeightEditorMode.GrowAndShrink,
+            WeightEditorMode.Smooth
+        };
+        static readonly List<string> k_ModeLabels = new List<string>
+        {
+            ObjectNames.NicifyVariableName(WeightEditorMode.AddAndSubtract.ToString()),
+            ObjectNames.NicifyVariableName(WeightEditorMode.GrowAndShrink.ToString()),
+            ObjectNames.NicifyVariableName(WeightEditorMode.Smooth.ToString())
+        };
 
         private WeightPainterMode m_PaintMode;
-        private EnumField m_ModeField;
-        private Toggle m_NormalizeToggle;
+        private WeightEditorMode m_Mode = WeightEditorMode.AddAndSubtract;
+        private PopupField<string> m_ModeField;
         private IntegerField m_HardnessField;
         private IntegerField m_StepField;
         private IntegerField m_SizeField;
         private FloatField m_AmountField;
         private Slider m_AmountSlider;
+        private Button m_SmoothButton;
+        private Button m_PruneButton;
         private VisualElement m_BonePopupContainer;
         private PopupField<string> m_BonePopup;
         private bool m_SliderActive = false;
@@ -35,6 +49,10 @@ namespace UnityEditor.U2D.Animation
         public event Action sliderStarted = () => { };
         public event Action<float> sliderChanged = (s) => { };
         public event Action sliderEnded = () => { };
+        public event Action smoothClicked = () => { };
+        public event Action pruneClicked = () => { };
+        public event Action<int, bool> boneButtonClicked = (boneIndex, additive) => {};
+        public event Action<int> lockButtonClicked = (boneIndex) => {};
         public event Action weightsChanged = () => { };
 
         public WeightPainterMode paintMode
@@ -66,8 +84,13 @@ namespace UnityEditor.U2D.Animation
 
         public WeightEditorMode mode
         {
-            get { return (WeightEditorMode)m_ModeField.value; }
-            set { m_ModeField.value = value; }
+            get { return m_Mode; }
+            set
+            {
+                m_Mode = value;
+                if (m_ModeField != null)
+                    m_ModeField.SetValueWithoutNotify(GetModeLabel(value));
+            }
         }
 
         public int boneIndex
@@ -95,8 +118,8 @@ namespace UnityEditor.U2D.Animation
 
         public bool normalize
         {
-            get { return m_NormalizeToggle.value; }
-            set { m_NormalizeToggle.value = value; }
+            get { return true; }
+            set {}
         }
 
         public float amount
@@ -120,14 +143,15 @@ namespace UnityEditor.U2D.Animation
 
         public void BindElements()
         {
-            m_ModeField = this.Q<EnumField>("ModeField");
+            m_ModeField = this.Q<PopupField<string>>("ModeField");
             m_BonePopupContainer = this.Q<VisualElement>("BoneEnumPopup");
-            m_NormalizeToggle = this.Q<Toggle>("NormalizeToggle");
             m_SizeField = this.Q<IntegerField>("SizeField");
             m_HardnessField = this.Q<IntegerField>("HardnessField");
             m_StepField = this.Q<IntegerField>("StepField");
             m_AmountSlider = this.Q<Slider>("AmountSlider");
             m_AmountField = this.Q<FloatField>("AmountField");
+            m_SmoothButton = this.Q<Button>("SmoothButton");
+            m_PruneButton = this.Q<Button>("PruneButton");
             m_AmountField.isDelayed = true;
             m_WeightInspectorPanel = this.Q<WeightInspectorIMGUIPanel>("WeightsInspector");
             m_PopupWindow = this.Q<UnityEngine.UIElements.PopupWindow>();
@@ -137,6 +161,7 @@ namespace UnityEditor.U2D.Animation
 
             m_ModeField.RegisterValueChangedCallback((evt) =>
             {
+                m_Mode = GetModeValue(evt.newValue);
                 SetupMode();
             });
 
@@ -176,11 +201,20 @@ namespace UnityEditor.U2D.Animation
             });
 
             m_WeightInspectorPanel.weightsChanged += () => weightsChanged();
+            m_WeightInspectorPanel.boneButtonClicked += (boneIndex, additive) => boneButtonClicked(boneIndex, additive);
+            m_WeightInspectorPanel.lockButtonClicked += (boneIndex) => lockButtonClicked(boneIndex);
+            m_SmoothButton.text = TextContent.smoothWeights;
+            m_SmoothButton.tooltip = TextContent.smoothWeightsTooltip;
+            m_SmoothButton.clicked += () => smoothClicked();
+            m_PruneButton.text = TextContent.pruneWeights;
+            m_PruneButton.tooltip = TextContent.pruneWeightsTooltip;
+            m_PruneButton.clicked += () => pruneClicked();
         }
 
         public void SetActive(bool active)
         {
             this.Q("Amount").SetEnabled(active);
+            this.Q("SmoothButtonRow").SetEnabled(active);
         }
 
         private void SetupMode()
@@ -221,10 +255,13 @@ namespace UnityEditor.U2D.Animation
             });
         }
 
-        public void UpdateWeightInspector(BaseSpriteMeshData spriteMeshData, string[] boneNames, ISelection<int> selection, ICacheUndo cacheUndo)
+        public void UpdateWeightInspector(BaseSpriteMeshData spriteMeshData, string[] boneNames, Color[] boneColors, int[] selectedBoneIndices, int[] lockedBoneIndices, ISelection<int> selection, ICacheUndo cacheUndo)
         {
             m_WeightInspectorPanel.weightInspector.spriteMeshData = spriteMeshData;
             m_WeightInspectorPanel.weightInspector.boneNames = ModuleUtility.ToGUIContentArray(boneNames);
+            m_WeightInspectorPanel.weightInspector.boneColors = boneColors;
+            m_WeightInspectorPanel.weightInspector.selectedBoneIndices = selectedBoneIndices;
+            m_WeightInspectorPanel.weightInspector.lockedBoneIndices = lockedBoneIndices;
             m_WeightInspectorPanel.weightInspector.selection = selection;
             m_WeightInspectorPanel.weightInspector.cacheUndo = cacheUndo;
         }
@@ -238,7 +275,7 @@ namespace UnityEditor.U2D.Animation
         private void UpdateBonePopup(string[] names)
         {
             VisualElement boneElement = null;
-            if (m_ModeField != null && mode == WeightEditorMode.Smooth)
+            if (m_ModeField != null && m_Mode == WeightEditorMode.Smooth)
             {
                 boneElement = this.Q<VisualElement>("Bone");
                 boneElement.SetHiddenFromLayout(false);
@@ -271,16 +308,28 @@ namespace UnityEditor.U2D.Animation
                 m_BonePopup.value = boneName;
         }
 
+        private static string GetModeLabel(WeightEditorMode mode)
+        {
+            int index = Array.IndexOf(k_ModeValues, mode);
+            return index == -1 ? k_ModeLabels[0] : k_ModeLabels[index];
+        }
+
+        private static WeightEditorMode GetModeValue(string label)
+        {
+            int index = k_ModeLabels.IndexOf(label);
+            return index == -1 ? k_ModeValues[0] : k_ModeValues[index];
+        }
+
         public static WeightPainterPanel GenerateFromUXML()
         {
             VisualTreeAsset visualTree = ResourceLoader.Load<VisualTreeAsset>("SkinningModule/WeightPainterPanel.uxml");
             WeightPainterPanel clone = visualTree.CloneTree().Q<WeightPainterPanel>("WeightPainterPanel");
             clone.LocalizeTextInChildren();
 
-            // EnumField can only get type of Enum from the current running assembly when defined through UXML
-            // Manually create the EnumField here
+            // Use an explicit popup instead of EnumField so Git package installs do not depend on
+            // UI Toolkit's runtime enum menu resolution for internal editor assemblies.
             VisualElement mode = clone.Q<VisualElement>("Mode");
-            EnumField modeField = new EnumField(WeightEditorMode.AddAndSubtract);
+            PopupField<string> modeField = new PopupField<string>(k_ModeLabels, 0);
             modeField.name = "ModeField";
             modeField.label = TextContent.mode;
             modeField.tooltip = TextContent.modeTooltip;

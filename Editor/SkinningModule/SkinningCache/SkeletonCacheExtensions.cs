@@ -127,7 +127,7 @@ namespace UnityEditor.U2D.Animation
 
             bone.SetParent(parentBone);
             bone.name = name;
-            bone.bindPoseColor = ModuleUtility.CalculateNiceColor(skeleton.boneCount, 6);
+            bone.bindPoseColor = BoneColorUtility.DefaultCreatedBoneColor;
             bone.position = position;
             bone.endPosition = endPosition;
             bone.guid = GUID.Generate().ToString();

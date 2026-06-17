@@ -189,6 +189,7 @@ Button:disabled {
     opacity: 0.5;
 }
 
+LayoutOverlay > #BottomOverlay PopupWindow Slider,
 LayoutOverlay > #HorizontalHolder > #RightOverlay PopupWindow Slider {
     flex: 1 0;
     margin-left : 0;

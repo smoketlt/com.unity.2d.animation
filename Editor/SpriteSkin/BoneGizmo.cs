@@ -68,6 +68,7 @@ namespace UnityEditor.U2D.Animation
     {
         Dictionary<Sprite, SpriteBone[]> m_SpriteBones = new Dictionary<Sprite, UnityEngine.U2D.SpriteBone[]>();
         Dictionary<Transform, Vector2> m_BoneData = new Dictionary<Transform, Vector2>();
+        Dictionary<Transform, Color> m_BoneColors = new Dictionary<Transform, Color>();
         HashSet<SpriteSkin> m_SkinComponents = new HashSet<SpriteSkin>();
         HashSet<Transform> m_CachedBones = new HashSet<Transform>();
         HashSet<Transform> m_SelectionRoots = new HashSet<Transform>();
@@ -172,6 +173,7 @@ namespace UnityEditor.U2D.Animation
                 m_CachedBones.Clear();
 
             m_BoneData.Clear();
+            m_BoneColors.Clear();
 
             foreach (SpriteSkin skinComponent in m_SkinComponents)
             {
@@ -223,7 +225,11 @@ namespace UnityEditor.U2D.Animation
                 if (m_View.IsActionHot(SkeletonAction.None))
                     m_CachedBones.Add(boneTransform);
 
+                Color boneColor = bone.color.a > 0f ? bone.color : Color.white;
+                boneColor.a *= alpha;
+
                 m_BoneData.Add(boneTransform, new Vector2(bone.length, alpha));
+                m_BoneColors.Add(boneTransform, boneColor);
             }
         }
 
@@ -422,10 +428,19 @@ namespace UnityEditor.U2D.Animation
                 if (alpha == 0f || !bone.gameObject.activeInHierarchy)
                     continue;
 
-                DrawBone(bone, length, Color.white);
+                DrawBone(bone, length, GetBoneColor(bone, alpha));
             }
 
             BatchedDrawing.Draw();
+        }
+
+        Color GetBoneColor(Transform bone, float alpha)
+        {
+            if (!m_BoneColors.TryGetValue(bone, out Color color))
+                color = Color.white;
+
+            color.a = alpha;
+            return color;
         }
 
         void DrawBone(Transform bone, float length, Color color)

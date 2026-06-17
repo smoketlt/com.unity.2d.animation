@@ -96,6 +96,19 @@ namespace UnityEditor.U2D.Animation
             controller.SmoothFill();
         }
 
+        public static void CalculateMissingWeights(this SpriteCache sprite)
+        {
+            MeshCache mesh = sprite.GetMesh();
+
+            if (mesh == null || mesh.boneCount == 0 || mesh.vertexCount == 0)
+                return;
+
+            SpriteMeshDataController controller = new SpriteMeshDataController();
+            controller.spriteMeshData = mesh;
+            controller.CalculateWeightsSafe(new BoundedBiharmonicWeightsGenerator(), null, 0.01f);
+            controller.SortTrianglesByDepth();
+        }
+
         public static void RestoreBindPose(this SpriteCache sprite)
         {
             SkinningCache skinningCache = sprite.skinningCache;

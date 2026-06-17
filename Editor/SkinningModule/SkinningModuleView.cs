@@ -400,6 +400,8 @@ namespace UnityEditor.U2D.Animation
             {
                 m_LayoutOverlay.rightOverlay.SetEnabled(!spriteEditor.editingDisabled);
                 m_LayoutOverlay.rightOverlay.visible = !spriteEditor.editingDisabled;
+                m_LayoutOverlay.bottomOverlay.SetEnabled(!spriteEditor.editingDisabled);
+                m_LayoutOverlay.bottomOverlay.visible = !spriteEditor.editingDisabled;
             }
 
             m_PoseToolbar.UpdateResetButtonState();

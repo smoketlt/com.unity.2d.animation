@@ -76,6 +76,10 @@ namespace UnityEditor.U2D.Animation
         {
             skeletonTool.mode = mode;
             skeletonTool.editBindPose = editBindPose;
+            skeletonTool.clearSelectionOnEscape = true;
+            skeletonTool.clearSelectionOnPrimaryEmptyClick = true;
+            skeletonTool.secondaryEmptyControlID = 0;
+            skeletonTool.allowPrimaryEmptyClickFallback = true;
             skeletonTool.DoGUI();
         }
     }

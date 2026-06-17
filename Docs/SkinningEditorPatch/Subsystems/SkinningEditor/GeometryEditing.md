@@ -51,7 +51,7 @@ This page documents the Geometry editing workflow: selection, vertex creation, e
 - Vertex dot rendering is larger than upstream.
 - Vertex hit radius is larger than the visible dot.
 - `Esc` clears geometry selection.
-- Right click clears geometry selection through `UnselectTool`.
+- Right click does not clear geometry selection.
 - Primary empty click clears geometry selection.
 - In `Create`, dragging from a vertex starts edge creation.
 - In `Create`, vertex moving is disabled so drag from a vertex is not stolen by move behavior.
@@ -103,7 +103,7 @@ If the previous mesh had weights, entry uses the same attachment-weights confirm
 - `clearOnEscape = true`
 - `clearOnPrimaryEmptyClick = true`
 
-This is why empty left-click and Esc clear selection.
+This is why empty left-click and Esc clear selection. Right-click does not clear selection.
 
 ## Change Risks
 

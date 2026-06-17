@@ -23,7 +23,7 @@ namespace UnityEditor.U2D.Animation
 
             m_GenerateWeightsPanel = GenerateWeightsPanel.GenerateFromUXML();
 
-            layout.rightOverlay.Add(m_GenerateWeightsPanel);
+            layout.AddBottomOverlayPanel(m_GenerateWeightsPanel);
 
             BindElements();
             m_GenerateWeightsPanel.SetHiddenFromLayout(true);
@@ -64,6 +64,7 @@ namespace UnityEditor.U2D.Animation
             base.OnDeactivate();
             skinningCache.events.skinningModeChanged.RemoveListener(OnModeChanged);
             skinningCache.events.selectedSpriteChanged.RemoveListener(OnSpriteSelectionChanged);
+            LayoutOverlayUtility.ResetDraggableOverlayPanel(m_GenerateWeightsPanel);
             m_GenerateWeightsPanel.SetHiddenFromLayout(true);
         }
 
@@ -139,6 +140,8 @@ namespace UnityEditor.U2D.Animation
             skeletonMode = SkeletonMode.EditPose;
             meshMode = SpriteMeshViewMode.EditGeometry;
             disableMeshEditor = true;
+            clearBoneSelectionOnEscape = true;
+            clearBoneSelectionOnPrimaryEmptyClick = true;
             skeletonTool.skeletonStyle = SkeletonStyles.WeightMap;
 
             DoSkeletonGUI();

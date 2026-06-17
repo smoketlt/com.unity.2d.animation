@@ -1033,7 +1033,7 @@ namespace UnityEditor.U2D.Animation
                 bone.localPosition = (Vector2)spriteBone.position * scale;
                 bone.localRotation = spriteBone.rotation;
                 if (spriteBone.color.a == 0)
-                    bone.bindPoseColor = ModuleUtility.CalculateNiceColor(i, 6);
+                    bone.bindPoseColor = BoneColorUtility.DefaultCreatedBoneColor;
                 else
                     bone.bindPoseColor = spriteBone.color;
             }

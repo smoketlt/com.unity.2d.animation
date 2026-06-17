@@ -59,9 +59,18 @@ The `Reset` toolbar button is now a command handled by `SkinningModuleView.Reset
 
 `SkinningModule.DisableBaseSpriteEditorAltNavigation()` removes the Alt modifier from the current event after Skinning Editor GUI has used it. This prevents the base Sprite Editor window from treating Alt as pan navigation without forking `com.unity.2d.sprite`.
 
+### Bottom tool panels
+
+`LayoutOverlay` exposes a `bottomOverlay` area for Skinning tool panels that should not stack under the right-side Visibility window. Weight Painter, Bone Inspector, Generate Geometry, Generate Weights, Paste, Pivot, and Influence panels are added through `LayoutOverlay.AddBottomOverlayPanel(...)`.
+
+These panels initially appear centered along the bottom edge. `LayoutOverlayUtility.MakeDraggableOverlayPanel(...)` adds a title-bar drag handle to each panel and `OverlayPanelDragger` switches the panel to absolute positioning after the first drag, clamped inside the bottom overlay. Tools call `LayoutOverlayUtility.ResetDraggableOverlayPanel(...)` before hiding their panel so a dragged panel returns to the normal bottom-center layout the next time that tool is shown.
+
+The Visibility popup remains in `rightOverlay` because it is a tall list window with its own resizer and right-side workflow.
+
 ## Change Risks
 
 - Moving mode-switching logic into `SpriteMeshView` would reintroduce duplicated mode state.
 - Making `Reset` a tool again would conflict with the user-facing command semantics.
 - Calling mesh mutation APIs without `UndoScope` or `meshChanged` can leave Unity data dirty state incorrect.
 - Adding new toolbar buttons requires updating UXML, `MeshToolbar.cs`, `SkinningModuleView.cs`, and docs.
+- Moving a tool panel between overlay regions requires checking both `LayoutOverlayStyle.uss` and any panel-specific USS selectors scoped to `#RightOverlay` or `#BottomOverlay`.

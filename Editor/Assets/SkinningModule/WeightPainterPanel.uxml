@@ -12,10 +12,6 @@
         <!-- No factory method for PopupField here -->
       </ui:VisualElement>
 
-      <ui:VisualElement class="form-row">
-        <ui:Toggle name="NormalizeToggle" class="form-toggle" value="true" tooltip="Normalize weights after each edit" label="Normalize" />
-      </ui:VisualElement>
-
       <ui:VisualElement name="Size" class="form-row">
         <eui:IntegerField name="SizeField" class="form-integerfield" value="25" label="Size" tooltip ="Brush size"/>
       </ui:VisualElement>
@@ -25,6 +21,10 @@
           <ui:Slider name="AmountSlider" class="named-slider" direction="Horizontal" low-value="-1" high-value="1" label="Amount" tooltip ="Weight amount" />
           <eui:FloatField name="AmountField" class="slider-field" value="0" />
         </ui:VisualElement>
+      </ui:VisualElement>
+      <ui:VisualElement name="SmoothButtonRow" class="form-row">
+        <ui:Button name="SmoothButton" class="button" text="Smooth" tooltip="Smooth weights using neighboring vertices" />
+        <ui:Button name="PruneButton" class="button" text="Prune" tooltip="Remove small and excess weights" />
       </ui:VisualElement>
         <ui:VisualElement name="divider" />
         <aui:WeightInspectorIMGUIPanel name ="WeightsInspector" />

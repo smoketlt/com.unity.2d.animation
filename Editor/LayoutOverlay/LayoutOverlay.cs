@@ -18,6 +18,7 @@ namespace UnityEditor.U2D.Layout
         private VisualElement m_HorizontalHolder;
         private VisualElement m_LeftOverlay;
         private VisualElement m_RightOverlay;
+        private VisualElement m_BottomOverlay;
         private DropdownMenu m_DropdownOverlay;
 
         public ScrollableToolbar horizontalToolbar
@@ -68,6 +69,22 @@ namespace UnityEditor.U2D.Layout
                     m_RightOverlay = this.Q<VisualElement>("RightOverlay");
                 return m_RightOverlay;
             }
+        }
+
+        public VisualElement bottomOverlay
+        {
+            get
+            {
+                if (m_BottomOverlay == null)
+                    m_BottomOverlay = this.Q<VisualElement>("BottomOverlay");
+                return m_BottomOverlay;
+            }
+        }
+
+        public void AddBottomOverlayPanel(VisualElement panel)
+        {
+            LayoutOverlayUtility.MakeDraggableOverlayPanel(panel);
+            bottomOverlay.Add(panel);
         }
 
         public void VisibilityWindowOn(bool on)

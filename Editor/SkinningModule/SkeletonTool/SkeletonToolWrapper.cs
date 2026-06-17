@@ -62,6 +62,11 @@ namespace UnityEditor.U2D.Animation
 
             skeletonTool.mode = OverrideMode();
             skeletonTool.editBindPose = editBindPose;
+            bool canClearSelection = skeletonTool.mode != SkeletonMode.CreateBone;
+            skeletonTool.clearSelectionOnEscape = canClearSelection;
+            skeletonTool.clearSelectionOnPrimaryEmptyClick = canClearSelection;
+            skeletonTool.secondaryEmptyControlID = 0;
+            skeletonTool.allowPrimaryEmptyClickFallback = true;
             skeletonTool.DoGUI();
         }
     }

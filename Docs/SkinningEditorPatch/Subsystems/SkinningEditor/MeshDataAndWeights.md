@@ -60,7 +60,15 @@ The Reset and New commands treat a mesh as weighted when any vertex weight has `
 
 In Weight Slider mode, mesh vertices replace the regular cyan/yellow handles with large circular weight pies. The pie diameter is twice the previous regular vertex size. Each enabled weight channel contributes a colored slice using the bound bone's `bindPoseColor`; duplicate channels for the same bone are merged before drawing. Slices are ordered by bone name and then bone index so colors do not flip while weights change. Slice angles use absolute weight share up to `1.0`; any unassigned remainder is black. Vertices with no enabled weight draw as a black circle.
 
-Selected Weight Slider vertices draw at full opacity; unselected vertices draw at 50% opacity. Clicking and dragging from a vertex edits the currently selected bone influences on the selected vertices: dragging up transfers weight from other active channels into the selected bone channels, and dragging down transfers weight from selected bone channels into other active channels. If no selected bone maps to the current mesh influences, or if there is no opposite active channel to receive/give weight, dragging leaves weights unchanged.
+The Weight Slider Vertex Weight list is separate from the internal active channel list. It displays every bone assigned to the current mesh, including bones whose selected-vertex weight is currently zero, while zero-weight channels can still be filtered out internally.
+
+Selected Weight Slider vertices draw at full opacity with a white outline; unselected vertices draw at 50% opacity. Clicking and dragging from a vertex edits the currently selected bone influences on the selected vertices: dragging up transfers weight from other active channels into the selected bone channels, and dragging down transfers weight from selected bone channels into other active channels. If no selected bone maps to the current mesh influences, or if there is no opposite active channel to receive/give weight, dragging leaves weights unchanged.
+
+Weight Slider row swatches can lock a bone's weights. Locked weights are preserved by row edits, drag edits, Smooth, and Prune.
+
+The Weight Slider panel `Smooth` button performs one conservative Laplacian-style pass over vertex weights. It averages each targeted bone's value from immediate edge neighbors, using selected vertices as the target set when present and all vertices otherwise. Two or more selected bones limit which weight channels are averaged; zero or one selected bone means every unlocked mesh bone is included. The pass uses a pre-click weight snapshot for all neighbor reads, weights neighbors by inverse edge length, blends partway from the current value to that neighbor average, then clamps to four channels and normalizes.
+
+The `Prune` button removes small or excess unlocked weights. It previews how many weight channels will be removed, applies a maximum-bones-per-vertex limit, applies a threshold, and redistributes removed unlocked weight to remaining unlocked weights.
 
 ## Weight Loss On Reset/New
 

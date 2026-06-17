@@ -26,7 +26,9 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 8. [ResetGeometry](ResetGeometry.md) when Reset or weight confirmation is involved
 9. [CopyPasteGeometry](CopyPasteGeometry.md) when clipboard workflows are involved
 10. [GenerateGeometryTool](GenerateGeometryTool.md) or [GenerateWeightsTool](GenerateWeightsTool.md) when generated mesh/weights are involved
-11. [VisibilityTool](VisibilityTool.md) when changing the Visibility popup, opacity sliders, or visibility lists
+11. [BoneInfluence](BoneInfluence.md) when changing assigned bone/sprite influence behavior or auto weights after assignment
+12. [WeightPainterTool](WeightPainterTool.md) when changing Weight Slider/Brush mode selection, brush settings, or weight inspector panel behavior
+13. [VisibilityTool](VisibilityTool.md) when changing the Visibility popup, opacity sliders, or visibility lists
 
 ## Entity Pages
 
@@ -45,6 +47,8 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 - [CopyPasteGeometry](CopyPasteGeometry.md)
 - [GenerateGeometryTool](GenerateGeometryTool.md)
 - [GenerateWeightsTool](GenerateWeightsTool.md)
+- [BoneInfluence](BoneInfluence.md)
+- [WeightPainterTool](WeightPainterTool.md)
 - [VisibilityTool](VisibilityTool.md)
 
 ## Current User-Facing Geometry Semantics

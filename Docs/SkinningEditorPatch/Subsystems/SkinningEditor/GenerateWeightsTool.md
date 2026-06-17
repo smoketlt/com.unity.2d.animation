@@ -34,6 +34,10 @@
 - clears weights;
 - updates mesh data and preview state.
 
+## Bone Selection Clearing
+
+Auto Weights enables `SkeletonTool` bone unselection while its panel is active. `Esc` and primary empty click clear selected bones the same way Weight Slider and Weight Brush do. Right-click does not clear selected bones.
+
 ## Dependencies
 
 - `MeshToolWrapper`

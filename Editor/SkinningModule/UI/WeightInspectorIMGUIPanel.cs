@@ -21,11 +21,15 @@ namespace UnityEditor.U2D.Animation
         }
 
         public event Action weightsChanged = () => { };
+        public event Action<int, bool> boneButtonClicked = (boneIndex, additive) => {};
+        public event Action<int> lockButtonClicked = (boneIndex) => {};
 
         public WeightInspectorIMGUIPanel()
         {
             name = "WeightInspectorIMGUIPanel";
             styleSheets.Add(ResourceLoader.Load<StyleSheet>("SkinningModule/WeightInspectorIMGUIPanelStyle.uss"));
+            m_WeightInspector.boneButtonClicked = (boneIndex, additive) => boneButtonClicked(boneIndex, additive);
+            m_WeightInspector.lockButtonClicked = (boneIndex) => lockButtonClicked(boneIndex);
 
             this.Add(new IMGUIContainer(OnGUI));
             this.pickingMode = PickingMode.Ignore;
@@ -40,14 +44,15 @@ namespace UnityEditor.U2D.Animation
             if (weightInspector.selection != null)
                 selectionCount = weightInspector.selection.Count;
 
-            using (new EditorGUI.DisabledGroupScope(m_WeightInspector.spriteMeshData == null || selectionCount == 0))
-            {
+            m_WeightInspector.weightsEditable = m_WeightInspector.spriteMeshData != null && selectionCount > 0;
+
+            using (new EditorGUI.DisabledGroupScope(m_WeightInspector.spriteMeshData == null))
                 GUILayout.Label(new GUIContent(TextContent.vertexWeight, TextContent.vertexWeightToolTip));
-                EditorGUI.BeginChangeCheck();
-                m_WeightInspector.OnInspectorGUI();
-                if (EditorGUI.EndChangeCheck())
-                    weightsChanged();
-            }
+
+            EditorGUI.BeginChangeCheck();
+            m_WeightInspector.OnInspectorGUI();
+            if (EditorGUI.EndChangeCheck())
+                weightsChanged();
         }
     }
 }

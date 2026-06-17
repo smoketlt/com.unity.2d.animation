@@ -32,7 +32,7 @@ namespace UnityEditor.U2D.Animation
             m_GenerateGeometryPanel = GenerateGeometryPanel.GenerateFromUXML();
             m_GenerateGeometryPanel.skinningCache = skinningCache;
 
-            layout.rightOverlay.Add(m_GenerateGeometryPanel);
+            layout.AddBottomOverlayPanel(m_GenerateGeometryPanel);
 
             BindElements();
             Hide();
@@ -291,6 +291,7 @@ namespace UnityEditor.U2D.Animation
 
         private void Hide()
         {
+            LayoutOverlayUtility.ResetDraggableOverlayPanel(m_GenerateGeometryPanel);
             m_GenerateGeometryPanel.SetHiddenFromLayout(true);
         }
 
@@ -355,6 +356,10 @@ namespace UnityEditor.U2D.Animation
 
             if (m_GenerateGeometryPanel.generateWeights)
                 skeletonTool.skeletonStyle = SkeletonStyles.WeightMap;
+
+            clearBoneSelectionOnEscape = true;
+            clearBoneSelectionOnPrimaryEmptyClick = true;
+            useMeshDefaultControlForBoneUnselection = false;
 
             DoSkeletonGUI();
         }

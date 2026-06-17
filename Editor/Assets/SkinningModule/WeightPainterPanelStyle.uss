@@ -7,11 +7,31 @@
 }
 
 #WeightPainterPanel.SliderMode {
-  height: 230px;
+  height: 255px;
 }
 
-#WeightPainterPanel.BrushMode #Amount.form-row {
+#WeightPainterPanel PopupWindow {
+  width: 320px;
+}
+
+#WeightPainterPanel.BrushMode #Amount.form-row,
+#WeightPainterPanel.BrushMode #SmoothButtonRow.form-row {
   display: none;
+}
+
+#SmoothButton,
+#PruneButton {
+    margin-left: 4px;
+    margin-right: 4px;
+}
+
+#SmoothButtonRow {
+    flex-direction: row;
+}
+
+#SmoothButton,
+#PruneButton {
+    width: 126px;
 }
 
 #WeightPainterPanel.SliderMode #Size.form-row,

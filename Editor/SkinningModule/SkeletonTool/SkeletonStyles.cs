@@ -41,15 +41,13 @@ namespace UnityEditor.U2D.Animation
 
         public Color GetOutlineColor(BoneCache bone, bool isSelected, bool isHovered)
         {
-            SkinningCache skinningCache = bone.skinningCache;
-
             if (isSelected)
-                return SelectionOutlineSettings.outlineColor;
+                return Color.white;
 
             if (isHovered)
                 return Handles.preselectionColor;
 
-            return SetAlpha(CalculateOutlineColor(GetBoneColorRaw(bone), VisibilityToolSettings.boneOpacity), GetAlpha(bone), VisibilityToolSettings.boneOpacity);
+            return Color.clear;
         }
 
         public Color GetPreviewOutlineColor(int index)
@@ -95,7 +93,7 @@ namespace UnityEditor.U2D.Animation
 
         protected override Color GetBoneColorRaw(int index)
         {
-            return ModuleUtility.CalculateNiceColor(index, 6);
+            return BoneColorUtility.DefaultCreatedBoneColor;
         }
 
         protected override float GetAlpha(BoneCache bone)
@@ -108,12 +106,12 @@ namespace UnityEditor.U2D.Animation
     {
         protected override Color GetBoneColorRaw(BoneCache bone)
         {
-            return bone.bindPoseColor;
+            return BoneColorUtility.GetWeightMapColor(bone);
         }
 
         protected override Color GetBoneColorRaw(int index)
         {
-            return ModuleUtility.CalculateNiceColor(index, 6);
+            return BoneColorUtility.GetWeightMapColor(index);
         }
 
         protected override float GetAlpha(BoneCache bone)

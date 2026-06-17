@@ -35,6 +35,7 @@
 - optionally subdivides geometry;
 - optionally generates weights;
 - updates mesh preview behavior when weight generation is enabled.
+- clears selected bones with `Esc` or primary empty click while the tool is active.
 
 ## Pipeline
 

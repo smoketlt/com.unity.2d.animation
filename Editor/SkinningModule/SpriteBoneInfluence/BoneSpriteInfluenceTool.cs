@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor.U2D.Layout;
+using UnityEngine.UIElements;
 
 namespace UnityEditor.U2D.Animation
 {
@@ -95,6 +96,8 @@ namespace UnityEditor.U2D.Animation
 
         void ShowHideView(bool show)
         {
+            if (!show)
+                LayoutOverlayUtility.ResetDraggableOverlayPanel((VisualElement)m_Model.view);
             m_Model.view.SetHiddenFromLayout(!show);
             if (show)
             {
@@ -145,6 +148,9 @@ namespace UnityEditor.U2D.Animation
             {
                 characterPart.bones = characterBones.ToArray();
                 m_Events.characterPartChanged.Invoke(characterPart);
+
+                m_Model.selectedSprite.CalculateMissingWeights();
+                m_Events.meshChanged.Invoke(m_Model.selectedSprite.GetMesh());
 
                 UpdateSelectedBonesInfluencedSprites();
                 m_Model.view.UpdateList(m_Model.influencedSprites);
@@ -330,7 +336,7 @@ namespace UnityEditor.U2D.Animation
                 m_Controller.OnViewCreated();
             }
 
-            layout.rightOverlay.Add(m_View);
+            layout.AddBottomOverlayPanel(m_View);
         }
 
         protected override void OnGUI()
@@ -342,6 +348,10 @@ namespace UnityEditor.U2D.Animation
             skeletonTool.skeletonStyle = SkeletonStyles.WeightMap;
             skeletonTool.mode = SkeletonMode.EditPose;
             skeletonTool.editBindPose = false;
+            skeletonTool.clearSelectionOnEscape = true;
+            skeletonTool.clearSelectionOnPrimaryEmptyClick = true;
+            skeletonTool.secondaryEmptyControlID = 0;
+            skeletonTool.allowPrimaryEmptyClickFallback = true;
             skeletonTool.DoGUI();
         }
     }

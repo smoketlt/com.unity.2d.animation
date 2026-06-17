@@ -578,6 +578,124 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
+        public void GetMultiEditBoneWeightData(ISelection<int> selection, int boneIndex, out float weight, out bool isWeightMixed)
+        {
+            Debug.Assert(spriteMeshData != null);
+
+            if (selection == null)
+                throw new ArgumentNullException("selection is null");
+
+            bool first = true;
+            weight = 0f;
+            isWeightMixed = false;
+
+            int[] indices = selection.elements;
+
+            foreach (int i in indices)
+            {
+                EditableBoneWeight editableBoneWeight = spriteMeshData.vertexWeights[i];
+                float boneWeight = GetBoneWeight(editableBoneWeight, boneIndex);
+
+                if (first)
+                {
+                    weight = boneWeight;
+                    first = false;
+                }
+                else if (Mathf.Abs(weight - boneWeight) > Mathf.Epsilon)
+                {
+                    isWeightMixed = true;
+                    weight = 0f;
+                }
+            }
+        }
+
+        public void SetMultiEditBoneWeightData(ISelection<int> selection, int boneIndex, float oldWeight, float newWeight)
+        {
+            Debug.Assert(spriteMeshData != null);
+
+            if (selection == null)
+                throw new ArgumentNullException("selection is null");
+
+            bool weightChanged = Mathf.Abs(oldWeight - newWeight) > Mathf.Epsilon;
+            if (!weightChanged)
+                return;
+
+            int[] indices = selection.elements;
+
+            foreach (int i in indices)
+                SetBoneWeight(spriteMeshData.vertexWeights[i], boneIndex, newWeight, spriteMeshData.boneCount);
+        }
+
+        static float GetBoneWeight(EditableBoneWeight editableBoneWeight, int boneIndex)
+        {
+            float weight = 0f;
+
+            for (int i = 0; i < editableBoneWeight.Count; ++i)
+            {
+                BoneWeightChannel channel = editableBoneWeight[i];
+                if (channel.enabled && channel.boneIndex == boneIndex)
+                    weight += channel.weight;
+            }
+
+            return weight;
+        }
+
+        static void SetBoneWeight(EditableBoneWeight editableBoneWeight, int boneIndex, float newWeight, int boneCount)
+        {
+            if (boneIndex < 0 || boneIndex >= boneCount)
+                return;
+
+            newWeight = Mathf.Clamp01(newWeight);
+
+            float[] weights = new float[boneCount];
+            for (int i = 0; i < editableBoneWeight.Count; ++i)
+            {
+                BoneWeightChannel channel = editableBoneWeight[i];
+                if (channel.enabled && channel.boneIndex >= 0 && channel.boneIndex < boneCount)
+                    weights[channel.boneIndex] += channel.weight;
+            }
+
+            weights[boneIndex] = newWeight;
+
+            float remainingWeight = 1f - newWeight;
+            float otherWeightSum = 0f;
+            int otherBoneCount = 0;
+
+            for (int i = 0; i < boneCount; ++i)
+            {
+                if (i == boneIndex)
+                    continue;
+
+                otherWeightSum += weights[i];
+                ++otherBoneCount;
+            }
+
+            for (int i = 0; i < boneCount; ++i)
+            {
+                if (i == boneIndex)
+                    continue;
+
+                if (otherBoneCount == 0)
+                    weights[i] = 0f;
+                else if (otherWeightSum > 0f)
+                    weights[i] = remainingWeight * weights[i] / otherWeightSum;
+                else
+                    weights[i] = remainingWeight / otherBoneCount;
+            }
+
+            editableBoneWeight.Clear();
+            for (int i = 0; i < boneCount; ++i)
+            {
+                if (weights[i] > 0f)
+                    editableBoneWeight.AddChannel(i, weights[i], true);
+            }
+
+            editableBoneWeight.UnifyChannelsWithSameBoneIndex();
+            editableBoneWeight.Clamp(4);
+            editableBoneWeight.Normalize();
+            editableBoneWeight.FilterChannels(0f);
+        }
+
         public void GetControlPoints(out float2[] points, out int2[] edges, out int[] pins)
         {
             Debug.Assert(spriteMeshData != null);

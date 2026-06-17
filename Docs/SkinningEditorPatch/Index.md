@@ -16,7 +16,10 @@
 | Copy/paste, mirrored paste, selected-vertex paste | [Subsystems/SkinningEditor/CopyPasteGeometry](Subsystems/SkinningEditor/CopyPasteGeometry.md) | `Editor/SkinningModule/CopyTool.cs` |
 | Auto geometry generation | [Subsystems/SkinningEditor/GenerateGeometryTool](Subsystems/SkinningEditor/GenerateGeometryTool.md) | `Editor/SkinningModule/GenerateGeometryTool.cs` |
 | Weight generation/normalization/clearing | [Subsystems/SkinningEditor/GenerateWeightsTool](Subsystems/SkinningEditor/GenerateWeightsTool.md) | `Editor/SkinningModule/GenerateWeightsTool.cs` |
+| Bone Influence/Sprite Influence assignment and auto weights | [Subsystems/SkinningEditor/BoneInfluence](Subsystems/SkinningEditor/BoneInfluence.md) | `Editor/SkinningModule/SpriteBoneInfluence/**`, `Editor/SkinningModule/SkinningCache/SpriteCacheExtensions.cs` |
+| Weight Slider/Brush modes and painter panel | [Subsystems/SkinningEditor/WeightPainterTool](Subsystems/SkinningEditor/WeightPainterTool.md) | `Editor/SkinningModule/WeightPainterTool.cs`, `Editor/SkinningModule/UI/WeightPainterPanel.cs` |
 | Visibility window, opacity sliders, bone/sprite visibility lists | [Subsystems/SkinningEditor/VisibilityTool](Subsystems/SkinningEditor/VisibilityTool.md) | `Editor/SkinningModule/VisibilityTool/**`, `Editor/Assets/SkinningModule/VisibilityToolWindow.uxml` |
+| Skinning panel placement and draggable bottom overlays | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/LayoutOverlay/**`, `Editor/Assets/LayoutOverlay/**` |
 | UXML/USS resources | [Resources/SkinningModuleAssets](Resources/SkinningModuleAssets.md) | `Editor/Assets/SkinningModule/**` |
 | Regression sweep before push | [QualityAuditPlaybook](QualityAuditPlaybook.md) | diff, Unity compile, local Unity test project |
 
@@ -39,8 +42,11 @@
 | `CopyTool` | Copy/paste data workflows including mirrored geometry paste | `Editor/SkinningModule/CopyTool.cs` |
 | `GenerateGeometryTool` | Auto outline/triangulation/weight generation flow | `Editor/SkinningModule/GenerateGeometryTool.cs` |
 | `GenerateWeightsTool` | Weight generation, normalization, and clearing panel | `Editor/SkinningModule/GenerateWeightsTool.cs` |
+| `SpriteBoneInfluenceTool` / `BoneSpriteInfluenceTool` | Assigned bone/sprite influence list tools and auto missing-weight fill after assignment | `Editor/SkinningModule/SpriteBoneInfluence/**` |
+| `WeightPainterTool` | Weight Slider/Brush editing, mode popup, brush settings, weight inspector panel | `Editor/SkinningModule/WeightPainterTool.cs`, `Editor/SkinningModule/UI/WeightPainterPanel.cs` |
 | `SkinningEditorInput` | Fork-specific shared modifier-key status for Skinning Editor tools | `Editor/SkinningModule/IMGUI/SkinningEditorInput.cs` |
 | `VisibilityTool` | Visibility popup window, tab state, and opacity slider preview behavior | `Editor/SkinningModule/VisibilityTool/VisibilityTool.cs` |
+| `LayoutOverlay` | Shared toolbar and overlay host, including the Skinning bottom draggable panel area | `Editor/LayoutOverlay/LayoutOverlay.cs`, `Editor/Assets/LayoutOverlay/LayoutOverlay.uxml` |
 
 ## Current Fork Behavior
 
@@ -55,7 +61,9 @@
 - `Alt` temporarily swaps `Modify` and `Create` using shared `SkinningEditorInput.altKeyDown`.
 - In `Create`, dragging from a vertex creates an edge and returns to `Create` after mouse up.
 - Vertex handles are larger than upstream and have a larger hit radius.
-- `Esc`, right-click, and primary empty click clear geometry selection where configured.
+- `Esc` and primary empty click clear geometry selection where configured; right-click does not clear vertices.
+- In Preview Pose and Bone toolbar modes other than `Create Bone`, `Esc` and primary empty click clear selected bones.
+- In all Weight toolbar modes, `Esc` and primary empty click clear selected bones; right-click does not clear bones.
 - Copy/paste supports mirrored paste and selected-vertex mirrored placement workflows.
 
 ## How To Search

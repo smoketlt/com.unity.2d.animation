@@ -28,7 +28,7 @@ namespace UnityEditor.U2D.Animation
 
         public void Initialize(LayoutOverlay layout)
         {
-            layout.rightOverlay.Add(m_BoneInspectorPanel);
+            layout.AddBottomOverlayPanel(m_BoneInspectorPanel);
         }
 
         public void Show(BoneCache target, bool isReadOnly)
@@ -47,6 +47,7 @@ namespace UnityEditor.U2D.Animation
 
         public void Hide()
         {
+            LayoutOverlayUtility.ResetDraggableOverlayPanel(m_BoneInspectorPanel);
             m_BoneInspectorPanel.HidePanel();
             m_BoneInspectorPanel.target = null;
         }

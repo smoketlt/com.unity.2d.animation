@@ -768,6 +768,7 @@ namespace UnityEditor.U2D.Animation
 
         public void Hide()
         {
+            LayoutOverlayUtility.ResetDraggableOverlayPanel(m_PastePanel);
             m_PastePanel.SetHiddenFromLayout(true);
         }
 
@@ -775,7 +776,7 @@ namespace UnityEditor.U2D.Animation
         {
             m_PastePanel = PastePanel.GenerateFromUXML();
             BindElements();
-            layoutOverlay.rightOverlay.Add(m_PastePanel);
+            layoutOverlay.AddBottomOverlayPanel(m_PastePanel);
             m_PastePanel.SetHiddenFromLayout(true);
         }
 

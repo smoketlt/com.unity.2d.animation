@@ -22,6 +22,7 @@ namespace UnityEditor.U2D.Animation
         public ICacheUndo cacheUndo { get; set; }
         public WeightEditorMode mode { get; set; }
         public int boneIndex { get; set; }
+        public int[] lockedBoneIndices { get; set; }
         public ISelection<int> selection { get; set; }
         public bool emptySelectionEditsAll { get; set; }
         public bool autoNormalize { get; set; }
@@ -102,7 +103,7 @@ namespace UnityEditor.U2D.Animation
 
         void SetWeight(float value, bool createNewChannel = true)
         {
-            if (boneIndex == -1 || spriteMeshData == null)
+            if (boneIndex == -1 || spriteMeshData == null || IsBoneLocked(boneIndex))
                 return;
 
             Debug.Assert(selection != null);
@@ -131,7 +132,7 @@ namespace UnityEditor.U2D.Animation
                     editableBoneWeight[channel].weight += value;
 
                     if (editableBoneWeight.Sum() > 1f)
-                        editableBoneWeight.CompensateOtherChannels(channel);
+                        CompensateOtherChannelsRespectingLocks(editableBoneWeight, channel);
 
                     editableBoneWeight.FilterChannels(0f);
                 }
@@ -160,9 +161,124 @@ namespace UnityEditor.U2D.Animation
                     BoneWeight[] smoothedBoneWeightsCeil = GetSmoothedBoneWeights(lerpIndex);
 
                     BoneWeight boneWeight = EditableBoneWeightUtility.Lerp(smoothedBoneWeightsFloor[i], smoothedBoneWeightsCeil[i], lerpValue);
-                    spriteMeshData.vertexWeights[i].SetFromBoneWeight(boneWeight);
+                    EditableBoneWeight editableBoneWeight = spriteMeshData.vertexWeights[i];
+                    BoneWeight lockedSourceWeight = m_StoredBoneWeights.Count == spriteMeshData.vertexCount ? m_StoredBoneWeights[i] : editableBoneWeight.ToBoneWeight(false);
+                    editableBoneWeight.SetFromBoneWeight(boneWeight);
+                    RestoreLockedWeights(editableBoneWeight, lockedSourceWeight);
                 }
             }
+        }
+
+        private void CompensateOtherChannelsRespectingLocks(EditableBoneWeight editableBoneWeight, int masterChannel)
+        {
+            editableBoneWeight.ValidateChannels();
+
+            float lockedWeight = 0f;
+            int validChannelCount = 0;
+            float sum = 0f;
+
+            for (int i = 0; i < editableBoneWeight.Count; ++i)
+            {
+                if (!editableBoneWeight[i].enabled)
+                    continue;
+
+                if (i != masterChannel && IsBoneLocked(editableBoneWeight[i].boneIndex))
+                {
+                    lockedWeight += editableBoneWeight[i].weight;
+                    continue;
+                }
+
+                if (i != masterChannel)
+                {
+                    sum += editableBoneWeight[i].weight;
+                    ++validChannelCount;
+                }
+            }
+
+            editableBoneWeight[masterChannel].weight = Mathf.Min(editableBoneWeight[masterChannel].weight, Mathf.Max(0f, 1f - lockedWeight));
+            float targetSum = 1f - lockedWeight - editableBoneWeight[masterChannel].weight;
+
+            for (int i = 0; i < editableBoneWeight.Count; ++i)
+            {
+                if (i == masterChannel || !editableBoneWeight[i].enabled || IsBoneLocked(editableBoneWeight[i].boneIndex))
+                    continue;
+
+                if (validChannelCount == 0)
+                    editableBoneWeight[i].weight = 0f;
+                else if (sum > 0f)
+                    editableBoneWeight[i].weight *= targetSum / sum;
+                else
+                    editableBoneWeight[i].weight = targetSum / validChannelCount;
+            }
+        }
+
+        private void RestoreLockedWeights(EditableBoneWeight editableBoneWeight, BoneWeight lockedSourceWeight)
+        {
+            if (lockedBoneIndices == null || lockedBoneIndices.Length == 0)
+                return;
+
+            float[] weights = new float[boneCount];
+            for (int i = 0; i < editableBoneWeight.Count; ++i)
+            {
+                BoneWeightChannel channel = editableBoneWeight[i];
+                if (channel.enabled && channel.boneIndex >= 0 && channel.boneIndex < boneCount)
+                    weights[channel.boneIndex] += channel.weight;
+            }
+
+            float lockedWeight = 0f;
+            for (int i = 0; i < lockedBoneIndices.Length; ++i)
+            {
+                int lockedBoneIndex = lockedBoneIndices[i];
+                if (lockedBoneIndex < 0 || lockedBoneIndex >= boneCount)
+                    continue;
+
+                weights[lockedBoneIndex] = GetBoneWeight(lockedSourceWeight, lockedBoneIndex);
+                lockedWeight += weights[lockedBoneIndex];
+            }
+
+            float unlockedWeight = 0f;
+            for (int i = 0; i < boneCount; ++i)
+                if (!IsBoneLocked(i))
+                    unlockedWeight += weights[i];
+
+            float unlockedTargetWeight = Mathf.Max(0f, 1f - lockedWeight);
+            if (unlockedWeight > 0f)
+            {
+                for (int i = 0; i < boneCount; ++i)
+                    if (!IsBoneLocked(i))
+                        weights[i] *= unlockedTargetWeight / unlockedWeight;
+            }
+
+            editableBoneWeight.Clear();
+            for (int i = 0; i < weights.Length; ++i)
+                if (weights[i] > 0f)
+                    editableBoneWeight.AddChannel(i, weights[i], true);
+
+            editableBoneWeight.UnifyChannelsWithSameBoneIndex();
+            editableBoneWeight.Clamp(4);
+            editableBoneWeight.FilterChannels(0f);
+        }
+
+        private static float GetBoneWeight(BoneWeight boneWeight, int boneIndex)
+        {
+            float weight = 0f;
+            for (int i = 0; i < 4; ++i)
+                if (boneWeight.GetWeight(i) > 0f && boneWeight.GetBoneIndex(i) == boneIndex)
+                    weight += boneWeight.GetWeight(i);
+
+            return weight;
+        }
+
+        private bool IsBoneLocked(int boneIndex)
+        {
+            if (lockedBoneIndices == null)
+                return false;
+
+            for (int i = 0; i < lockedBoneIndices.Length; ++i)
+                if (lockedBoneIndices[i] == boneIndex)
+                    return true;
+
+            return false;
         }
 
         void PrepareSmoothingBuffers()

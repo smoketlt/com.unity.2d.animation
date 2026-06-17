@@ -291,7 +291,7 @@ namespace UnityEditor.U2D.Animation
                     float weight = boneWeight.GetWeight(j);
 
                     if (boneIndex >= 0 && boneIndex < bones.Length)
-                        color += bones[boneIndex].bindPoseColor * weight;
+                        color += BoneColorUtility.GetWeightMapColor(bones[boneIndex]) * weight;
 
                     weightSum += weight;
                 }

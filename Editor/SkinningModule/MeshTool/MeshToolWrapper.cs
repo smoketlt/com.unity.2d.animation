@@ -11,6 +11,9 @@ namespace UnityEditor.U2D.Animation
         private bool m_Disable = false;
         private bool m_DrawVertexWeights = false;
         private SkeletonMode m_SkeletonMode;
+        private bool m_ClearBoneSelectionOnEscape;
+        private bool m_ClearBoneSelectionOnPrimaryEmptyClick;
+        private bool m_UseMeshDefaultControlForBoneUnselection = true;
         protected MeshPreviewBehaviour m_MeshPreviewBehaviour = new MeshPreviewBehaviour();
 
         public MeshTool meshTool
@@ -41,6 +44,24 @@ namespace UnityEditor.U2D.Animation
         {
             get { return m_DrawVertexWeights; }
             set { m_DrawVertexWeights = value; }
+        }
+
+        protected bool clearBoneSelectionOnEscape
+        {
+            get { return m_ClearBoneSelectionOnEscape; }
+            set { m_ClearBoneSelectionOnEscape = value; }
+        }
+
+        protected bool clearBoneSelectionOnPrimaryEmptyClick
+        {
+            get { return m_ClearBoneSelectionOnPrimaryEmptyClick; }
+            set { m_ClearBoneSelectionOnPrimaryEmptyClick = value; }
+        }
+
+        protected bool useMeshDefaultControlForBoneUnselection
+        {
+            get { return m_UseMeshDefaultControlForBoneUnselection; }
+            set { m_UseMeshDefaultControlForBoneUnselection = value; }
         }
 
         public SkeletonMode skeletonMode
@@ -95,6 +116,10 @@ namespace UnityEditor.U2D.Animation
 
             skeletonTool.mode = skeletonMode;
             skeletonTool.editBindPose = false;
+            skeletonTool.clearSelectionOnEscape = clearBoneSelectionOnEscape;
+            skeletonTool.clearSelectionOnPrimaryEmptyClick = clearBoneSelectionOnPrimaryEmptyClick;
+            skeletonTool.secondaryEmptyControlID = useMeshDefaultControlForBoneUnselection && meshTool != null ? meshTool.defaultControlID : 0;
+            skeletonTool.allowPrimaryEmptyClickFallback = !useMeshDefaultControlForBoneUnselection;
             skeletonTool.DoGUI();
         }
 

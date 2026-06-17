@@ -36,6 +36,30 @@ namespace UnityEditor.U2D.Animation
 
         public BoneCache hoveredBone => m_SkeletonController.hoveredBone;
 
+        public bool clearSelectionOnEscape
+        {
+            get => m_UnselectTool.clearOnEscape;
+            set => m_UnselectTool.clearOnEscape = value;
+        }
+
+        public bool clearSelectionOnPrimaryEmptyClick
+        {
+            get => m_UnselectTool.clearOnPrimaryEmptyClick;
+            set => m_UnselectTool.clearOnPrimaryEmptyClick = value;
+        }
+
+        public int secondaryEmptyControlID
+        {
+            get => m_UnselectTool.secondaryEmptyControlID;
+            set => m_UnselectTool.secondaryEmptyControlID = value;
+        }
+
+        public bool allowPrimaryEmptyClickFallback
+        {
+            get => m_UnselectTool.allowPrimaryEmptyClickFallback;
+            set => m_UnselectTool.allowPrimaryEmptyClickFallback = value;
+        }
+
         public SkeletonCache skeleton
         {
             get => m_SkeletonController.skeleton;
@@ -67,6 +91,7 @@ namespace UnityEditor.U2D.Animation
             {
                 skinningCache.events.boneSelectionChanged.Invoke();
             };
+            m_UnselectTool.isPrimaryEmptyClickCandidate = IsPrimaryEmptyClickCandidate;
         }
 
         public override void Initialize(LayoutOverlay layout)
@@ -86,6 +111,10 @@ namespace UnityEditor.U2D.Animation
             skinningCache.events.boneNameChanged.AddListener(BoneDataChanged);
             skinningCache.events.boneColorChanged.AddListener(BoneDataChanged);
             skeletonStyle = null;
+            clearSelectionOnEscape = false;
+            clearSelectionOnPrimaryEmptyClick = false;
+            secondaryEmptyControlID = 0;
+            allowPrimaryEmptyClickFallback = true;
         }
 
         protected override void OnDeactivate()
@@ -159,12 +188,27 @@ namespace UnityEditor.U2D.Animation
 
             if (skeleton != null && mode != SkeletonMode.Disabled)
             {
+                m_UnselectTool.emptyControlID = m_RectSelectionTool.controlID;
+                m_UnselectTool.OnGUI();
                 m_RectSelectionTool.OnGUI();
                 m_SkeletonController.view.defaultControlID = m_RectSelectionTool.controlID;
+                m_UnselectTool.emptyControlID = m_RectSelectionTool.controlID;
+            }
+            else
+            {
+                m_UnselectTool.emptyControlID = 0;
+                m_UnselectTool.OnGUI();
             }
 
             m_SkeletonController.OnGUI();
-            m_UnselectTool.OnGUI();
+        }
+
+        bool IsPrimaryEmptyClickCandidate()
+        {
+            return !skinningCache.IsOnVisualElement() &&
+                mode != SkeletonMode.CreateBone &&
+                m_SkeletonController.hoveredBone == null &&
+                GUIUtility.hotControl == 0;
         }
 
         void BoneColorChanged(BoneCache selectedBone, Color32 color)

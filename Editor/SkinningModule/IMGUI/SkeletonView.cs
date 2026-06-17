@@ -22,7 +22,6 @@ namespace UnityEditor.U2D.Animation
         public int hoveredBodyID => m_HoveredBodyID;
         public int hoveredTailID => m_HoveredTailID;
         public int hotBoneID => m_HotBoneID;
-
         IGUIWrapper m_GUIWrapper;
         int m_RotateControlID = -1;
         int m_MoveControlID = -1;
@@ -171,7 +170,7 @@ namespace UnityEditor.U2D.Animation
                     IsCapable(SkeletonAction.MoveEndPosition) ||
                     IsCapable(SkeletonAction.CreateBone)))
             {
-                float distance = m_GUIWrapper.DistanceToCircle(endPosition, GetBoneRadiusForPicking(endPosition));
+                float distance = m_GUIWrapper.DistanceToCircle(endPosition, GetBoneRadiusForPicking(endPosition) * 2f);
 
                 if (distance <= m_NearestDistance)
                 {
@@ -552,47 +551,24 @@ namespace UnityEditor.U2D.Animation
         public void DrawBone(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, bool isChained, bool isSelected, bool isJointHovered, bool isTailHovered, bool isHot)
         {
             Vector3 endPosition = position + right * length;
-            Quaternion rotation = Quaternion.LookRotation(forward, Vector3.Cross(right, forward));
             Color boneJointColor = color;
-            Color tailColor = color;
+            Color endCapColor = color;
             Color hoveredColor = Handles.preselectionColor;
             Color selectedColor = Handles.selectedColor;
-            bool drawRectCap = false;
 
             if (isJointHovered)
                 boneJointColor = hoveredColor;
             if (isHot && (IsActionHot(SkeletonAction.MoveBone) || IsActionHot(SkeletonAction.MoveJoint)))
                 boneJointColor = selectedColor;
 
-            if (mode == SkeletonMode.EditPose || mode == SkeletonMode.CreateBone)
-            {
-                if (isJointHovered || isSelected)
-                    drawRectCap = true;
-            }
-            else if (mode == SkeletonMode.EditJoints || mode == SkeletonMode.SplitBone)
-            {
-                rotation = Quaternion.identity;
-                drawRectCap = true;
-            }
+            if (isTailHovered)
+                endCapColor = hoveredColor;
+            if (isHot && (IsActionHot(SkeletonAction.ChangeLength) || IsActionHot(SkeletonAction.MoveEndPosition)))
+                endCapColor = selectedColor;
 
-            if (drawRectCap)
-                Handles.RectangleHandleCap(0, position, rotation, BoneDrawingUtility.GetBoneRadius(position), EventType.Repaint);
-
-            BoneDrawingUtility.DrawBone(position, endPosition, forward, color);
+            BoneDrawingUtility.DrawBone(position, endPosition, forward, color, endCapColor);
             BoneDrawingUtility.DrawBoneNode(position, forward, boneJointColor);
 
-            if (!isChained &&
-                (IsCapable(SkeletonAction.ChangeLength) ||
-                    IsCapable(SkeletonAction.MoveEndPosition)))
-            {
-                if (isTailHovered)
-                    tailColor = hoveredColor;
-
-                if (isHot && (IsActionHot(SkeletonAction.ChangeLength) || IsActionHot(SkeletonAction.MoveEndPosition)))
-                    tailColor = selectedColor;
-
-                BoneDrawingUtility.DrawBoneNode(endPosition, forward, tailColor);
-            }
         }
 
         public void DrawBoneParentLink(Vector3 parentPosition, Vector3 position, Vector3 forward, Color color)
@@ -613,11 +589,19 @@ namespace UnityEditor.U2D.Animation
             if ((canBeActive && IsActionActive(SkeletonAction.RotateBone)) || isRotateHot)
                 EditorGUIUtility.AddCursorRect(mouseScreenRect, MouseCursor.RotateArrow);
 
-            if ((canBeActive && IsActionActive(SkeletonAction.MoveBone)) || IsActionHot(SkeletonAction.MoveBone) ||
-                (canBeActive && IsActionActive(SkeletonAction.FreeMoveBone)) || IsActionHot(SkeletonAction.FreeMoveBone) ||
-                (canBeActive && IsActionActive(SkeletonAction.MoveJoint)) || IsActionHot(SkeletonAction.MoveJoint) ||
-                (canBeActive && IsActionActive(SkeletonAction.MoveEndPosition)) || IsActionHot(SkeletonAction.MoveEndPosition))
+            if ((canBeActive && IsActionActive(SkeletonAction.FreeMoveBone)) ||
+                IsActionHot(SkeletonAction.FreeMoveBone))
                 EditorGUIUtility.AddCursorRect(mouseScreenRect, MouseCursor.MoveArrow);
+
+            if ((canBeActive && (IsActionActive(SkeletonAction.MoveBone) ||
+                    IsActionActive(SkeletonAction.MoveJoint) ||
+                    IsActionActive(SkeletonAction.ChangeLength) ||
+                    IsActionActive(SkeletonAction.MoveEndPosition))) ||
+                IsActionHot(SkeletonAction.MoveBone) ||
+                IsActionHot(SkeletonAction.MoveJoint) ||
+                IsActionHot(SkeletonAction.ChangeLength) ||
+                IsActionHot(SkeletonAction.MoveEndPosition))
+                EditorGUIUtility.AddCursorRect(mouseScreenRect, MouseCursor.ScaleArrow);
         }
 
         void ConsumeMouseMoveEvents()

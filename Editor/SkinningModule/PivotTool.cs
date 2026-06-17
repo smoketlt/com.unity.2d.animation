@@ -75,7 +75,7 @@ namespace UnityEditor.U2D.Animation
         {
             base.Initialize(layout);
             m_InspectorPanel = PivotInspectorPanel.CreateFromUxml();
-            layout.rightOverlay.Add(m_InspectorPanel);
+            layout.AddBottomOverlayPanel(m_InspectorPanel);
             m_InspectorPanel.SetHiddenFromLayout(true);
             m_InspectorPanel.pivotAlignment.RegisterValueChangedCallback(PivotAlignmentValueChange);
             m_InspectorPanel.pivotPosition.RegisterValueChangedCallback(PivotPositionValueChange);
@@ -150,6 +150,7 @@ namespace UnityEditor.U2D.Animation
             if (skinningCache.hasCharacter)
             {
                 base.OnDeactivate();
+                LayoutOverlayUtility.ResetDraggableOverlayPanel(m_InspectorPanel);
                 m_InspectorPanel.SetHiddenFromLayout(true);
 
                 skinningCache.selectionTool.CanSelect -= CanSelectWhileInPivotTool;

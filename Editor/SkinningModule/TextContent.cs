@@ -162,6 +162,10 @@ namespace UnityEditor.U2D.Animation
         public static string noSpriteSelected = L10n.Tr("No sprite selected");
         public static string weightSlider = L10n.Tr("Weight Slider");
         public static string weightBrush = L10n.Tr("Weight Brush");
+        public static string smoothWeights = L10n.Tr("Smooth");
+        public static string smoothWeightsTooltip = L10n.Tr("Smooth weights using neighboring vertices");
+        public static string pruneWeights = L10n.Tr("Prune");
+        public static string pruneWeightsTooltip = L10n.Tr("Remove small and excess weights");
         public static string generateAll = L10n.Tr("Generate All");
         public static string generate = L10n.Tr("Generate");
         public static string mode = L10n.Tr("Mode");

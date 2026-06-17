@@ -30,6 +30,34 @@ namespace UnityEditor.U2D.Layout
 
             return button;
         }
+
+        public static void MakeDraggableOverlayPanel(VisualElement panel)
+        {
+            if (panel.Q<VisualElement>("OverlayDragHandle") != null)
+                return;
+
+            panel.AddToClassList("DraggableOverlayPanel");
+
+            VisualElement handle = new VisualElement
+            {
+                name = "OverlayDragHandle",
+                pickingMode = PickingMode.Position
+            };
+            handle.AddToClassList("OverlayDragHandle");
+            handle.AddManipulator(new OverlayPanelDragger(panel));
+            panel.Add(handle);
+        }
+
+        public static void ResetDraggableOverlayPanel(VisualElement panel)
+        {
+            panel.style.position = Position.Relative;
+            panel.style.left = StyleKeyword.Auto;
+            panel.style.top = StyleKeyword.Auto;
+            panel.style.right = StyleKeyword.Auto;
+            panel.style.bottom = StyleKeyword.Auto;
+            panel.style.width = StyleKeyword.Auto;
+            panel.style.height = StyleKeyword.Auto;
+        }
     }
 
 }
