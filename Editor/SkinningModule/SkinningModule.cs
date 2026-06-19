@@ -75,6 +75,9 @@ namespace UnityEditor.U2D.Animation
                     m_AnimationPreviewPanel,
                     spriteEditorDataProvider.pixelsPerUnit,
                     spriteEditor.RequestRepaint);
+                ConnectConstraintAnimationPreview(Tools.ConstraintsPosition);
+                ConnectConstraintAnimationPreview(Tools.ConstraintsRotation);
+                ConnectConstraintAnimationPreview(Tools.ConstraintsScale);
 
                 m_SpriteOutlineRenderer = new SpriteOutlineRenderer(skinningCache.events);
 
@@ -355,6 +358,16 @@ namespace UnityEditor.U2D.Animation
 
             if (SkinningModuleSettings.compactToolBar != m_CollapseToolbar)
                 UpdateCollapseToolbar();
+        }
+
+        void ConnectConstraintAnimationPreview(Tools toolType)
+        {
+            ConstraintsTool tool = skinningCache.GetTool(toolType) as ConstraintsTool;
+            if (tool == null)
+                return;
+
+            tool.stopAnimationPreview = m_AnimationPreviewController.StopForConstraintSetChange;
+            tool.resumeAnimationPreview = m_AnimationPreviewController.ResumeAfterConstraintSetChange;
         }
 
         void DisableBaseSpriteEditorAltNavigation()

@@ -468,6 +468,19 @@ namespace UnityEditor.U2D.Animation
             UpdatePanel();
         }
 
+        internal bool StopForConstraintSetChange()
+        {
+            bool wasPlaying = m_IsPlaying;
+            StopAndRestore();
+            return wasPlaying;
+        }
+
+        internal void ResumeAfterConstraintSetChange(bool wasPlaying)
+        {
+            if (wasPlaying)
+                TogglePlayback();
+        }
+
         void RestoreSnapshots(bool notify)
         {
             if (m_Skeleton == null || m_Snapshots.Count == 0)

@@ -27,6 +27,8 @@ namespace UnityEditor.U2D.Animation
         SkinningMode m_BoundMode;
 
         public RuntimeConstraintType constraintType { get; set; }
+        public Func<bool> stopAnimationPreview { get; set; }
+        public Action<bool> resumeAnimationPreview { get; set; }
 
         public override void Initialize(LayoutOverlay layout)
         {
@@ -171,9 +173,17 @@ namespace UnityEditor.U2D.Animation
 
         void OnConstraintSetChanged()
         {
-            s_ActiveConstraintSet = m_Panel.constraintSet;
-            EnsureConstraintParentBones();
-            BecomePreviewOwner();
+            bool resumeAnimation = stopAnimationPreview != null && stopAnimationPreview();
+            try
+            {
+                s_ActiveConstraintSet = m_Panel.constraintSet;
+                EnsureConstraintParentBones();
+                BecomePreviewOwner();
+            }
+            finally
+            {
+                resumeAnimationPreview?.Invoke(resumeAnimation);
+            }
         }
 
         void PickSourceBone()

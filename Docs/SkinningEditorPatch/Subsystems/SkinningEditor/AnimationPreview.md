@@ -49,6 +49,7 @@ AnimationClip positions are stored in Unity units, while Skinning Editor bone po
 - `Pause` keeps the sampled pose visible.
 - `Stop`, clip replacement, Sprite selection changes, Skinning mode changes, and module deactivation restore the pose captured before preview began.
 - Skeleton topology changes rebind the selected clip against the current bones.
+- Assigning a Constraints set performs the existing Stop-and-restore operation before the set is processed, then resumes Play only if playback was previously running. This intentionally mirrors manually clicking `Stop`, selecting the set, and clicking `Play`.
 
 ## Current Scope
 
