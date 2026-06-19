@@ -73,7 +73,14 @@ namespace UnityEditor.U2D.Animation
 
         public void SetCompatibleBoneSet(BoneCache[] boneCache)
         {
-            m_Bones = new List<BoneCache>(boneCache);
+            m_Bones = new List<BoneCache>();
+            foreach (BoneCache bone in boneCache)
+            {
+                if (bone == null || bone.IsConstraintParent())
+                    continue;
+
+                m_Bones.Add(bone);
+            }
         }
 
         void SetBones(BoneCache[] boneCache)

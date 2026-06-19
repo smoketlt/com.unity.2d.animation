@@ -122,6 +122,7 @@ namespace UnityEditor.U2D.Animation
         public const string Visibility = "Visibility: toggle bone and sprite visibility, adjust opacity, and focus the scene while editing.";
         public const string Pivot = "Pivot: adjust the character pivot with the handle or numeric fields.";
         public const string ReparentBone = "Reparent Bones: drag bones in the hierarchy to change parents; rename or adjust visibility from the same list.";
+        public const string Constraints = "Constraints: create or assign a constraint set, choose source and driven bones, then add Position, Rotation, or Scale constraints for runtime use.";
 
         public static string ForMeshMode(SpriteMeshViewMode mode)
         {

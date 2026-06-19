@@ -55,7 +55,9 @@ namespace UnityEditor.U2D.Animation
         public static string addSpriteInfluence = "Add Sprite Influence";
         public static string removeSpriteInfluence = "Remove Sprite Influence";
         public static string spriteSelection = "Sprite selection";
+        public static string spriteName = "Sprite Name";
         public static string pivotChanged = "Pivot changed";
+        public static string editConstraints = "Edit Constraints";
 
         // Tooltips
         public static string visibilityIconTooltip = L10n.Tr("Visibility tool");
@@ -73,6 +75,10 @@ namespace UnityEditor.U2D.Animation
         public static string resetGeometryWeightsMessage = L10n.Tr("This attachment has weights.\n\nPerforming this operation will remove all weights for this attachment.");
         public static string resetGeometryWeightsConfirm = L10n.Tr("Remove weights");
         public static string resetGeometryWeightsCancel = L10n.Tr("Cancel");
+        public static string renameTitle = L10n.Tr("Rename");
+        public static string renameNameLabel = L10n.Tr("Name:");
+        public static string cancel = L10n.Tr("Cancel");
+        public static string ok = L10n.Tr("OK");
 
         // Horizontal tool bar button txt
         public static string visibilityIconText = L10n.Tr("Visibility");

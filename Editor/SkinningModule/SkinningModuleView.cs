@@ -15,6 +15,7 @@ namespace UnityEditor.U2D.Animation
         private BoneToolbar m_BoneToolbar;
         private MeshToolbar m_MeshToolbar;
         private WeightToolbar m_WeightToolbar;
+        private ConstraintsToolbar m_ConstraintsToolbar;
         private RigToolbar m_RigToolbar;
 
         private InternalEditorBridge.ShortcutContext m_ShortcutContext;
@@ -319,6 +320,75 @@ namespace UnityEditor.U2D.Animation
                 sm.skinningCache.events.shortcut.Invoke("h");
         }
 
+        [Shortcut(ShortcutIds.renameSelection, typeof(InternalEditorBridge.ShortcutContext), KeyCode.F2)]
+        private static void RenameSelectionKey(ShortcutArguments args)
+        {
+            SkinningModule sm = GetModuleFromContext(args);
+            if (sm != null && !sm.spriteEditor.editingDisabled && sm.ShowRenameSelectionWindow())
+                sm.skinningCache.events.shortcut.Invoke("f2");
+        }
+
+        private bool ShowRenameSelectionWindow()
+        {
+            BoneCache selectedBone = GetSelectedBoneForRename();
+            if (selectedBone != null)
+            {
+                RenameSelectionWindow.Show(selectedBone.name, newName => RenameBone(selectedBone, newName));
+                return true;
+            }
+
+            SpriteCache selectedSprite = skinningCache.selectedSprite;
+            if (selectedSprite != null)
+            {
+                RenameSelectionWindow.Show(selectedSprite.name, newName => RenameSprite(selectedSprite, newName));
+                return true;
+            }
+
+            return false;
+        }
+
+        private BoneCache GetSelectedBoneForRename()
+        {
+            BoneCache activeBone = skinningCache.skeletonSelection.activeElement;
+            if (activeBone != null)
+                return activeBone;
+
+            BoneCache[] selectedBones = skinningCache.skeletonSelection.elements;
+            return selectedBones.Length > 0 ? selectedBones[0] : null;
+        }
+
+        private void RenameBone(BoneCache bone, string newName)
+        {
+            if (bone == null || string.Compare(bone.name, newName) == 0)
+                return;
+
+            if (string.IsNullOrEmpty(newName) || string.IsNullOrWhiteSpace(newName))
+                return;
+
+            using (skinningCache.UndoScope(TextContent.boneName))
+            {
+                bone.name = newName;
+                skinningCache.events.boneNameChanged.Invoke(bone);
+            }
+
+            spriteEditor.RequestRepaint();
+        }
+
+        private void RenameSprite(SpriteCache sprite, string newName)
+        {
+            if (sprite == null || string.Compare(sprite.name, newName) == 0)
+                return;
+
+            if (string.IsNullOrEmpty(newName) || string.IsNullOrWhiteSpace(newName))
+                return;
+
+            using (skinningCache.UndoScope(TextContent.spriteName))
+                sprite.name = newName;
+
+            DataModified();
+            spriteEditor.RequestRepaint();
+        }
+
         private bool ToggleSelectedVisibility()
         {
             BoneCache[] selectedBones = skinningCache.skeletonSelection.elements;
@@ -370,6 +440,7 @@ namespace UnityEditor.U2D.Animation
             CreateBoneToolbar();
             CreateMeshToolbar();
             CreateWeightToolbar();
+            CreateConstraintsToolbar();
             CreateRigToolbar();
 
             m_ShortcutContext = new InternalEditorBridge.ShortcutContext()
@@ -394,6 +465,7 @@ namespace UnityEditor.U2D.Animation
                 m_BoneToolbar.SetEnabled(!spriteEditor.editingDisabled);
                 m_MeshToolbar.SetEnabled(!spriteEditor.editingDisabled);
                 m_WeightToolbar.SetEnabled(!spriteEditor.editingDisabled);
+                m_ConstraintsToolbar.SetEnabled(!spriteEditor.editingDisabled);
             }
 
             if (spriteEditor.editingDisabled == m_LayoutOverlay.rightOverlay.enabledSelf)
@@ -461,6 +533,15 @@ namespace UnityEditor.U2D.Animation
             m_WeightToolbar.SetEnabled(!spriteEditor.editingDisabled);
         }
 
+        private void CreateConstraintsToolbar()
+        {
+            m_ConstraintsToolbar = ConstraintsToolbar.GenerateFromUXML();
+            m_ConstraintsToolbar.skinningCache = skinningCache;
+            m_LayoutOverlay.verticalToolbar.AddToContainer(m_ConstraintsToolbar);
+            m_ConstraintsToolbar.SetConstraintTool += SetConstraintTool;
+            m_ConstraintsToolbar.SetEnabled(!spriteEditor.editingDisabled);
+        }
+
         private void CreateRigToolbar()
         {
             m_RigToolbar = RigToolbar.GenerateFromUXML();
@@ -488,6 +569,9 @@ namespace UnityEditor.U2D.Animation
         {
             SkeletonToolWrapper tool = skinningCache.GetTool(toolType) as SkeletonToolWrapper;
 
+            if (tool == null)
+                return;
+
             if (currentTool == tool)
                 return;
 
@@ -498,6 +582,21 @@ namespace UnityEditor.U2D.Animation
                 if (tool.editBindPose)
                     skinningCache.RestoreBindPose();
             }
+        }
+
+        private void SetConstraintTool(Tools toolType)
+        {
+            ConstraintsTool tool = skinningCache.GetTool(toolType) as ConstraintsTool;
+
+            if (tool == null || currentTool == tool)
+                return;
+
+            using (skinningCache.UndoScope(TextContent.setTool))
+            {
+                ActivateTool(tool);
+            }
+
+            spriteEditor.RequestRepaint();
         }
 
         private void SetMeshTool(Tools toolType)
@@ -744,7 +843,7 @@ namespace UnityEditor.U2D.Animation
 
         private void StorePreviousTool()
         {
-            if (currentTool is CopyTool || currentTool is VisibilityTool)
+            if (currentTool is CopyTool || currentTool is VisibilityTool || currentTool is ConstraintsTool)
                 return;
 
             previousTool = currentTool;
@@ -776,6 +875,7 @@ namespace UnityEditor.U2D.Animation
             m_BoneToolbar.UpdateToggleState();
             m_MeshToolbar.UpdateToggleState();
             m_WeightToolbar.UpdateToggleState();
+            m_ConstraintsToolbar.UpdateToggleState();
             m_RigToolbar.UpdatePasteButtonCheckedState();
         }
 

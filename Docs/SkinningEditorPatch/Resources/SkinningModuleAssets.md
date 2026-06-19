@@ -16,8 +16,9 @@ This page maps UXML/USS/resource files used by the Skinning Editor module.
 | `MeshToolbarStyle.uss` | Geometry toolbar styling |
 | `BoneToolbar.uxml` | Bone toolbar |
 | `WeightToolbar.uxml` | Weight toolbar |
+| `ConstraintsToolbar.uxml` | Runtime constraint toolbar |
 | `PoseToolbar.uxml` | Pose toolbar |
-| `RigToolbar.uxml` | Copy/paste/visibility toolbar cluster |
+| `RigToolbar.uxml` | Rig copy/paste toolbar |
 
 ## Geometry Toolbar Notes
 
@@ -35,6 +36,7 @@ Do not rename the UXML element unless all C# lookups, USS selectors, and metadat
 - `WeightPainterPanel.uxml` / `.uss`
 - `VisibilityToolWindow.uxml`
 - `InfluenceWindow.uxml`
+- Constraint settings are built in `Editor/SkinningModule/ConstraintsTool.cs` and hosted in the bottom overlay.
 
 ## Shaders
 

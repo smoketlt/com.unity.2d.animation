@@ -6,6 +6,11 @@ namespace UnityEditor.U2D.Animation
 {
     internal static class BoneCacheExtensions
     {
+        public static bool IsConstraintParent(this BoneCache bone)
+        {
+            return bone != null && UnityEngine.U2D.Animation.SpriteSkinConstraintParent.IsConstraintParentGuid(bone.guid);
+        }
+
         public static BoneCache[] ToCharacterIfNeeded(this BoneCache[] bones)
         {
             return Array.ConvertAll(bones, ToCharacterIfNeeded);

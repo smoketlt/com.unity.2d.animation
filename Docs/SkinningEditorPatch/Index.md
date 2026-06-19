@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | Overall package/fork workflow | [Architecture/PackageForkWorkflow](Architecture/PackageForkWorkflow.md) | `package.json`, Unity project `Packages/manifest.json` |
 | Skinning Editor architecture | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/SkinningModule/SkinningModule*.cs` |
+| Skinning Editor shortcuts, copy/paste, F2 rename | [Subsystems/SkinningEditor/SkinningModule](Subsystems/SkinningEditor/SkinningModule.md) | `Editor/SkinningModule/SkinningModuleView.cs`, `Editor/SkinningModule/RenameSelectionWindow.cs` |
 | Geometry toolbar behavior | [Subsystems/SkinningEditor/MeshToolbar](Subsystems/SkinningEditor/MeshToolbar.md) | `Editor/SkinningModule/UI/MeshToolbar.cs`, `Editor/Assets/SkinningModule/MeshToolbar.uxml` |
 | Modify/Create/New/Reset/Generate workflow | [Subsystems/SkinningEditor/GeometryEditing](Subsystems/SkinningEditor/GeometryEditing.md) | `Editor/SkinningModule/MeshTool/**`, `Editor/SkinningModule/IMGUI/SpriteMesh*.cs` |
 | Skeleton bone drawing and Create Bone behavior | [Subsystems/SkinningEditor/SkeletonBoneEditing](Subsystems/SkinningEditor/SkeletonBoneEditing.md) | `Editor/SkinningModule/IMGUI/SkeletonView.cs`, `Editor/SkinningModule/IMGUI/SkeletonController.cs`, `Editor/SkinningModule/BoneDrawingUtility.cs` |
@@ -19,6 +20,7 @@
 | Bone Influence/Sprite Influence assignment and auto weights | [Subsystems/SkinningEditor/BoneInfluence](Subsystems/SkinningEditor/BoneInfluence.md) | `Editor/SkinningModule/SpriteBoneInfluence/**`, `Editor/SkinningModule/SkinningCache/SpriteCacheExtensions.cs` |
 | Weight Slider/Brush modes and painter panel | [Subsystems/SkinningEditor/WeightPainterTool](Subsystems/SkinningEditor/WeightPainterTool.md) | `Editor/SkinningModule/WeightPainterTool.cs`, `Editor/SkinningModule/UI/WeightPainterPanel.cs` |
 | Visibility window, opacity sliders, bone/sprite visibility lists | [Subsystems/SkinningEditor/VisibilityTool](Subsystems/SkinningEditor/VisibilityTool.md) | `Editor/SkinningModule/VisibilityTool/**`, `Editor/Assets/SkinningModule/VisibilityToolWindow.uxml` |
+| Runtime bone constraints | [Subsystems/SkinningEditor/Constraints](Subsystems/SkinningEditor/Constraints.md) | `Editor/SkinningModule/ConstraintsTool.cs`, `Editor/SkinningModule/UI/ConstraintsToolbar.cs`, `Runtime/SpriteSkinConstraintSet.cs`, `Runtime/SpriteSkinConstraintController.cs` |
 | Top informational overlay text | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/SkinningModule/UI/SkinningEditorInfoOverlay.cs` |
 | Skinning panel placement and draggable bottom overlays | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/LayoutOverlay/**`, `Editor/Assets/LayoutOverlay/**` |
 | UXML/USS resources | [Resources/SkinningModuleAssets](Resources/SkinningModuleAssets.md) | `Editor/Assets/SkinningModule/**` |
@@ -28,7 +30,7 @@
 
 | Symbol | Role | Source |
 | --- | --- | --- |
-| `SkinningModule` | Sprite Editor module host, lifecycle, toolbar wiring, keyboard copy/paste, reset command | `Editor/SkinningModule/SkinningModule.cs`, `SkinningModuleView.cs` |
+| `SkinningModule` | Sprite Editor module host, lifecycle, toolbar wiring, keyboard copy/paste, F2 rename, reset command | `Editor/SkinningModule/SkinningModule.cs`, `SkinningModuleView.cs` |
 | `SkinningCache` | Canonical editor cache, selected sprite/tool, selections, undo and events | `Editor/SkinningModule/SkinningCache/SkinningCache.cs` |
 | `MeshToolbar` | Geometry toolbar UI binding and visual checked state | `Editor/SkinningModule/UI/MeshToolbar.cs` |
 | `MeshToolWrapper` | Active mesh/skeleton mode wrapper and effective Alt-swapped mesh mode | `Editor/SkinningModule/MeshTool/MeshToolWrapper.cs` |
@@ -47,6 +49,8 @@
 | `WeightPainterTool` | Weight Slider/Brush editing, mode popup, brush settings, weight inspector panel | `Editor/SkinningModule/WeightPainterTool.cs`, `Editor/SkinningModule/UI/WeightPainterPanel.cs` |
 | `SkinningEditorInput` | Fork-specific shared modifier-key status for Skinning Editor tools | `Editor/SkinningModule/IMGUI/SkinningEditorInput.cs` |
 | `VisibilityTool` | Visibility popup window, tab state, and opacity slider preview behavior | `Editor/SkinningModule/VisibilityTool/VisibilityTool.cs` |
+| `ConstraintsTool` | Constraint set selection and Position/Rotation/Scale constraint editing panel | `Editor/SkinningModule/ConstraintsTool.cs` |
+| `SpriteSkinConstraintController` | Runtime component that applies SpriteSkin bone constraints from a constraint set asset | `Runtime/SpriteSkinConstraintController.cs` |
 | `LayoutOverlay` | Shared toolbar and overlay host, including the Skinning bottom draggable panel area | `Editor/LayoutOverlay/LayoutOverlay.cs`, `Editor/Assets/LayoutOverlay/LayoutOverlay.uxml` |
 | `SkinningEditorInfoOverlay` | Static helper for showing dark-backed text at the top of the Skinning Editor overlay | `Editor/SkinningModule/UI/SkinningEditorInfoOverlay.cs` |
 
@@ -67,6 +71,7 @@
 - In Preview Pose and Bone toolbar modes other than `Create Bone`, `Esc` and primary empty click clear selected bones.
 - In all Weight toolbar modes, `Esc` and primary empty click clear selected bones; right-click does not clear bones.
 - Copy/paste supports mirrored paste and selected-vertex mirrored placement workflows.
+- The Skinning Editor has a separate `Constraints -> Position/Rotation/Scale` toolbar section; constraint settings are stored in `SpriteSkinConstraintSet` assets and evaluated at runtime by `SpriteSkinConstraintController`.
 
 ## How To Search
 

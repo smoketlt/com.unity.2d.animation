@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UXML xmlns:ui="UnityEngine.UIElements" xmlns:aui="UnityEditor.U2D.Animation">
+    <aui:ConstraintsToolbar name="ConstraintsToolbar">
+        <ui:PopupWindow name="PopupWindow" text="Constraints">
+            <ui:Button name="PositionConstraint" tooltip="Edit runtime position constraints.">
+                <ui:Label text="Position" />
+            </ui:Button>
+            <ui:Button name="RotationConstraint" tooltip="Edit runtime rotation constraints.">
+                <ui:Label text="Rotation" />
+            </ui:Button>
+            <ui:Button name="ScaleConstraint" tooltip="Edit runtime scale constraints.">
+                <ui:Label text="Scale" />
+            </ui:Button>
+        </ui:PopupWindow>
+    </aui:ConstraintsToolbar>
+</UXML>

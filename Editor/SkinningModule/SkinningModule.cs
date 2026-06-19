@@ -329,6 +329,7 @@ namespace UnityEditor.U2D.Animation
             if (!spriteEditor.editingDisabled)
             {
                 currentTool.DoGUI();
+                ApplyConstraintPreviews();
                 HandleNewGeometryExitRequest();
                 DoCopyPasteKeyboardEventHandling();
             }
@@ -388,6 +389,20 @@ namespace UnityEditor.U2D.Animation
         {
             return currentTool == skinningCache.GetTool(Tools.EditGeometry) ||
                 currentTool == skinningCache.GetTool(Tools.CreateVertex);
+        }
+
+        void ApplyConstraintPreviews()
+        {
+            ApplyConstraintPreview(Tools.ConstraintsPosition);
+            ApplyConstraintPreview(Tools.ConstraintsRotation);
+            ApplyConstraintPreview(Tools.ConstraintsScale);
+        }
+
+        void ApplyConstraintPreview(Tools toolType)
+        {
+            ConstraintsTool tool = skinningCache.GetTool(toolType) as ConstraintsTool;
+            if (tool != null)
+                tool.ApplySharedPreview();
         }
 
         public override void DoToolbarGUI(Rect drawArea)
@@ -570,10 +585,34 @@ namespace UnityEditor.U2D.Animation
         {
             skinningCache.applyingChanges = true;
             skinningCache.RestoreBindPose();
+            ApplySpriteNames(skinningCache, dataProvider);
             ApplyBone(skinningCache, dataProvider);
             ApplyMesh(skinningCache, dataProvider);
             ApplyCharacter(skinningCache, dataProvider);
             skinningCache.applyingChanges = false;
+        }
+
+        static void ApplySpriteNames(SkinningCache skinningCache, ISpriteEditorDataProvider dataProvider)
+        {
+            SpriteRect[] spriteRects = dataProvider.GetSpriteRects();
+            SpriteCache[] sprites = skinningCache.GetSprites();
+            bool changed = false;
+
+            foreach (SpriteCache sprite in sprites)
+            {
+                for (int i = 0; i < spriteRects.Length; ++i)
+                {
+                    if (spriteRects[i].spriteID.ToString() != sprite.id || spriteRects[i].name == sprite.name)
+                        continue;
+
+                    spriteRects[i].name = sprite.name;
+                    changed = true;
+                    break;
+                }
+            }
+
+            if (changed)
+                dataProvider.SetSpriteRects(spriteRects);
         }
 
         private void DoApplyAnalytics()
@@ -598,7 +637,7 @@ namespace UnityEditor.U2D.Animation
                 SpriteCache[] sprites = skinningCache.GetSprites();
                 foreach (SpriteCache sprite in sprites)
                 {
-                    BoneCache[] bones = sprite.GetSkeleton().bones;
+                    BoneCache[] bones = GetBoneSaveOrder(sprite.GetSkeleton().bones);
                     boneDataProvider.SetBones(new GUID(sprite.id), bones.ToSpriteBone(sprite.localToWorldMatrix).ToList());
                 }
             }
@@ -616,10 +655,13 @@ namespace UnityEditor.U2D.Animation
                     GUID guid = new GUID(sprite.id);
 
                     Vertex2DMetaData[] vertices = new Vertex2DMetaData[mesh.vertexCount];
+                    BoneCache[] spriteBones = GetBoneSaveOrder(sprite.GetSkeleton().bones);
+                    BoneCache[] meshBones = mesh.bones;
+                    CharacterPartCache characterPart = skinningCache.hasCharacter ? sprite.GetCharacterPart() : null;
                     for (int i = 0; i < vertices.Length; ++i)
                     {
                         vertices[i].position = mesh.vertices[i];
-                        vertices[i].boneWeight = mesh.vertexWeights[i].ToBoneWeight(false);
+                        vertices[i].boneWeight = ToSpriteBoneWeight(mesh.vertexWeights[i], meshBones, spriteBones, characterPart);
                     }
 
                     meshDataProvider.SetVertices(guid, vertices);
@@ -631,6 +673,71 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
+        static BoneWeight ToSpriteBoneWeight(EditableBoneWeight editableBoneWeight, BoneCache[] meshBones, BoneCache[] spriteBones, CharacterPartCache characterPart)
+        {
+            BoneWeight boneWeight = editableBoneWeight.ToBoneWeight(false);
+
+            for (int i = 0; i < 4; ++i)
+            {
+                float weight = boneWeight.GetWeight(i);
+                if (weight <= 0f)
+                    continue;
+
+                int meshBoneIndex = boneWeight.GetBoneIndex(i);
+                if (meshBoneIndex < 0 || meshBoneIndex >= meshBones.Length)
+                    continue;
+
+                int spriteBoneIndex = FindSpriteBoneIndex(meshBones[meshBoneIndex], spriteBones, characterPart);
+                if (spriteBoneIndex == -1)
+                    continue;
+
+                BoneWeightExtensions.SetBoneIndex(ref boneWeight, i, spriteBoneIndex);
+            }
+
+            return boneWeight;
+        }
+
+        static int FindSpriteBoneIndex(BoneCache meshBone, BoneCache[] spriteBones, CharacterPartCache characterPart)
+        {
+            int spriteBoneIndex = Array.IndexOf(spriteBones, meshBone);
+            if (spriteBoneIndex != -1 || characterPart == null)
+                return spriteBoneIndex;
+
+            int characterPartBoneIndex = characterPart.IndexOf(meshBone);
+            if (characterPartBoneIndex == -1)
+                return -1;
+
+            SkeletonCache spriteSkeleton = characterPart.sprite.GetSkeleton();
+            if (spriteSkeleton == null || characterPartBoneIndex >= spriteSkeleton.boneCount)
+                return -1;
+
+            return Array.IndexOf(spriteBones, spriteSkeleton.GetBone(characterPartBoneIndex));
+        }
+
+        static BoneCache[] GetBoneSaveOrder(BoneCache[] bones)
+        {
+            List<BoneCache> orderedBones = new List<BoneCache>(bones.Length);
+            HashSet<BoneCache> visitedBones = new HashSet<BoneCache>();
+
+            for (int i = 0; i < bones.Length; ++i)
+                AddBoneAfterParent(bones[i], bones, orderedBones, visitedBones);
+
+            return orderedBones.ToArray();
+        }
+
+        static void AddBoneAfterParent(BoneCache bone, BoneCache[] sourceBones, List<BoneCache> orderedBones, HashSet<BoneCache> visitedBones)
+        {
+            if (bone == null || visitedBones.Contains(bone))
+                return;
+
+            BoneCache parent = bone.parentBone;
+            if (parent != null && Array.IndexOf(sourceBones, parent) != -1)
+                AddBoneAfterParent(parent, sourceBones, orderedBones, visitedBones);
+
+            visitedBones.Add(bone);
+            orderedBones.Add(bone);
+        }
+
         static void ApplyCharacter(SkinningCache skinningCache, ISpriteEditorDataProvider dataProvider)
         {
             ICharacterDataProvider characterDataProvider = dataProvider.GetDataProvider<ICharacterDataProvider>();
@@ -638,7 +745,7 @@ namespace UnityEditor.U2D.Animation
             if (characterDataProvider != null && character != null)
             {
                 CharacterData data = new CharacterData();
-                BoneCache[] characterBones = character.skeleton.bones;
+                BoneCache[] characterBones = GetBoneSaveOrder(character.skeleton.bones);
                 data.bones = characterBones.ToSpriteBone(Matrix4x4.identity);
                 data.pivot = character.pivot;
                 CharacterPartCache[] parts = character.parts;
@@ -679,6 +786,9 @@ namespace UnityEditor.U2D.Animation
             m_ModuleToolGroup.AddToolToGroup(1, skinningCache.GetTool(Tools.GenerateWeights), () => currentTool = skinningCache.GetTool(Tools.GenerateWeights));
             m_ModuleToolGroup.AddToolToGroup(1, skinningCache.GetTool(Tools.BoneInfluence), () => currentTool = skinningCache.GetTool(Tools.BoneInfluence));
             m_ModuleToolGroup.AddToolToGroup(1, skinningCache.GetTool(Tools.SpriteInfluence), () => currentTool = skinningCache.GetTool(Tools.SpriteInfluence));
+            m_ModuleToolGroup.AddToolToGroup(1, skinningCache.GetTool(Tools.ConstraintsPosition), () => currentTool = skinningCache.GetTool(Tools.ConstraintsPosition));
+            m_ModuleToolGroup.AddToolToGroup(1, skinningCache.GetTool(Tools.ConstraintsRotation), () => currentTool = skinningCache.GetTool(Tools.ConstraintsRotation));
+            m_ModuleToolGroup.AddToolToGroup(1, skinningCache.GetTool(Tools.ConstraintsScale), () => currentTool = skinningCache.GetTool(Tools.ConstraintsScale));
             m_ModuleToolGroup.AddToolToGroup(1, skinningCache.GetTool(Tools.CopyPaste), () => currentTool = skinningCache.GetTool(Tools.CopyPaste));
             m_ModuleToolGroup.AddToolToGroup(1, skinningCache.GetTool(Tools.CharacterPivotTool), () =>
             {

@@ -202,6 +202,9 @@ namespace UnityEditor.U2D.Animation
             m_ToolMap.Add(Tools.SplitBone, CreateSkeletonTool<SkeletonToolWrapper>(skeletonTool, SkeletonMode.SplitBone, true, layoutOverlay));
             m_ToolMap.Add(Tools.ReparentBone, CreateSkeletonTool<BoneReparentTool>(skeletonTool, SkeletonMode.EditPose, false, layoutOverlay));
             m_ToolMap.Add(Tools.CharacterPivotTool, CreateSkeletonTool<PivotTool>(skeletonTool, SkeletonMode.Disabled, false, layoutOverlay));
+            m_ToolMap.Add(Tools.ConstraintsPosition, CreateConstraintsTool(skeletonTool, UnityEngine.U2D.Animation.SpriteBoneConstraintType.Position, layoutOverlay));
+            m_ToolMap.Add(Tools.ConstraintsRotation, CreateConstraintsTool(skeletonTool, UnityEngine.U2D.Animation.SpriteBoneConstraintType.Rotation, layoutOverlay));
+            m_ToolMap.Add(Tools.ConstraintsScale, CreateConstraintsTool(skeletonTool, UnityEngine.U2D.Animation.SpriteBoneConstraintType.Scale, layoutOverlay));
 
             m_ToolMap.Add(Tools.EditGeometry, CreateMeshTool<MeshToolWrapper>(skeletonTool, meshTool, SpriteMeshViewMode.EditGeometry, SkeletonMode.Disabled, layoutOverlay));
             m_ToolMap.Add(Tools.CreateVertex, CreateMeshTool<MeshToolWrapper>(skeletonTool, meshTool, SpriteMeshViewMode.CreateVertex, SkeletonMode.Disabled, layoutOverlay));
@@ -918,6 +921,13 @@ namespace UnityEditor.U2D.Animation
             tool.mode = skeletonMode;
             tool.editBindPose = editBindPose;
             tool.Initialize(layoutOverlay);
+            return tool;
+        }
+
+        ConstraintsTool CreateConstraintsTool(SkeletonTool skeletonTool, UnityEngine.U2D.Animation.SpriteBoneConstraintType constraintType, LayoutOverlay layoutOverlay)
+        {
+            ConstraintsTool tool = CreateSkeletonTool<ConstraintsTool>(skeletonTool, SkeletonMode.EditPose, false, layoutOverlay);
+            tool.constraintType = constraintType;
             return tool;
         }
 

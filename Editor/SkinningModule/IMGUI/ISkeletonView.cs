@@ -60,6 +60,7 @@ namespace UnityEditor.U2D.Animation
         bool IsActionFinishing(SkeletonAction action);
         bool IsRepainting();
         void DrawBone(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, bool isChained, bool isSelected, bool isJointHovered, bool isTailHovered, bool isHot);
+        void DrawConstraintParent(Vector3 position, Vector3 right, Vector3 up, Color color);
         void DrawBoneParentLink(Vector3 parentEndPosition, Vector3 position, Vector3 forward, Color color);
         void DrawBoneOutline(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, float outlineScale);
         void DrawCursors(bool canBeActive);

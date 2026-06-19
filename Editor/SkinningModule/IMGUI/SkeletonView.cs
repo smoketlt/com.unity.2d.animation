@@ -571,6 +571,16 @@ namespace UnityEditor.U2D.Animation
 
         }
 
+        public void DrawConstraintParent(Vector3 position, Vector3 right, Vector3 up, Color color)
+        {
+            const float size = 0.08f;
+            Color oldColor = Handles.color;
+            Handles.color = color;
+            Handles.DrawLine(position - right * size, position + right * size);
+            Handles.DrawLine(position - up * size, position + up * size);
+            Handles.color = oldColor;
+        }
+
         public void DrawBoneParentLink(Vector3 parentEndPosition, Vector3 position, Vector3 forward, Color color)
         {
             BoneDrawingUtility.DrawBoneParentLink(position, parentEndPosition, forward, color);

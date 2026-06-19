@@ -124,7 +124,7 @@ namespace UnityEditor.U2D.Animation
             {
                 BoneCache bone = skeleton.GetBone(i);
 
-                if (bone.isVisible && bone != hotBone)
+                if (bone.isVisible && bone != hotBone && !bone.IsConstraintParent())
                     view.LayoutBone(bone.GetInstanceID(), bone.position, bone.endPosition, bone.forward, bone.up, bone.right, bone.chainedChild == null);
             }
         }
@@ -423,7 +423,7 @@ namespace UnityEditor.U2D.Animation
             {
                 BoneCache bone = skeleton.GetBone(i);
 
-                if (bone.isVisible == false || bone.parentBone == null || bone.parentBone.chainedChild == bone)
+                if (bone.isVisible == false || bone.IsConstraintParent() || bone.parentBone == null || bone.parentBone.chainedChild == bone || bone.parentBone.IsConstraintParent())
                     continue;
 
                 bool isSelected = selection.Contains(bone.ToCharacterIfNeeded());
@@ -434,7 +434,7 @@ namespace UnityEditor.U2D.Animation
             {
                 BoneCache bone = skeleton.GetBone(i);
 
-                if ((view.IsActionActive(SkeletonAction.SplitBone) && hoveredBone == bone && isNotOnVisualElement) || bone.isVisible == false)
+                if ((view.IsActionActive(SkeletonAction.SplitBone) && hoveredBone == bone && isNotOnVisualElement) || bone.isVisible == false || bone.IsConstraintParent())
                     continue;
 
                 bool isSelected = selection.Contains(bone.ToCharacterIfNeeded());
@@ -447,6 +447,12 @@ namespace UnityEditor.U2D.Animation
 
                 if ((view.IsActionActive(SkeletonAction.SplitBone) && hoveredBone == bone && isNotOnVisualElement) || bone.isVisible == false)
                     continue;
+
+                if (bone.IsConstraintParent())
+                {
+                    view.DrawConstraintParent(bone.position, bone.right, bone.up, style.GetColor(bone));
+                    continue;
+                }
 
                 Color color = style.GetColor(bone);
                 if (IsBoneHovered(bone))

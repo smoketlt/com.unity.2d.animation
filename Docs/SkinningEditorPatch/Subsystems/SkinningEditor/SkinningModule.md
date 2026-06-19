@@ -2,12 +2,13 @@
 
 ## Purpose
 
-`SkinningModule` is the Sprite Editor module host. It owns lifecycle, tool activation, toolbar setup, copy/paste keyboard handling, mesh preview rendering, and module data dirty state.
+`SkinningModule` is the Sprite Editor module host. It owns lifecycle, tool activation, toolbar setup, copy/paste and rename keyboard handling, mesh preview rendering, and module data dirty state.
 
 ## Source
 
 - `Editor/SkinningModule/SkinningModule.cs`
 - `Editor/SkinningModule/SkinningModuleView.cs`
+- `Editor/SkinningModule/RenameSelectionWindow.cs`
 
 ## Entry Points
 
@@ -34,12 +35,27 @@
 - activates/deactivates cached tools;
 - updates toolbar checked state;
 - handles copy/paste keyboard commands;
+- handles `F2` rename for the active selected bone, or the selected sprite when no bone is selected;
 - handles `H` hide/show selected visibility toggling;
 - suppresses base Sprite Editor Alt panning after Skinning Editor input;
 - starts and completes `New` hull-authoring mode;
 - resets mesh geometry through `ResetGeometry()`;
 - invokes `skinningCache.events.meshChanged`;
 - marks Sprite Editor data modified through `DataModified()`.
+
+## F2 Rename
+
+`F2` is registered as `ShortcutIds.renameSelection` in the Skinning Editor shortcut context.
+
+When invoked, `SkinningModuleView.ShowRenameSelectionWindow()` chooses the target in this order:
+
+1. `skinningCache.skeletonSelection.activeElement`;
+2. the first selected bone in `skinningCache.skeletonSelection.elements`;
+3. `skinningCache.selectedSprite`.
+
+`RenameSelectionWindow` opens a modal `Rename` window with a `Name:` text field prefilled with the current target name and `Cancel` / `OK` buttons. `Enter` accepts and `Esc` cancels.
+
+Accepted bone names use `TextContent.boneName` undo and invoke `skinningCache.events.boneNameChanged`. Accepted sprite names use `TextContent.spriteName` undo and mark Sprite Editor data modified. `SkinningModule.ApplyChanges(...)` writes renamed sprites back to `ISpriteEditorDataProvider.SetSpriteRects(...)` before applying bones, mesh, and character data.
 
 ## State / Storage
 
