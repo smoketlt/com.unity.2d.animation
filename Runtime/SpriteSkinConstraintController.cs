@@ -198,7 +198,7 @@ namespace UnityEngine.U2D.Animation
             readonly Transform m_Source;
             readonly Transform m_Driven;
             readonly Vector3 m_SourcePosition;
-            readonly Vector3 m_DrivenWorldPosition;
+            readonly Vector3 m_DrivenPosition;
             readonly Vector3 m_SourceScale;
             readonly Vector3 m_DrivenScale;
             readonly Quaternion m_SourceRotation;
@@ -210,7 +210,7 @@ namespace UnityEngine.U2D.Animation
                 m_Source = source;
                 m_Driven = driven;
                 m_SourcePosition = source.localPosition;
-                m_DrivenWorldPosition = driven.position;
+                m_DrivenPosition = driven.localPosition;
                 m_SourceScale = source.localScale;
                 m_DrivenScale = driven.localScale;
                 m_SourceRotation = source.localRotation;
@@ -232,11 +232,8 @@ namespace UnityEngine.U2D.Animation
                     case SpriteBoneConstraintType.Position:
                         Vector3 positionDelta = Vector3.Scale(m_Source.localPosition - m_SourcePosition, multiplier) * influence;
                         Vector3 worldDelta = m_Source.parent != null ? m_Source.parent.TransformVector(positionDelta) : positionDelta;
-                        Vector3 targetWorldPosition = m_DrivenWorldPosition + worldDelta;
-                        if (m_Driven.parent != null)
-                            m_Driven.localPosition = m_Driven.parent.InverseTransformPoint(targetWorldPosition);
-                        else
-                            m_Driven.position = targetWorldPosition;
+                        Vector3 drivenLocalDelta = m_Driven.parent != null ? m_Driven.parent.InverseTransformVector(worldDelta) : worldDelta;
+                        m_Driven.localPosition = m_DrivenPosition + drivenLocalDelta;
                         break;
 
                     case SpriteBoneConstraintType.Rotation:

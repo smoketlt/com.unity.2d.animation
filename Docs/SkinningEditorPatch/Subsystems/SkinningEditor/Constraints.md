@@ -69,7 +69,9 @@ At runtime and in edit-mode animation preview, the controller:
 
 Position constraints apply:
 
-`constraintParent.localPosition = parentBindPosition + (source.localPosition - sourceBindPosition) * influence * multiplier`
+`constraintParent.localPosition = parentBindPosition + ConvertVector(sourceParent, constraintParentParent, (source.localPosition - sourceBindPosition) * influence * multiplier)`
+
+The Driven baseline is stored in local space. The Source delta is converted through world-vector space into the Driven parent's local space before it is added. This keeps constrained bones attached to the Character hierarchy when its root is translated, rotated, or scaled instead of treating the bind position as a fixed world-space anchor.
 
 Rotation constraints apply per-axis local Euler deltas from the source bind rotation to the current source rotation with `Mathf.DeltaAngle`, then multiply that delta onto the constraint parent's bind local rotation.
 
