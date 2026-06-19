@@ -328,6 +328,9 @@ namespace UnityEditor.U2D.Animation
             if (!spriteEditor.editingDisabled)
                 skinningCache.selectionTool.DoGUI();
 
+            if (!spriteEditor.editingDisabled)
+                ApplyConstraintPreviews();
+
             m_MeshPreviewTool.previewBehaviourOverride = m_MeshPreviewBehaviourOverride != null ? m_MeshPreviewBehaviourOverride : currentTool.previewBehaviour;
             m_MeshPreviewTool.DoGUI();
             m_MeshPreviewTool.DrawOverlay();
@@ -341,6 +344,7 @@ namespace UnityEditor.U2D.Animation
             if (!spriteEditor.editingDisabled)
             {
                 currentTool.DoGUI();
+                // Run again after tool input so bone edits made in this GUI event update constraints immediately.
                 ApplyConstraintPreviews();
                 HandleNewGeometryExitRequest();
                 DoCopyPasteKeyboardEventHandling();
