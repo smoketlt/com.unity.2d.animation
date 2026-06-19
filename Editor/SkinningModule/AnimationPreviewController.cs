@@ -49,8 +49,6 @@ namespace UnityEditor.U2D.Animation
         SkeletonCache m_Skeleton;
         bool m_WasPosePreview;
         bool m_IsPlaying;
-        bool m_ConstraintSetChangeInProgress;
-        bool m_ResumeAfterConstraintSetChange;
         double m_LastUpdateTime;
         float m_CurrentTime;
         int m_MatchedBoneCount;
@@ -74,8 +72,6 @@ namespace UnityEditor.U2D.Animation
             m_SkinningCache.events.selectedSpriteChanged.AddListener(OnEditorTargetChanged);
             m_SkinningCache.events.skinningModeChanged.AddListener(OnSkinningModeChanged);
             m_SkinningCache.events.skeletonTopologyChanged.AddListener(OnSkeletonTopologyChanged);
-            m_SkinningCache.events.constraintSetChangeStarted.AddListener(OnConstraintSetChangeStarted);
-            m_SkinningCache.events.constraintSetChangeFinished.AddListener(OnConstraintSetChangeFinished);
             UpdatePanel();
         }
 
@@ -100,8 +96,6 @@ namespace UnityEditor.U2D.Animation
             m_SkinningCache.events.selectedSpriteChanged.RemoveListener(OnEditorTargetChanged);
             m_SkinningCache.events.skinningModeChanged.RemoveListener(OnSkinningModeChanged);
             m_SkinningCache.events.skeletonTopologyChanged.RemoveListener(OnSkeletonTopologyChanged);
-            m_SkinningCache.events.constraintSetChangeStarted.RemoveListener(OnConstraintSetChangeStarted);
-            m_SkinningCache.events.constraintSetChangeFinished.RemoveListener(OnConstraintSetChangeFinished);
 
             m_Panel.clipChanged -= SetClip;
             m_Panel.firstFrameClicked -= OnFirstFrameClicked;
@@ -291,8 +285,7 @@ namespace UnityEditor.U2D.Animation
             BoneCache current = bone;
             while (current != null)
             {
-                if (!current.IsConstraintParent())
-                    names.Add(current.name);
+                names.Add(current.name);
                 current = current.parentBone;
             }
             names.Reverse();
@@ -525,39 +518,8 @@ namespace UnityEditor.U2D.Animation
 
         void OnSkeletonTopologyChanged(SkeletonCache skeleton)
         {
-            if (!m_ConstraintSetChangeInProgress && skeleton == m_Skeleton)
+            if (skeleton == m_Skeleton)
                 RebindCurrentClip();
-        }
-
-        void OnConstraintSetChangeStarted()
-        {
-            if (m_ConstraintSetChangeInProgress)
-                return;
-
-            m_ConstraintSetChangeInProgress = true;
-            m_ResumeAfterConstraintSetChange = m_IsPlaying;
-            StopAndRestore();
-        }
-
-        void OnConstraintSetChangeFinished()
-        {
-            if (!m_ConstraintSetChangeInProgress)
-                return;
-
-            m_ConstraintSetChangeInProgress = false;
-            if (m_Clip != null)
-            {
-                m_CurrentTime = 0f;
-                BindToCurrentSkeleton();
-                if (m_BoneCurves.Count > 0)
-                    SampleTime(0f);
-            }
-
-            bool resume = m_ResumeAfterConstraintSetChange;
-            m_ResumeAfterConstraintSetChange = false;
-            UpdatePanel();
-            if (resume)
-                TogglePlayback();
         }
 
         void RebindCurrentClip()

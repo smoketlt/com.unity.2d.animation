@@ -35,7 +35,7 @@ Dragging the slider or editing the frame field samples an exact clip frame. Play
 - raw, baked, or standard local Euler rotation;
 - local scale.
 
-Clip binding paths are matched to Skinning Editor bone hierarchy paths. Generated `constraint-parent:` service bones are omitted from the logical animation path so adding Constraints topology does not break clips authored against the original user-bone hierarchy. Exact paths are preferred, followed by root-relative and suffix matches so clips whose Animator root adds an outer hierarchy prefix can still bind. The status label reports how many bones received at least one supported Transform curve.
+Clip binding paths are matched to Skinning Editor bone hierarchy paths. Exact paths are preferred, followed by root-relative and suffix matches so clips whose Animator root adds an outer hierarchy prefix can still bind. The status label reports how many bones received at least one supported Transform curve.
 
 AnimationClip positions are stored in Unity units, while Skinning Editor bone positions use sprite pixels. Position samples are converted using the Sprite Editor data provider's pixels-per-unit value. Root bones in Sprite Sheet mode also include the selected sprite pivot offset used by the importer conversion.
 
@@ -49,7 +49,6 @@ AnimationClip positions are stored in Unity units, while Skinning Editor bone po
 - `Pause` keeps the sampled pose visible.
 - `Stop`, clip replacement, Sprite selection changes, Skinning mode changes, and module deactivation restore the pose captured before preview began.
 - Skeleton topology changes rebind the selected clip against the current bones.
-- Assigning a Constraints set performs a full animation Stop before constraint topology and preview bindings are processed. Afterward the clip is rebound from frame zero and Play resumes automatically only if it was running before the set change.
 
 ## Current Scope
 

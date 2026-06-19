@@ -171,17 +171,9 @@ namespace UnityEditor.U2D.Animation
 
         void OnConstraintSetChanged()
         {
-            skinningCache.events.constraintSetChangeStarted.Invoke();
-            try
-            {
-                s_ActiveConstraintSet = m_Panel.constraintSet;
-                EnsureConstraintParentBones();
-                BecomePreviewOwner();
-            }
-            finally
-            {
-                skinningCache.events.constraintSetChangeFinished.Invoke();
-            }
+            s_ActiveConstraintSet = m_Panel.constraintSet;
+            EnsureConstraintParentBones();
+            BecomePreviewOwner();
         }
 
         void PickSourceBone()

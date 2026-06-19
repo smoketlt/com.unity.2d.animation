@@ -116,8 +116,6 @@ namespace UnityEditor.U2D.Animation
         BoneVisibilityEvent m_BoneVisibilityEvent = new BoneVisibilityEvent();
         MeshPreviewBehaviourChangeEvent m_MeshPreviewBehaviourChange = new MeshPreviewBehaviourChangeEvent();
         UnityEvent m_PivotChanged = new UnityEvent();
-        UnityEvent m_ConstraintSetChangeStarted = new UnityEvent();
-        UnityEvent m_ConstraintSetChangeFinished = new UnityEvent();
 
         //Setting them as virtual so that we can create mock them
         public virtual SpriteEvent selectedSpriteChanged => m_SelectedSpriteChanged;
@@ -140,7 +138,5 @@ namespace UnityEditor.U2D.Animation
         public virtual BoneVisibilityEvent boneVisibility => m_BoneVisibilityEvent;
         public virtual MeshPreviewBehaviourChangeEvent meshPreviewBehaviourChange => m_MeshPreviewBehaviourChange;
         public virtual UnityEvent pivotChange => m_PivotChanged;
-        public virtual UnityEvent constraintSetChangeStarted => m_ConstraintSetChangeStarted;
-        public virtual UnityEvent constraintSetChangeFinished => m_ConstraintSetChangeFinished;
     }
 }
