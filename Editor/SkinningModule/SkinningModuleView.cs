@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEditor.ShortcutManagement;
 using UnityEditor.U2D.Common;
@@ -20,6 +21,7 @@ namespace UnityEditor.U2D.Animation
 
         private InternalEditorBridge.ShortcutContext m_ShortcutContext;
         private NewGeometrySnapshot m_NewGeometrySnapshot;
+        private const string k_BoneTransformCopyPrefix = "Unity2DAnimationSkinningBoneTransformCopy:";
 
         private class NewGeometrySnapshot
         {
@@ -68,6 +70,21 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
+        [Serializable]
+        private class BoneTransformCopyData
+        {
+            public BoneTransformData[] transforms = Array.Empty<BoneTransformData>();
+        }
+
+        [Serializable]
+        private struct BoneTransformData
+        {
+            public Vector3 position;
+            public Quaternion rotation;
+            public float length;
+            public float depth;
+        }
+
         private static SkinningModule GetModuleFromContext(ShortcutArguments args)
         {
             InternalEditorBridge.ShortcutContext sc = args.context as InternalEditorBridge.ShortcutContext;
@@ -87,7 +104,7 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        [Shortcut(ShortcutIds.restoreBindPose, typeof(InternalEditorBridge.ShortcutContext), KeyCode.Alpha1, ShortcutModifiers.Shift)]
+        [Shortcut(ShortcutIds.restoreBindPose, typeof(InternalEditorBridge.ShortcutContext), KeyCode.R)]
         private static void DisablePoseModeKey(ShortcutArguments args)
         {
             SkinningModule sm = GetModuleFromContext(args);
@@ -99,7 +116,7 @@ namespace UnityEditor.U2D.Animation
                     using (sm.skinningCache.UndoScope(TextContent.restorePose))
                     {
                         sm.skinningCache.RestoreBindPose();
-                        sm.skinningCache.events.shortcut.Invoke("#1");
+                        sm.skinningCache.events.shortcut.Invoke("r");
                     }
                 }
             }
@@ -328,6 +345,14 @@ namespace UnityEditor.U2D.Animation
                 sm.skinningCache.events.shortcut.Invoke("f2");
         }
 
+        [Shortcut(ShortcutIds.duplicateBone, typeof(InternalEditorBridge.ShortcutContext), KeyCode.D, ShortcutModifiers.Action)]
+        private static void DuplicateBoneKey(ShortcutArguments args)
+        {
+            SkinningModule sm = GetModuleFromContext(args);
+            if (sm != null && !sm.spriteEditor.editingDisabled && sm.DuplicateSelectedBone())
+                sm.skinningCache.events.shortcut.Invoke("%d");
+        }
+
         private bool ShowRenameSelectionWindow()
         {
             BoneCache selectedBone = GetSelectedBoneForRename();
@@ -345,6 +370,256 @@ namespace UnityEditor.U2D.Animation
             }
 
             return false;
+        }
+
+        private bool DuplicateSelectedBone()
+        {
+            if (skinningCache.bonesReadOnly || (skinningCache.hasCharacter && skinningCache.mode == SkinningMode.SpriteSheet))
+                return false;
+
+            SkeletonCache skeleton = skinningCache.GetEffectiveSkeleton(skinningCache.selectedSprite);
+            BoneCache sourceBone = GetSelectedBoneForSkeleton(skeleton);
+            if (skeleton == null || sourceBone == null || sourceBone.IsConstraintParent())
+                return false;
+
+            using (skinningCache.UndoScope(TextContent.duplicateBone))
+            {
+                List<BoneCache> duplicatedBones = DuplicateBoneTree(skeleton, sourceBone);
+                if (duplicatedBones.Count == 0)
+                    return false;
+
+                skinningCache.skeletonSelection.activeElement = duplicatedBones[0].ToCharacterIfNeeded();
+                skinningCache.events.boneSelectionChanged.Invoke();
+                skinningCache.events.skeletonTopologyChanged.Invoke(skeleton);
+                skinningCache.events.skeletonBindPoseChanged.Invoke(skeleton);
+            }
+
+            spriteEditor.RequestRepaint();
+            return true;
+        }
+
+        private BoneCache GetSelectedBoneForSkeleton(SkeletonCache skeleton)
+        {
+            if (skeleton == null)
+                return null;
+
+            BoneCache selectedBone = GetSelectedBoneForRename();
+            if (selectedBone == null)
+                return null;
+
+            selectedBone = selectedBone.ToSpriteSheetIfNeeded();
+            return selectedBone != null && skeleton.Contains(selectedBone) ? selectedBone : null;
+        }
+
+        private List<BoneCache> DuplicateBoneTree(SkeletonCache skeleton, BoneCache sourceRoot)
+        {
+            Dictionary<BoneCache, BoneCache> duplicatesBySource = new Dictionary<BoneCache, BoneCache>();
+            List<BoneCache> duplicatedBones = new List<BoneCache>();
+
+            DuplicateBoneTreeRecursive(skeleton, sourceRoot, sourceRoot.parentBone, duplicatesBySource, duplicatedBones);
+            RestoreDuplicatedChainedChildren(duplicatesBySource);
+
+            return duplicatedBones;
+        }
+
+        private void DuplicateBoneTreeRecursive(
+            SkeletonCache skeleton,
+            BoneCache sourceBone,
+            BoneCache duplicateParent,
+            Dictionary<BoneCache, BoneCache> duplicatesBySource,
+            List<BoneCache> duplicatedBones)
+        {
+            if (sourceBone == null)
+                return;
+
+            BoneCache nextParent = duplicateParent;
+            if (!sourceBone.IsConstraintParent())
+            {
+                BoneCache duplicate = CreateBoneDuplicate(skeleton, sourceBone, duplicateParent);
+                duplicatesBySource[sourceBone] = duplicate;
+                duplicatedBones.Add(duplicate);
+                nextParent = duplicate;
+            }
+
+            TransformCache[] children = sourceBone.children;
+            for (int i = 0; i < children.Length; ++i)
+                DuplicateBoneTreeRecursive(skeleton, children[i] as BoneCache, nextParent, duplicatesBySource, duplicatedBones);
+        }
+
+        private void RestoreDuplicatedChainedChildren(Dictionary<BoneCache, BoneCache> duplicatesBySource)
+        {
+            foreach (KeyValuePair<BoneCache, BoneCache> pair in duplicatesBySource)
+            {
+                BoneCache sourceChainedChild = pair.Key.chainedChild;
+                if (sourceChainedChild == null)
+                    continue;
+
+                if (duplicatesBySource.TryGetValue(sourceChainedChild, out BoneCache duplicateChainedChild))
+                    pair.Value.chainedChild = duplicateChainedChild;
+            }
+        }
+
+        private BoneCache CreateBoneDuplicate(SkeletonCache skeleton, BoneCache sourceBone, BoneCache parentBone)
+        {
+            string duplicateName = SkeletonController.AutoNameBoneCopy(sourceBone.name, skeleton.bones);
+            BoneCache duplicate = skinningCache.CreateCache<BoneCache>();
+            duplicate.SetParent(parentBone);
+            skeleton.AddBone(duplicate);
+
+            duplicate.name = duplicateName;
+            duplicate.guid = GUID.Generate().ToString();
+            duplicate.bindPoseColor = sourceBone.bindPoseColor;
+            duplicate.depth = sourceBone.depth;
+            duplicate.isVisible = sourceBone.isVisible;
+            duplicate.worldPose = sourceBone.worldPose;
+            duplicate.SetDefaultPose();
+            return duplicate;
+        }
+
+        private bool CopySelectedBoneTransforms()
+        {
+            SkeletonCache skeleton = skinningCache.GetEffectiveSkeleton(skinningCache.selectedSprite);
+            BoneCache[] selectedBones = GetSelectedBonesForSkeleton(skeleton);
+            if (selectedBones.Length == 0)
+                return false;
+
+            BoneTransformCopyData copyData = new BoneTransformCopyData
+            {
+                transforms = new BoneTransformData[selectedBones.Length]
+            };
+
+            for (int i = 0; i < selectedBones.Length; ++i)
+                copyData.transforms[i] = CreateBoneTransformData(selectedBones[i]);
+
+            EditorGUIUtility.systemCopyBuffer = k_BoneTransformCopyPrefix + JsonUtility.ToJson(copyData);
+            skinningCache.events.copy.Invoke();
+            return true;
+        }
+
+        private bool PasteSelectedBoneTransforms(bool mirrored)
+        {
+            if (skinningCache.bonesReadOnly || (skinningCache.hasCharacter && skinningCache.mode == SkinningMode.SpriteSheet))
+                return false;
+
+            if (!TryGetCopiedBoneTransforms(out BoneTransformCopyData copyData) || copyData.transforms.Length == 0)
+                return false;
+
+            SkeletonCache skeleton = skinningCache.GetEffectiveSkeleton(skinningCache.selectedSprite);
+            BoneCache[] selectedBones = GetSelectedBonesForSkeleton(skeleton);
+            if (selectedBones.Length == 0 || selectedBones.Length != copyData.transforms.Length)
+                return false;
+
+            Rect mirrorRect = GetBoneTransformMirrorRect();
+            using (skinningCache.UndoScope(TextContent.pasteBoneTransform))
+            {
+                for (int i = 0; i < selectedBones.Length; ++i)
+                {
+                    BoneTransformData transformData = copyData.transforms[i];
+                    if (mirrored)
+                        transformData = MirrorBoneTransformData(transformData, mirrorRect);
+
+                    ApplyBoneTransformData(selectedBones[i], transformData);
+                }
+
+                if (PasteTransformsEditsBindPose())
+                {
+                    skeleton.SetDefaultPose();
+                    skinningCache.events.skeletonBindPoseChanged.Invoke(skeleton);
+                }
+                else
+                {
+                    skeleton.SetPosePreview();
+                    skinningCache.events.skeletonPreviewPoseChanged.Invoke(skeleton);
+                }
+            }
+
+            skinningCache.events.paste.Invoke(true, false, mirrored, false);
+            spriteEditor.RequestRepaint();
+            return true;
+        }
+
+        private BoneCache[] GetSelectedBonesForSkeleton(SkeletonCache skeleton)
+        {
+            if (skeleton == null)
+                return Array.Empty<BoneCache>();
+
+            HashSet<BoneCache> selectedBones = new HashSet<BoneCache>();
+            BoneCache[] selection = skinningCache.skeletonSelection.elements;
+            for (int i = 0; i < selection.Length; ++i)
+            {
+                BoneCache bone = selection[i].ToSpriteSheetIfNeeded();
+                if (bone != null && skeleton.Contains(bone) && !bone.IsConstraintParent())
+                    selectedBones.Add(bone);
+            }
+
+            List<BoneCache> orderedBones = new List<BoneCache>();
+            BoneCache[] skeletonBones = skeleton.bones;
+            for (int i = 0; i < skeletonBones.Length; ++i)
+            {
+                if (selectedBones.Contains(skeletonBones[i]))
+                    orderedBones.Add(skeletonBones[i]);
+            }
+
+            return orderedBones.ToArray();
+        }
+
+        private static BoneTransformData CreateBoneTransformData(BoneCache bone)
+        {
+            return new BoneTransformData
+            {
+                position = bone.position,
+                rotation = bone.rotation,
+                length = bone.length,
+                depth = bone.depth
+            };
+        }
+
+        private static void ApplyBoneTransformData(BoneCache bone, BoneTransformData transformData)
+        {
+            bone.position = transformData.position;
+            bone.rotation = transformData.rotation;
+            bone.length = transformData.length;
+            bone.depth = transformData.depth;
+        }
+
+        private static bool TryGetCopiedBoneTransforms(out BoneTransformCopyData copyData)
+        {
+            copyData = null;
+            string copyBuffer = EditorGUIUtility.systemCopyBuffer;
+            if (string.IsNullOrEmpty(copyBuffer) || !copyBuffer.StartsWith(k_BoneTransformCopyPrefix, StringComparison.Ordinal))
+                return false;
+
+            copyData = JsonUtility.FromJson<BoneTransformCopyData>(copyBuffer.Substring(k_BoneTransformCopyPrefix.Length));
+            return copyData != null && copyData.transforms != null;
+        }
+
+        private Rect GetBoneTransformMirrorRect()
+        {
+            if (skinningCache.mode == SkinningMode.Character && skinningCache.character != null)
+                return new Rect(Vector2.zero, skinningCache.character.dimension);
+
+            SpriteCache selectedSprite = skinningCache.selectedSprite;
+            return selectedSprite != null ? selectedSprite.textureRect : new Rect(Vector2.zero, Vector2.zero);
+        }
+
+        private static BoneTransformData MirrorBoneTransformData(BoneTransformData transformData, Rect mirrorRect)
+        {
+            transformData.position.x = mirrorRect.x + mirrorRect.width - transformData.position.x;
+            transformData.rotation = GetMirroredBoneRotation(transformData.rotation);
+            return transformData;
+        }
+
+        private static Quaternion GetMirroredBoneRotation(Quaternion rotation)
+        {
+            Vector3 euler = rotation.eulerAngles;
+            euler.z = euler.z <= 180f ? 180f - euler.z : 540f - euler.z;
+            return Quaternion.Euler(euler);
+        }
+
+        private bool PasteTransformsEditsBindPose()
+        {
+            SkeletonToolWrapper skeletonTool = currentTool as SkeletonToolWrapper;
+            return skeletonTool == null || skeletonTool.editBindPose;
         }
 
         private BoneCache GetSelectedBoneForRename()

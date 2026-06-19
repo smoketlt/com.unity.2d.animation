@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Overall package/fork workflow | [Architecture/PackageForkWorkflow](Architecture/PackageForkWorkflow.md) | `package.json`, Unity project `Packages/manifest.json` |
 | Skinning Editor architecture | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/SkinningModule/SkinningModule*.cs` |
-| Skinning Editor shortcuts, copy/paste, F2 rename | [Subsystems/SkinningEditor/SkinningModule](Subsystems/SkinningEditor/SkinningModule.md) | `Editor/SkinningModule/SkinningModuleView.cs`, `Editor/SkinningModule/RenameSelectionWindow.cs` |
+| Skinning Editor shortcuts, copy/paste, bone transform copy/paste, F2 rename, Ctrl+D bone duplicate | [Subsystems/SkinningEditor/SkinningModule](Subsystems/SkinningEditor/SkinningModule.md) | `Editor/SkinningModule/SkinningModuleView.cs`, `Editor/SkinningModule/RenameSelectionWindow.cs` |
 | Geometry toolbar behavior | [Subsystems/SkinningEditor/MeshToolbar](Subsystems/SkinningEditor/MeshToolbar.md) | `Editor/SkinningModule/UI/MeshToolbar.cs`, `Editor/Assets/SkinningModule/MeshToolbar.uxml` |
 | Modify/Create/New/Reset/Generate workflow | [Subsystems/SkinningEditor/GeometryEditing](Subsystems/SkinningEditor/GeometryEditing.md) | `Editor/SkinningModule/MeshTool/**`, `Editor/SkinningModule/IMGUI/SpriteMesh*.cs` |
 | Skeleton bone drawing and Create Bone behavior | [Subsystems/SkinningEditor/SkeletonBoneEditing](Subsystems/SkinningEditor/SkeletonBoneEditing.md) | `Editor/SkinningModule/IMGUI/SkeletonView.cs`, `Editor/SkinningModule/IMGUI/SkeletonController.cs`, `Editor/SkinningModule/BoneDrawingUtility.cs` |
@@ -30,7 +30,7 @@
 
 | Symbol | Role | Source |
 | --- | --- | --- |
-| `SkinningModule` | Sprite Editor module host, lifecycle, toolbar wiring, keyboard copy/paste, F2 rename, reset command | `Editor/SkinningModule/SkinningModule.cs`, `SkinningModuleView.cs` |
+| `SkinningModule` | Sprite Editor module host, lifecycle, toolbar wiring, keyboard copy/paste, bone transform copy/paste, F2 rename, Ctrl+D bone duplicate, reset command | `Editor/SkinningModule/SkinningModule.cs`, `SkinningModuleView.cs` |
 | `SkinningCache` | Canonical editor cache, selected sprite/tool, selections, undo and events | `Editor/SkinningModule/SkinningCache/SkinningCache.cs` |
 | `MeshToolbar` | Geometry toolbar UI binding and visual checked state | `Editor/SkinningModule/UI/MeshToolbar.cs` |
 | `MeshToolWrapper` | Active mesh/skeleton mode wrapper and effective Alt-swapped mesh mode | `Editor/SkinningModule/MeshTool/MeshToolWrapper.cs` |

@@ -88,6 +88,54 @@ namespace UnityEditor.U2D.Animation
             ApplyPreviewConstraints();
         }
 
+        internal static bool RemoveConstraintsForBones(IEnumerable<BoneCache> bones)
+        {
+            RuntimeConstraintSet set = s_ActiveConstraintSet;
+            if (set == null || bones == null)
+                return false;
+
+            HashSet<string> boneGuids = new HashSet<string>();
+            foreach (BoneCache bone in bones)
+            {
+                if (bone != null && !string.IsNullOrEmpty(bone.guid))
+                    boneGuids.Add(bone.guid);
+            }
+
+            if (boneGuids.Count == 0)
+                return false;
+
+            bool removed = false;
+            for (int i = set.constraints.Count - 1; i >= 0; --i)
+            {
+                RuntimeConstraint constraint = set.constraints[i];
+                if (!boneGuids.Contains(constraint.sourceBoneGuid) && !boneGuids.Contains(constraint.drivenBoneGuid))
+                    continue;
+
+                if (!removed)
+                    Undo.RegisterCompleteObjectUndo(set, TextContent.removeBone);
+
+                set.constraints.RemoveAt(i);
+                removed = true;
+            }
+
+            if (!removed)
+                return false;
+
+            EditorUtility.SetDirty(set);
+            if (s_PreviewOwner != null)
+            {
+                if (s_PreviewOwner.m_Panel != null && s_PreviewOwner.m_Panel.constraintSet == set)
+                {
+                    s_PreviewOwner.m_Panel.SelectConstraint(null);
+                    s_PreviewOwner.m_Panel.RefreshConstraintList();
+                }
+
+                s_PreviewOwner.RefreshPreviewBindings();
+            }
+
+            return true;
+        }
+
         void ShowPanel()
         {
             m_Panel.style.display = DisplayStyle.Flex;
@@ -546,10 +594,22 @@ namespace UnityEditor.U2D.Animation
         const int k_MultiplierFieldWidth = 40;
         const int k_MultiplierAxisWidth = 14;
         const int k_MultiplierGap = 10;
+        const int k_TuneLabelWidth = 36;
+        const int k_TuneButtonWidth = 28;
+        const int k_TuneGap = 8;
+        const float k_MultiplierTuneStep = 0.1f;
+        const float k_MultiplierTuneFineStep = 0.01f;
+        const float k_MultiplierTuneCoarseStep = 0.5f;
+        const float k_MultiplierDragStep = 0.01f;
+        const float k_MultiplierFineDragStep = 0.001f;
+        const float k_MultiplierClickDragThreshold = 3f;
         const int k_SetFieldWidth = 298;
         const int k_CreateButtonWidth = 74;
         const int k_ListItemHeight = 22;
         const int k_RowHeight = 24;
+        static readonly Color k_MultiplierAxisNormalColor = new Color(0.46f, 0.46f, 0.46f, 1f);
+        static readonly Color k_MultiplierAxisSelectedColor = new Color(0.28f, 0.82f, 0.36f, 1f);
+        static readonly Color k_MultiplierAxisBackgroundColor = new Color(0.16f, 0.16f, 0.16f, 0.45f);
 
         ObjectField m_SetField;
         Button m_CreateSetButton;
@@ -562,6 +622,11 @@ namespace UnityEditor.U2D.Animation
         FloatField m_MultiplierX;
         FloatField m_MultiplierY;
         FloatField m_MultiplierZ;
+        Label m_MultiplierXLabel;
+        Label m_MultiplierYLabel;
+        Label m_MultiplierZLabel;
+        Button m_TunePlusButton;
+        Button m_TuneMinusButton;
         ListView m_ListView;
         Button m_AddButton;
         Button m_UpdateButton;
@@ -574,6 +639,9 @@ namespace UnityEditor.U2D.Animation
         RuntimeConstraintType m_Type;
         RuntimeConstraint m_SelectedConstraint;
         bool m_HasUserBoneSelection;
+        bool m_TuneX;
+        bool m_TuneY;
+        bool m_TuneZ;
 
         public event Action onCreateSet = () => { };
         public event Action<BoneCache, BoneCache, RuntimeConstraintType, float, Vector3> onAdd = (source, driven, type, influence, multiplier) => { };
@@ -838,9 +906,10 @@ namespace UnityEditor.U2D.Animation
             m_MultiplierY = CreateMultiplierField("MultiplierYField");
             m_MultiplierZ = CreateMultiplierField("MultiplierZField");
 
-            AddMultiplierAxis(container, "X", m_MultiplierX, 0);
-            AddMultiplierAxis(container, "Y", m_MultiplierY, k_MultiplierGap);
-            AddMultiplierAxis(container, "Z", m_MultiplierZ, k_MultiplierGap);
+            m_MultiplierXLabel = AddMultiplierAxis(container, "X", m_MultiplierX, 0, () => ToggleMultiplierAxis(ref m_TuneX, m_MultiplierXLabel));
+            m_MultiplierYLabel = AddMultiplierAxis(container, "Y", m_MultiplierY, k_MultiplierGap, () => ToggleMultiplierAxis(ref m_TuneY, m_MultiplierYLabel));
+            m_MultiplierZLabel = AddMultiplierAxis(container, "Z", m_MultiplierZ, k_MultiplierGap, () => ToggleMultiplierAxis(ref m_TuneZ, m_MultiplierZLabel));
+            AddMultiplierTuneControls(container);
             return container;
         }
 
@@ -855,7 +924,7 @@ namespace UnityEditor.U2D.Animation
             return field;
         }
 
-        static void AddMultiplierAxis(VisualElement container, string labelText, FloatField field, int marginLeft)
+        Label AddMultiplierAxis(VisualElement container, string labelText, FloatField field, int marginLeft, Action clicked)
         {
             Label label = new Label(labelText);
             label.style.width = k_MultiplierAxisWidth;
@@ -864,8 +933,183 @@ namespace UnityEditor.U2D.Animation
             label.style.flexShrink = 0;
             label.style.marginLeft = marginLeft;
             label.style.marginRight = 4;
+            label.style.unityTextAlign = TextAnchor.MiddleCenter;
+            label.style.borderTopLeftRadius = 2;
+            label.style.borderTopRightRadius = 2;
+            label.style.borderBottomLeftRadius = 2;
+            label.style.borderBottomRightRadius = 2;
+            label.style.backgroundColor = k_MultiplierAxisBackgroundColor;
+            SetMultiplierAxisSelected(label, false);
+            label.tooltip = "Click to select for Tune, or drag horizontally to adjust";
+            label.AddManipulator(new MultiplierAxisDragManipulator(field, clicked));
             container.Add(label);
             container.Add(field);
+            return label;
+        }
+
+        void AddMultiplierTuneControls(VisualElement container)
+        {
+            Label label = new Label("Tune");
+            label.style.width = k_TuneLabelWidth;
+            label.style.minWidth = k_TuneLabelWidth;
+            label.style.flexGrow = 0;
+            label.style.flexShrink = 0;
+            label.style.marginLeft = k_TuneGap;
+            label.style.marginRight = 4;
+            label.style.unityTextAlign = TextAnchor.MiddleRight;
+            container.Add(label);
+
+            m_TunePlusButton = CreateTuneButton("TunePlusButton", "+");
+            m_TuneMinusButton = CreateTuneButton("TuneMinusButton", "-");
+            m_TunePlusButton.RegisterCallback<ClickEvent>(evt => TuneSelectedMultiplierAxes(1f, evt));
+            m_TuneMinusButton.RegisterCallback<ClickEvent>(evt => TuneSelectedMultiplierAxes(-1f, evt));
+            container.Add(m_TunePlusButton);
+            container.Add(m_TuneMinusButton);
+        }
+
+        static Button CreateTuneButton(string name, string text)
+        {
+            Button button = new Button
+            {
+                name = name,
+                text = text
+            };
+            button.style.width = k_TuneButtonWidth;
+            button.style.minWidth = k_TuneButtonWidth;
+            button.style.maxWidth = k_TuneButtonWidth;
+            button.style.flexGrow = 0;
+            button.style.flexShrink = 0;
+            button.style.marginLeft = 0;
+            button.style.marginRight = 2;
+            return button;
+        }
+
+        void ToggleMultiplierAxis(ref bool selected, Label label)
+        {
+            selected = !selected;
+            SetMultiplierAxisSelected(label, selected);
+            RefreshButtons();
+        }
+
+        static void SetMultiplierAxisSelected(Label label, bool selected)
+        {
+            if (label == null)
+                return;
+
+            label.style.color = selected ? k_MultiplierAxisSelectedColor : k_MultiplierAxisNormalColor;
+            label.style.unityFontStyleAndWeight = selected ? FontStyle.Bold : FontStyle.Normal;
+        }
+
+        void TuneSelectedMultiplierAxes(float direction, ClickEvent evt)
+        {
+            if (!CanTuneSelectedMultiplierAxes())
+                return;
+
+            float step = evt != null && (evt.ctrlKey || evt.commandKey)
+                ? k_MultiplierTuneCoarseStep
+                : evt != null && evt.shiftKey
+                    ? k_MultiplierTuneFineStep
+                    : k_MultiplierTuneStep;
+            float delta = direction * step;
+
+            if (m_TuneX)
+                m_MultiplierX.value += delta;
+            if (m_TuneY)
+                m_MultiplierY.value += delta;
+            if (m_TuneZ)
+                m_MultiplierZ.value += delta;
+
+            UpdateClicked();
+        }
+
+        bool CanTuneSelectedMultiplierAxes()
+        {
+            return m_SelectedConstraint != null &&
+                constraintSet != null &&
+                HasSelectedMultiplierAxis() &&
+                GetPopupBone(m_SourcePopup) != null &&
+                GetPopupBone(m_DrivenPopup) != null &&
+                GetPopupBone(m_SourcePopup) != GetPopupBone(m_DrivenPopup);
+        }
+
+        bool HasSelectedMultiplierAxis()
+        {
+            return m_TuneX || m_TuneY || m_TuneZ;
+        }
+
+        class MultiplierAxisDragManipulator : MouseManipulator
+        {
+            readonly FloatField m_Field;
+            readonly Action m_Clicked;
+            bool m_Dragging;
+            bool m_DragMoved;
+            float m_StartX;
+            float m_StartValue;
+            Vector2 m_StartMousePosition;
+
+            public MultiplierAxisDragManipulator(FloatField field, Action clicked)
+            {
+                m_Field = field;
+                m_Clicked = clicked;
+                activators.Add(new ManipulatorActivationFilter { button = MouseButton.LeftMouse });
+            }
+
+            protected override void RegisterCallbacksOnTarget()
+            {
+                target.RegisterCallback<MouseDownEvent>(OnMouseDown);
+                target.RegisterCallback<MouseMoveEvent>(OnMouseMove);
+                target.RegisterCallback<MouseUpEvent>(OnMouseUp);
+            }
+
+            protected override void UnregisterCallbacksFromTarget()
+            {
+                target.UnregisterCallback<MouseDownEvent>(OnMouseDown);
+                target.UnregisterCallback<MouseMoveEvent>(OnMouseMove);
+                target.UnregisterCallback<MouseUpEvent>(OnMouseUp);
+            }
+
+            void OnMouseDown(MouseDownEvent evt)
+            {
+                if (!CanStartManipulation(evt) || m_Field == null || !m_Field.enabledSelf)
+                    return;
+
+                m_Dragging = true;
+                m_DragMoved = false;
+                m_StartMousePosition = evt.mousePosition;
+                m_StartX = evt.mousePosition.x;
+                m_StartValue = m_Field.value;
+                target.CaptureMouse();
+                evt.StopPropagation();
+            }
+
+            void OnMouseMove(MouseMoveEvent evt)
+            {
+                if (!m_Dragging || !target.HasMouseCapture())
+                    return;
+
+                if (!m_DragMoved && (evt.mousePosition - m_StartMousePosition).sqrMagnitude < k_MultiplierClickDragThreshold * k_MultiplierClickDragThreshold)
+                    return;
+
+                m_DragMoved = true;
+                float step = evt.shiftKey ? k_MultiplierFineDragStep : k_MultiplierDragStep;
+                m_Field.value = m_StartValue + (evt.mousePosition.x - m_StartX) * step;
+                evt.StopPropagation();
+            }
+
+            void OnMouseUp(MouseUpEvent evt)
+            {
+                if (!m_Dragging || !CanStopManipulation(evt))
+                    return;
+
+                m_Dragging = false;
+                if (target.HasMouseCapture())
+                    target.ReleaseMouse();
+
+                if (!m_DragMoved)
+                    m_Clicked?.Invoke();
+
+                evt.StopPropagation();
+            }
         }
 
         Vector3 multiplierValue => new Vector3(m_MultiplierX.value, m_MultiplierY.value, m_MultiplierZ.value);
@@ -1015,6 +1259,10 @@ namespace UnityEditor.U2D.Animation
             m_UpdateButton.SetEnabled(hasSet && m_SelectedConstraint != null && hasValidPair);
             m_RemoveButton.SetEnabled(hasSet && m_SelectedConstraint != null);
             m_FindConstraintButton.SetEnabled(hasSet && m_HasUserBoneSelection);
+            if (m_TunePlusButton != null)
+                m_TunePlusButton.SetEnabled(CanTuneSelectedMultiplierAxes());
+            if (m_TuneMinusButton != null)
+                m_TuneMinusButton.SetEnabled(CanTuneSelectedMultiplierAxes());
         }
 
         void SelectConstraintListItem(RuntimeConstraint constraint)

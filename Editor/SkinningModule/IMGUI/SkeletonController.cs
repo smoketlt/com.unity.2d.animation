@@ -334,6 +334,7 @@ namespace UnityEditor.U2D.Animation
                     BoneCache bone = m_Skeleton.CreateBone(parentBone, m_CreateBoneStartPosition, position, isChained, name);
 
                     selectedBone = bone;
+                    skinningCache.events.boneSelectionChanged.Invoke();
                     m_PrevCreatedBone = null;
                     view.DoCancelMultistepAction(true);
 
@@ -379,7 +380,9 @@ namespace UnityEditor.U2D.Animation
             {
                 using (skinningCache.UndoScope(TextContent.removeBone))
                 {
-                    m_Skeleton.DestroyBones(selectedBones);
+                    BoneCache[] bonesToRemove = selectedBones;
+                    ConstraintsTool.RemoveConstraintsForBones(bonesToRemove);
+                    m_Skeleton.DestroyBones(bonesToRemove);
 
                     selection.Clear();
                     skinningCache.events.boneSelectionChanged.Invoke();

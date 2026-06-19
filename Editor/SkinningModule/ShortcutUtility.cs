@@ -27,6 +27,7 @@ namespace UnityEditor.U2D.Animation
         public const string hideShowSelected = "2D/Animation/Hide Show Selected";
         public const string characterPivot = "2D/Animation/Character Pivot";
         public const string renameSelection = "2D/Animation/Rename Selection";
+        public const string duplicateBone = "2D/Animation/Duplicate Bone";
     }
 
     internal class ShortcutUtility

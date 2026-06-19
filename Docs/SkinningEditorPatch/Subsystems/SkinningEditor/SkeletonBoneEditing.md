@@ -24,7 +24,7 @@ The interaction is click-drag-release:
 2. clicking an existing bone selects it;
 3. clicking and dragging from an existing bone creates a new bone from the clicked point;
 4. dragging previews the direction and length;
-5. mouse up creates the bone and closes the current create gesture.
+5. mouse up creates and selects the new bone, then closes the current create gesture.
 
 If mouse up happens at the same position as mouse down, the controller creates a short minimum-length bone pointing right.
 

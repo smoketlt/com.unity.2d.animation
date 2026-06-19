@@ -417,6 +417,12 @@ namespace UnityEditor.U2D.Animation
 
             if (copyTool != null && evt.type == EventType.KeyDown && evt.keyCode == KeyCode.V && evt.shift && (evt.control || evt.command))
             {
+                if (PasteSelectedBoneTransforms(true))
+                {
+                    evt.Use();
+                    return;
+                }
+
                 if (skinningCache.vertexSelection.Count > 0)
                 {
                     if (!copyTool.OnPasteMirroredVertexSelectionActivated())
@@ -441,7 +447,15 @@ namespace UnityEditor.U2D.Animation
 
             if (evt.type == EventType.ExecuteCommand)
             {
-                if (copyTool != null && evt.commandName == "Copy")
+                if (evt.commandName == "Copy" && CopySelectedBoneTransforms())
+                {
+                    evt.Use();
+                }
+                else if (evt.commandName == "Paste" && PasteSelectedBoneTransforms(false))
+                {
+                    evt.Use();
+                }
+                else if (copyTool != null && evt.commandName == "Copy")
                 {
                     copyTool.OnCopyActivated();
                     evt.Use();

@@ -129,7 +129,7 @@ namespace UnityEditor.U2D.Animation
             switch (mode)
             {
                 case SpriteMeshViewMode.EditGeometry:
-                    return "Modify Geometry: select and move vertices or edges. Alt temporarily switches to Create. Ctrl+C copy vertex UV position, CTRL+V paste vertex UV position,  CTRL+SHIFT+V paste vertex UV position mirrored.";
+                    return "Modify Geometry: select and move vertices or edges. Alt temporarily switches to Create. Ctrl+C copy selected vertex or bone transforms, Ctrl+V paste, Ctrl+Shift+V paste mirrored.";
                 case SpriteMeshViewMode.CreateVertex:
                     return "Create Geometry: click to add vertices, or drag from a vertex to create edges. Alt temporarily switches to Modify.";
                 case SpriteMeshViewMode.CreateEdge:

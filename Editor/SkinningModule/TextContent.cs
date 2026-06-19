@@ -8,6 +8,7 @@ namespace UnityEditor.U2D.Animation
         public static string setMode = "Set Mode";
         public static string setTool = "Set Tool";
         public static string pasteData = "Paste Data";
+        public static string pasteBoneTransform = "Paste Bone Transform";
         public static string generateGeometry = "Generate Geometry";
         public static string generateWeights = "Generate Weights";
         public static string normalizeWeights = "Normalize Weights";
@@ -28,6 +29,7 @@ namespace UnityEditor.U2D.Animation
         public static string moveEndPoint = "Move End Point";
         public static string boneLength = "Bone Length";
         public static string createBone = "Create Bone";
+        public static string duplicateBone = "Duplicate Bone";
         public static string splitBone = "Split Bone";
         public static string removeBone = "Remove Bone";
         public static string moveVertices = "Move Vertices";

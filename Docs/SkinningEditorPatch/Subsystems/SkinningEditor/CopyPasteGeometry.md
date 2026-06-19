@@ -23,6 +23,7 @@
 - `Ctrl+V` can paste copied vertex placement to another sprite or selected target vertices, depending on the current workflow.
 - `Ctrl+Shift+V` performs mirrored paste.
 - Selected-vertex mirrored paste works within one UV/sprite by mapping copied vertices onto the currently selected opposite-side vertices.
+- When bones are selected, `SkinningModule` intercepts `Ctrl+C`, `Ctrl+V`, and `Ctrl+Shift+V` before `CopyTool`: it copies world bone transforms, pastes them onto the current selected bones, and mirrors horizontally for `Ctrl+Shift+V`.
 
 ## Data Notes
 
@@ -35,6 +36,15 @@ Copy/paste uses mesh data from `MeshTool.mesh`:
 - sprite rect and pixels-per-unit context
 
 Mirroring uses sprite rect dimensions when converting x/y coordinates.
+
+Selected-bone transform copy/paste stores only transform data, not topology:
+
+- world position
+- world rotation
+- world length
+- depth
+
+Bone transform mirroring uses the character bounds in Character mode and the selected sprite rect in Sprite Sheet mode.
 
 ## Change Risks
 
