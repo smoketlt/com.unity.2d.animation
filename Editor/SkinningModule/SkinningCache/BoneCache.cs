@@ -194,6 +194,8 @@ namespace UnityEditor.U2D.Animation
 
         public Pose bindPose => m_BindPose;
 
+        internal BonePose defaultPose => m_DefaultPose;
+
         public string guid
         {
             get => m_Guid;

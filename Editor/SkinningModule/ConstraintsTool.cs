@@ -351,6 +351,9 @@ namespace UnityEditor.U2D.Animation
             if (set == null || skeleton == null)
                 return;
 
+            if (skeleton.isPosePreview)
+                skeleton.RestoreDefaultPose();
+
             bool changed = false;
             using (skinningCache.UndoScope(TextContent.editConstraints))
             {
@@ -410,7 +413,6 @@ namespace UnityEditor.U2D.Animation
 
         void RefreshPreviewBindings()
         {
-            List<PreviewConstraint> previousConstraints = new List<PreviewConstraint>(m_PreviewConstraints);
             m_PreviewConstraints.Clear();
             m_BoundConstraintSet = s_ActiveConstraintSet;
             m_BoundSprite = skinningCache.selectedSprite;
@@ -429,7 +431,7 @@ namespace UnityEditor.U2D.Animation
                 if (source == null || driven == null || source == driven)
                     continue;
 
-                m_PreviewConstraints.Add(new PreviewConstraint(constraint, source, driven, FindPreviousPreviewConstraint(previousConstraints, constraint, source, driven)));
+                m_PreviewConstraints.Add(new PreviewConstraint(constraint, source, driven));
             }
         }
 
@@ -437,17 +439,6 @@ namespace UnityEditor.U2D.Animation
         {
             BoneCache parent = FindBone(bones, UnityEngine.U2D.Animation.SpriteSkinConstraintParent.GetGuid(drivenGuid));
             return parent != null ? parent : FindBone(bones, drivenGuid);
-        }
-
-        static PreviewConstraint FindPreviousPreviewConstraint(List<PreviewConstraint> previousConstraints, RuntimeConstraint constraint, BoneCache source, BoneCache driven)
-        {
-            for (int i = 0; i < previousConstraints.Count; ++i)
-            {
-                if (previousConstraints[i].Matches(constraint, source, driven))
-                    return previousConstraints[i];
-            }
-
-            return null;
         }
 
         void EnsurePreviewBindingsCurrent()
@@ -511,22 +502,17 @@ namespace UnityEditor.U2D.Animation
             readonly Quaternion m_SourceRotation;
             readonly Quaternion m_DrivenRotation;
 
-            public PreviewConstraint(RuntimeConstraint data, BoneCache source, BoneCache driven, PreviewConstraint previous)
+            public PreviewConstraint(RuntimeConstraint data, BoneCache source, BoneCache driven)
             {
                 m_Data = data;
                 m_Source = source;
                 m_Driven = driven;
-                m_SourcePosition = previous != null ? previous.m_SourcePosition : source.localPosition;
-                m_DrivenPosition = previous != null ? previous.m_DrivenPosition : driven.localPosition;
-                m_SourceScale = previous != null ? previous.m_SourceScale : source.localScale;
-                m_DrivenScale = previous != null ? previous.m_DrivenScale : driven.localScale;
-                m_SourceRotation = previous != null ? previous.m_SourceRotation : source.localRotation;
-                m_DrivenRotation = previous != null ? previous.m_DrivenRotation : driven.localRotation;
-            }
-
-            public bool Matches(RuntimeConstraint data, BoneCache source, BoneCache driven)
-            {
-                return ReferenceEquals(m_Data, data) && m_Source == source && m_Driven == driven;
+                m_SourcePosition = source.defaultPose.pose.position;
+                m_DrivenPosition = driven.defaultPose.pose.position;
+                m_SourceScale = Vector3.one;
+                m_DrivenScale = Vector3.one;
+                m_SourceRotation = source.defaultPose.pose.rotation;
+                m_DrivenRotation = driven.defaultPose.pose.rotation;
             }
 
             public bool Apply()
@@ -539,7 +525,9 @@ namespace UnityEditor.U2D.Animation
                     case RuntimeConstraintType.Position:
                     {
                         Vector3 positionDelta = Vector3.Scale(m_Source.localPosition - m_SourcePosition, multiplier) * influence;
-                        Vector3 position = m_DrivenPosition + positionDelta;
+                        Vector3 worldDelta = m_Source.parent != null ? m_Source.parent.localToWorldMatrix.MultiplyVector(positionDelta) : positionDelta;
+                        Vector3 drivenLocalDelta = m_Driven.parent != null ? m_Driven.parent.worldToLocalMatrix.MultiplyVector(worldDelta) : worldDelta;
+                        Vector3 position = m_DrivenPosition + drivenLocalDelta;
                         if ((m_Driven.localPosition - position).sqrMagnitude <= 0.000001f)
                             return false;
 
