@@ -48,6 +48,8 @@ Adding or updating a constraint creates a generated parent bone above the Driven
 
 Constraint-parent topology is always created from the skeleton default pose. If a constraint set is assigned, or a constraint is added or updated, while Preview Pose or Animation Preview is active, `EnsureConstraintParentBones()` restores the effective skeleton before creating or reparenting bones. The resulting topology event lets Animation Preview rebind and sample the current frame again. Never call `SetDefaultPose()` for newly generated constraint parents while the skeleton still contains an animated preview pose, because that would permanently promote the animated transforms into the restorable default pose.
 
+Changing the panel's constraint set is wrapped by `constraintSetChangeStarted` and `constraintSetChangeFinished` events. Animation Preview responds by performing its full Stop-and-restore operation before the set is processed, suppressing intermediate topology rebinds, binding the clip again after constraint topology and preview bindings are ready, sampling frame zero, and resuming Play only when it had been playing before the set change.
+
 When applying Sprite Editor changes, bones are serialized in parent-before-child order. This prevents generated constraint parents from being saved after their Driven children and avoids Unity rebuilding saved bone positions or rotations from forward parent references. Mesh vertex weights are remapped from the editor mesh bone list, which excludes generated constraint parents, into the serialized SpriteBone list that includes them.
 
 ## Runtime Workflow
