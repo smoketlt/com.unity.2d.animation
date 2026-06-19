@@ -50,6 +50,8 @@ Multi-bone rename order follows the selected bones' order in the active skeleton
 
 Bone body dragging uses `MouseCursor.MoveArrow`. Bone ring and tail/end-position handles use `MouseCursor.ScaleArrow`. Hovering any bone part draws that whole bone in white instead of drawing a preselection highlight or tinting only the joint/end cap. The tail hit area is larger than the visual end cap so it is easier to hover and drag.
 
+Zero-length bones only expose the start joint circle in the viewport. Their body and tail hit areas are not laid out, so Edit Bone interactions can move the joint but cannot rotate the bone or change its length from the viewport. Length can still be changed from the Bone inspector field.
+
 ## Bitmap Bone Drawing
 
 Skinning Editor bones are drawn in IMGUI through `BoneDrawingUtility` using embedded bitmap slices.

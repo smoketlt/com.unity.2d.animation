@@ -9,6 +9,8 @@ namespace UnityEditor.U2D.Animation
 
         const float k_PickingRadius = 5f;
         const float k_CreateBoneDragThreshold = 3f;
+        const float k_ZeroLengthBoneLength = 0.000001f;
+        const float k_ZeroLengthBoneSqrMagnitude = k_ZeroLengthBoneLength * k_ZeroLengthBoneLength;
         static readonly int k_BodyHashCode = "Body".GetHashCode();
         static readonly int k_JointHashCode = "Joint".GetHashCode();
         static readonly int k_TailHashCode = "Tail".GetHashCode();
@@ -133,6 +135,7 @@ namespace UnityEditor.U2D.Animation
             if (mode == SkeletonMode.Disabled)
                 return;
 
+            bool isZeroLength = (endPosition - position).sqrMagnitude <= k_ZeroLengthBoneSqrMagnitude;
             SliderData sliderData = new SliderData()
             {
                 position = GetMouseWorldPosition(forward, position),
@@ -141,6 +144,7 @@ namespace UnityEditor.U2D.Animation
                 right = right
             };
 
+            if (!isZeroLength)
             {
                 float distance = m_GUIWrapper.DistanceToSegmentClamp(position, endPosition);
 
@@ -165,7 +169,8 @@ namespace UnityEditor.U2D.Animation
                 }
             }
 
-            if (isChainEnd &&
+            if (!isZeroLength &&
+                isChainEnd &&
                 (IsCapable(SkeletonAction.ChangeLength) ||
                     IsCapable(SkeletonAction.MoveEndPosition) ||
                     IsCapable(SkeletonAction.CreateBone)))

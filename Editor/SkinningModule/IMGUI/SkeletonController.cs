@@ -427,7 +427,7 @@ namespace UnityEditor.U2D.Animation
                     continue;
 
                 bool isSelected = selection.Contains(bone.ToCharacterIfNeeded());
-                view.DrawBoneParentLink(GetBoneTailMarkerPosition(bone.parentBone), bone.position, Vector3.forward, style.GetParentLinkColor(bone, isSelected));
+                view.DrawBoneParentLink(GetBoneTailMarkerPosition(bone.parentBone), bone.position, Vector3.forward, ApplyConstraintFlashAlpha(bone, style.GetParentLinkColor(bone, isSelected)));
             }
 
             for (int i = 0; i < skeleton.boneCount; ++i)
@@ -438,7 +438,7 @@ namespace UnityEditor.U2D.Animation
                     continue;
 
                 bool isSelected = selection.Contains(bone.ToCharacterIfNeeded());
-                DrawBoneOutline(bone, style.GetOutlineColor(bone, isSelected, false), style.GetOutlineScale(isSelected));
+                DrawBoneOutline(bone, ApplyConstraintFlashAlpha(bone, style.GetOutlineColor(bone, isSelected, false)), style.GetOutlineScale(isSelected));
             }
 
             for (int i = 0; i < skeleton.boneCount; ++i)
@@ -450,16 +450,19 @@ namespace UnityEditor.U2D.Animation
 
                 if (bone.IsConstraintParent())
                 {
-                    view.DrawConstraintParent(bone.position, bone.right, bone.up, style.GetColor(bone));
+                    view.DrawConstraintParent(bone.position, bone.right, bone.up, ApplyConstraintFlashAlpha(bone, style.GetColor(bone)));
                     continue;
                 }
 
-                Color color = style.GetColor(bone);
+                Color color = ApplyConstraintFlashAlpha(bone, style.GetColor(bone));
                 if (IsBoneHovered(bone))
                     color = GetHoveredBoneColor(color);
 
                 DrawBone(bone, color);
             }
+
+            if (ConstraintBoneFlash.isActive)
+                HandleUtility.Repaint();
         }
 
         bool IsBoneHovered(BoneCache bone)
@@ -483,6 +486,12 @@ namespace UnityEditor.U2D.Animation
             bool isTailHovered = !isHovered && view.IsActionHot(SkeletonAction.None) && hoveredTail == bone && isNotOnVisualElement;
 
             view.DrawBone(bone.position, bone.right, Vector3.forward, bone.length, color, bone.chainedChild != null, isSelected, isJointHovered, isTailHovered, bone == hotBone);
+        }
+
+        static Color ApplyConstraintFlashAlpha(BoneCache bone, Color color)
+        {
+            color.a *= ConstraintBoneFlash.GetAlphaMultiplier(bone);
+            return color;
         }
 
         static Vector3 GetBoneTailMarkerPosition(BoneCache bone)

@@ -39,6 +39,7 @@ namespace UnityEditor.U2D.Animation
             m_Panel.onConstraintSetChanged += OnConstraintSetChanged;
             m_Panel.onPickSource += PickSourceBone;
             m_Panel.onPickDriven += PickDrivenBone;
+            m_Panel.onFindConstraintForSelected += FindConstraintForSelectedBone;
             m_Panel.onSelectedConstraintChanged += SelectConstraintBones;
             layout.AddBottomOverlayPanel(m_Panel);
             HidePanel();
@@ -141,6 +142,15 @@ namespace UnityEditor.U2D.Animation
                 m_Panel.SetDrivenBone(bone);
         }
 
+        void FindConstraintForSelectedBone()
+        {
+            BoneCache bone = GetFirstSelectedBone();
+            if (bone == null)
+                return;
+
+            m_Panel.SelectNextConstraintForBone(bone);
+        }
+
         BoneCache GetFirstSelectedBone()
         {
             BoneCache[] selection = skinningCache.skeletonSelection.elements;
@@ -175,6 +185,8 @@ namespace UnityEditor.U2D.Animation
                 skinningCache.skeletonSelection.Select(source, true);
             if (driven != null && driven != source)
                 skinningCache.skeletonSelection.Select(driven, true);
+            ConstraintBoneFlash.Start(source, driven);
+            HandleUtility.Repaint();
             skinningCache.events.boneSelectionChanged.Invoke();
         }
 
@@ -554,13 +566,14 @@ namespace UnityEditor.U2D.Animation
         Button m_AddButton;
         Button m_UpdateButton;
         Button m_RemoveButton;
-        Label m_Status;
+        Button m_FindConstraintButton;
 
         readonly List<BoneCache> m_Bones = new List<BoneCache>();
         readonly List<string> m_BoneNames = new List<string>();
         readonly List<RuntimeConstraint> m_FilteredConstraints = new List<RuntimeConstraint>();
         RuntimeConstraintType m_Type;
         RuntimeConstraint m_SelectedConstraint;
+        bool m_HasUserBoneSelection;
 
         public event Action onCreateSet = () => { };
         public event Action<BoneCache, BoneCache, RuntimeConstraintType, float, Vector3> onAdd = (source, driven, type, influence, multiplier) => { };
@@ -569,6 +582,7 @@ namespace UnityEditor.U2D.Animation
         public event Action onConstraintSetChanged = () => { };
         public event Action onPickSource = () => { };
         public event Action onPickDriven = () => { };
+        public event Action onFindConstraintForSelected = () => { };
         public event Action<RuntimeConstraint> onSelectedConstraintChanged = constraint => { };
 
         public RuntimeConstraintSet constraintSet
@@ -591,7 +605,8 @@ namespace UnityEditor.U2D.Animation
             RegisterCallback<MouseUpEvent>(e => e.StopPropagation());
 
             style.width = k_PanelWidth;
-            style.height = 270;
+            style.height = 310;
+            style.marginBottom = 0;
 
             var popup = new UnityEngine.UIElements.PopupWindow
             {
@@ -674,16 +689,21 @@ namespace UnityEditor.U2D.Animation
                 selectionType = SelectionType.Single
             };
             m_ListView.style.width = k_ContentWidth;
-            m_ListView.style.height = 70;
+            m_ListView.style.height = 120;
             m_ListView.style.marginTop = 4;
             m_ListView.onSelectionChange += OnSelectionChange;
             popup.Add(m_ListView);
 
-            m_Status = new Label { name = "ConstraintStatus" };
-            m_Status.style.width = k_ContentWidth;
-            m_Status.style.whiteSpace = WhiteSpace.Normal;
-            m_Status.style.marginTop = 4;
-            popup.Add(m_Status);
+            m_FindConstraintButton = new Button(() => onFindConstraintForSelected())
+            {
+                name = "FindConstraintForSelectedButton",
+                text = "Find constraint for selected"
+            };
+            m_FindConstraintButton.style.width = k_ContentWidth;
+            m_FindConstraintButton.style.marginTop = 4;
+            m_FindConstraintButton.style.marginLeft = 0;
+            m_FindConstraintButton.style.marginRight = 0;
+            popup.Add(m_FindConstraintButton);
 
             m_SetField.RegisterValueChangedCallback(_ =>
             {
@@ -876,6 +896,8 @@ namespace UnityEditor.U2D.Animation
             m_SourcePopup.choices = m_BoneNames;
             m_DrivenPopup.choices = m_BoneNames;
 
+            m_HasUserBoneSelection = HasUserBoneSelection(selection);
+
             if (m_Bones.Count > 1 && GetPopupBone(m_DrivenPopup) == null)
                 m_DrivenPopup.SetValueWithoutNotify(m_BoneNames[1]);
 
@@ -916,7 +938,21 @@ namespace UnityEditor.U2D.Animation
             m_InfluenceField.SetValueWithoutNotify(constraint.influence);
             SetMultiplierValueWithoutNotify(constraint.multiplier);
             RefreshConstraintList();
+            SelectConstraintListItem(constraint);
             onSelectedConstraintChanged(constraint);
+        }
+
+        public void SelectNextConstraintForBone(BoneCache bone)
+        {
+            if (bone == null || constraintSet == null)
+                return;
+
+            int currentIndex = m_FilteredConstraints.IndexOf(m_SelectedConstraint);
+            int startIndex = ConstraintContainsBone(m_SelectedConstraint, bone.guid) ? currentIndex + 1 : 0;
+            RuntimeConstraint constraint = FindConstraintForBone(bone.guid, startIndex);
+
+            if (constraint != null)
+                SelectConstraint(constraint);
         }
 
         public void SetSourceBone(BoneCache bone)
@@ -978,7 +1014,51 @@ namespace UnityEditor.U2D.Animation
             m_AddButton.SetEnabled(hasSet && hasBones && hasValidPair);
             m_UpdateButton.SetEnabled(hasSet && m_SelectedConstraint != null && hasValidPair);
             m_RemoveButton.SetEnabled(hasSet && m_SelectedConstraint != null);
-            m_Status.text = hasSet ? "Select source and driven bones, then add or update a constraint." : "Create or assign a constraint set asset.";
+            m_FindConstraintButton.SetEnabled(hasSet && m_HasUserBoneSelection);
+        }
+
+        void SelectConstraintListItem(RuntimeConstraint constraint)
+        {
+            int index = m_FilteredConstraints.IndexOf(constraint);
+            if (index < 0)
+            {
+                m_ListView.ClearSelection();
+                return;
+            }
+
+            m_ListView.SetSelectionWithoutNotify(new[] { index });
+            m_ListView.ScrollToItem(index);
+        }
+
+        RuntimeConstraint FindConstraintForBone(string boneGuid, int startIndex)
+        {
+            for (int i = Mathf.Clamp(startIndex, 0, m_FilteredConstraints.Count); i < m_FilteredConstraints.Count; ++i)
+            {
+                RuntimeConstraint constraint = m_FilteredConstraints[i];
+                if (constraint.sourceBoneGuid == boneGuid || constraint.drivenBoneGuid == boneGuid)
+                    return constraint;
+            }
+
+            return null;
+        }
+
+        static bool ConstraintContainsBone(RuntimeConstraint constraint, string boneGuid)
+        {
+            return constraint != null && (constraint.sourceBoneGuid == boneGuid || constraint.drivenBoneGuid == boneGuid);
+        }
+
+        static bool HasUserBoneSelection(BoneCache[] selection)
+        {
+            if (selection == null)
+                return false;
+
+            for (int i = 0; i < selection.Length; ++i)
+            {
+                if (selection[i] != null && !selection[i].IsConstraintParent())
+                    return true;
+            }
+
+            return false;
         }
 
         BoneCache GetPopupBone(PopupField<string> popup)
