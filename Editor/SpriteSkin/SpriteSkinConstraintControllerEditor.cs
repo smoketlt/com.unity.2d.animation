@@ -29,6 +29,22 @@ namespace UnityEditor.U2D.Animation
                     EditorUtility.SetDirty(controller);
                 }
             }
+
+            if (GUILayout.Button("Restore Pose"))
+            {
+                foreach (Object targetObject in targets)
+                {
+                    SpriteSkinConstraintController controller = targetObject as SpriteSkinConstraintController;
+                    if (controller == null)
+                        continue;
+
+                    Undo.RecordObjects(controller.GetComponentsInChildren<Transform>(true), "Restore Constraint Pose");
+                    controller.RestorePose();
+                    EditorUtility.SetDirty(controller);
+                }
+
+                SceneView.RepaintAll();
+            }
         }
 
         static void ApplyConstraintsAfterUndoRedo()

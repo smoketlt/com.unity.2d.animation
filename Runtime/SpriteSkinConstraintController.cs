@@ -50,6 +50,12 @@ namespace UnityEngine.U2D.Animation
         void OnEnable()
         {
             Rebind();
+            ApplyConstraints();
+        }
+
+        void OnDisable()
+        {
+            RestorePose();
         }
 
         void LateUpdate()
@@ -73,6 +79,7 @@ namespace UnityEngine.U2D.Animation
 
         public void Rebind()
         {
+            List<RuntimeConstraint> previousConstraints = new List<RuntimeConstraint>(m_RuntimeConstraints);
             m_RuntimeConstraints.Clear();
             m_SpriteSkins.Clear();
             m_BoneTransforms.Clear();
@@ -87,13 +94,19 @@ namespace UnityEngine.U2D.Animation
             for (int i = 0; i < m_SpriteSkins.Count; ++i)
                 AddBoneTransformsForSpriteSkin(m_SpriteSkins[i]);
 
-            AddConstraints();
+            AddConstraints(previousConstraints);
         }
 
         public void UpdateConstraints()
         {
             Rebind();
             ApplyConstraints();
+        }
+
+        public void RestorePose()
+        {
+            for (int i = 0; i < m_RuntimeConstraints.Count; ++i)
+                m_RuntimeConstraints[i].RestorePose();
         }
 
         void CollectSpriteSkins(List<SpriteSkin> spriteSkins)
@@ -136,7 +149,7 @@ namespace UnityEngine.U2D.Animation
             }
         }
 
-        void AddConstraints()
+        void AddConstraints(List<RuntimeConstraint> previousConstraints)
         {
             foreach (SpriteBoneConstraint constraint in m_ConstraintSet.constraints)
             {
@@ -148,8 +161,20 @@ namespace UnityEngine.U2D.Animation
                 if (ContainsRuntimeConstraint(constraint, source, driven))
                     continue;
 
-                m_RuntimeConstraints.Add(new RuntimeConstraint(constraint, source, driven));
+                RuntimeConstraint previous = FindRuntimeConstraint(previousConstraints, constraint, source, driven);
+                m_RuntimeConstraints.Add(new RuntimeConstraint(constraint, source, driven, previous));
             }
+        }
+
+        static RuntimeConstraint FindRuntimeConstraint(List<RuntimeConstraint> constraints, SpriteBoneConstraint data, Transform source, Transform driven)
+        {
+            for (int i = 0; i < constraints.Count; ++i)
+            {
+                if (constraints[i].Matches(data, source, driven))
+                    return constraints[i];
+            }
+
+            return null;
         }
 
         bool ContainsRuntimeConstraint(SpriteBoneConstraint data, Transform source, Transform driven)
@@ -204,17 +229,17 @@ namespace UnityEngine.U2D.Animation
             readonly Quaternion m_SourceRotation;
             readonly Quaternion m_DrivenRotation;
 
-            public RuntimeConstraint(SpriteBoneConstraint data, Transform source, Transform driven)
+            public RuntimeConstraint(SpriteBoneConstraint data, Transform source, Transform driven, RuntimeConstraint previous)
             {
                 m_Data = data;
                 m_Source = source;
                 m_Driven = driven;
-                m_SourcePosition = source.localPosition;
-                m_DrivenPosition = driven.localPosition;
-                m_SourceScale = source.localScale;
-                m_DrivenScale = driven.localScale;
-                m_SourceRotation = source.localRotation;
-                m_DrivenRotation = driven.localRotation;
+                m_SourcePosition = previous != null ? previous.m_SourcePosition : source.localPosition;
+                m_DrivenPosition = previous != null ? previous.m_DrivenPosition : driven.localPosition;
+                m_SourceScale = previous != null ? previous.m_SourceScale : source.localScale;
+                m_DrivenScale = previous != null ? previous.m_DrivenScale : driven.localScale;
+                m_SourceRotation = previous != null ? previous.m_SourceRotation : source.localRotation;
+                m_DrivenRotation = previous != null ? previous.m_DrivenRotation : driven.localRotation;
             }
 
             public bool Matches(SpriteBoneConstraint data, Transform source, Transform driven)
@@ -249,6 +274,22 @@ namespace UnityEngine.U2D.Animation
                     case SpriteBoneConstraintType.Scale:
                         Vector3 scaleDelta = Vector3.Scale(m_Source.localScale - m_SourceScale, multiplier) * influence;
                         m_Driven.localScale = m_DrivenScale + scaleDelta;
+                        break;
+                }
+            }
+
+            public void RestorePose()
+            {
+                switch (m_Data.type)
+                {
+                    case SpriteBoneConstraintType.Position:
+                        m_Driven.localPosition = m_DrivenPosition;
+                        break;
+                    case SpriteBoneConstraintType.Rotation:
+                        m_Driven.localRotation = m_DrivenRotation;
+                        break;
+                    case SpriteBoneConstraintType.Scale:
+                        m_Driven.localScale = m_DrivenScale;
                         break;
                 }
             }
