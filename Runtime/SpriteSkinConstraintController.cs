@@ -13,7 +13,7 @@ namespace UnityEngine.U2D.Animation
     [DisallowMultipleComponent]
     public class SpriteSkinConstraintController : MonoBehaviour
     {
-        [SerializeField]
+        [SerializeField, HideInInspector]
         SpriteSkin m_SpriteSkin;
         [SerializeField]
         SpriteSkinConstraintSet m_ConstraintSet;
