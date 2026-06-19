@@ -75,7 +75,7 @@ The Visibility popup remains in `rightOverlay` because it is a tall list window 
 
 ### Animation preview timeline
 
-`AnimationPreviewPanel` occupies the previously unused horizontal toolbar strip at the bottom of the Skinning Editor. It remains separate from `bottomOverlay`, so persistent clip playback controls do not overlap the active Weight Painter, Bone Inspector, Generate, Paste, Pivot, Influence, or Constraints panel.
+`AnimationPreviewPanel` occupies the dedicated absolute `TimelineOverlay` strip at the bottom of the Skinning Editor. It remains separate from `bottomOverlay`, whose bottom padding reserves the same space, so persistent clip playback controls do not overlap the active Weight Painter, Bone Inspector, Generate, Paste, Pivot, Influence, or Constraints panel. Do not place the timeline in the legacy `HorizontalToolbar`: `LayoutOverlay` uses reverse column flow and that toolbar appears at the top of the viewport when enabled.
 
 `AnimationPreviewController` reads supported Transform curves from the selected `AnimationClip`, matches binding paths to `BoneCache` hierarchy paths, and applies the sampled local position, rotation, and scale as a temporary preview pose. It drives the existing `skeletonPreviewPoseChanged` -> `MeshPreviewCache.SetSkinningDirty()` flow and never marks Sprite importer data modified.
 

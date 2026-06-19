@@ -45,7 +45,16 @@ LayoutOverlay > #BottomOverlay {
     flex-direction: row;
     justify-content: center;
     align-items: flex-end;
-    padding-bottom: 10px;
+    padding-bottom: 54px;
+}
+
+LayoutOverlay > #TimelineOverlay {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 44px;
+    flex-direction: row;
 }
 
 LayoutOverlay > #BottomOverlay > .DraggableOverlayPanel {

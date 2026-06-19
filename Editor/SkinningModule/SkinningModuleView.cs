@@ -709,7 +709,6 @@ namespace UnityEditor.U2D.Animation
             mainView.Add(m_LayoutOverlay);
             m_LayoutOverlay.hasScrollbar = true;
             m_LayoutOverlay.verticalToolbar.verticalScrollerVisibility = ScrollerVisibility.Hidden;
-            m_LayoutOverlay.horizontalToolbar.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             m_LayoutOverlay.StretchToParentSize();
 
             CreateAnimationPreviewPanel();
@@ -768,8 +767,7 @@ namespace UnityEditor.U2D.Animation
         private void CreateAnimationPreviewPanel()
         {
             m_AnimationPreviewPanel = new AnimationPreviewPanel();
-            m_LayoutOverlay.horizontalToolbar.style.height = 44f;
-            m_LayoutOverlay.horizontalToolbar.AddToContainer(m_AnimationPreviewPanel);
+            m_LayoutOverlay.timelineOverlay.Add(m_AnimationPreviewPanel);
         }
 
         private void CreatePoseToolbar()

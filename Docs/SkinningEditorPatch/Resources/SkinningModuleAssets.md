@@ -48,6 +48,8 @@ Do not rename the UXML element unless all C# lookups, USS selectors, and metadat
 
 Skinning tool panels that are short inspector/control windows are hosted in `LayoutOverlay.bottomOverlay`, appear centered at the bottom by default, and can be dragged by their title-bar area. This includes Weight Painter, Bone Inspector, Generate Geometry, Generate Weights, Paste, Pivot, and Influence panels. Dragged absolute positioning is reset when the owning tool hides the panel, so switching tools shows the panel centered again instead of preserving a stale hidden position.
 
+The persistent Animation Preview timeline is hosted in `LayoutOverlay.timelineOverlay`, an absolute 44-pixel strip at the bottom edge. `bottomOverlay` reserves 54 pixels beneath its draggable panels so they remain above the timeline.
+
 The Visibility window stays in `LayoutOverlay.rightOverlay` because it is a tall resizable list window. Shared popup sizing and form styles in `Editor/Assets/LayoutOverlay/LayoutOverlayStyle.uss` must cover both right and bottom overlay selectors when a panel can live in either area.
 
 ## Weight Painter Panel Notes

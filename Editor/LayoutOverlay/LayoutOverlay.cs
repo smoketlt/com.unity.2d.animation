@@ -19,6 +19,7 @@ namespace UnityEditor.U2D.Layout
         private VisualElement m_LeftOverlay;
         private VisualElement m_RightOverlay;
         private VisualElement m_BottomOverlay;
+        private VisualElement m_TimelineOverlay;
         private DropdownMenu m_DropdownOverlay;
 
         public ScrollableToolbar horizontalToolbar
@@ -78,6 +79,16 @@ namespace UnityEditor.U2D.Layout
                 if (m_BottomOverlay == null)
                     m_BottomOverlay = this.Q<VisualElement>("BottomOverlay");
                 return m_BottomOverlay;
+            }
+        }
+
+        public VisualElement timelineOverlay
+        {
+            get
+            {
+                if (m_TimelineOverlay == null)
+                    m_TimelineOverlay = this.Q<VisualElement>("TimelineOverlay");
+                return m_TimelineOverlay;
             }
         }
 
