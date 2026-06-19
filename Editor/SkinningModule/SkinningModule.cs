@@ -23,6 +23,8 @@ namespace UnityEditor.U2D.Animation
         private HorizontalToggleTools m_HorizontalToggleTools;
         private AnimationAnalytics m_Analytics;
         private ModuleToolGroup m_ModuleToolGroup;
+        private AnimationPreviewPanel m_AnimationPreviewPanel;
+        private AnimationPreviewController m_AnimationPreviewController;
         IMeshPreviewBehaviour m_MeshPreviewBehaviourOverride = null;
         bool m_CollapseToolbar;
         bool m_HasUnsavedChanges = false;
@@ -66,6 +68,13 @@ namespace UnityEditor.U2D.Animation
                 m_MeshPreviewTool = skinningCache.CreateTool<MeshPreviewTool>();
                 SetupModuleToolGroup();
                 m_MeshPreviewTool.Activate();
+
+                ISpriteEditorDataProvider spriteEditorDataProvider = spriteEditor.GetDataProvider<ISpriteEditorDataProvider>();
+                m_AnimationPreviewController = new AnimationPreviewController(
+                    skinningCache,
+                    m_AnimationPreviewPanel,
+                    spriteEditorDataProvider.pixelsPerUnit,
+                    spriteEditor.RequestRepaint);
 
                 m_SpriteOutlineRenderer = new SpriteOutlineRenderer(skinningCache.events);
 
@@ -128,6 +137,9 @@ namespace UnityEditor.U2D.Animation
         {
             CancelNewGeometryModeOnDeactivate();
             SkinningEditorInput.Reset();
+
+            m_AnimationPreviewController?.Dispose();
+            m_AnimationPreviewController = null;
 
             if (m_SpriteOutlineRenderer != null)
                 m_SpriteOutlineRenderer.Dispose();

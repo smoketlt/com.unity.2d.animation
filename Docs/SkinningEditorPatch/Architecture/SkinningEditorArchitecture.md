@@ -27,6 +27,7 @@ This page maps the editor-side architecture used by the forked Skinning Editor p
 - mesh data: `SpriteMeshData.cs`, `SpriteMeshDataController.cs`, `MeshCache.cs`
 - input patch: `SkinningEditorInput.cs`
 - top informational overlay: `SkinningEditorInfoOverlay.cs`
+- animation preview and bottom timeline: `AnimationPreviewController.cs`, `AnimationPreviewPanel.cs`
 
 ## Tool Model
 
@@ -71,6 +72,12 @@ The `Reset` toolbar button is now a command handled by `SkinningModuleView.Reset
 These panels initially appear centered along the bottom edge. `LayoutOverlayUtility.MakeDraggableOverlayPanel(...)` adds a title-bar drag handle to each panel and `OverlayPanelDragger` switches the panel to absolute positioning after the first drag, clamped inside the bottom overlay. Tools call `LayoutOverlayUtility.ResetDraggableOverlayPanel(...)` before hiding their panel so a dragged panel returns to the normal bottom-center layout the next time that tool is shown.
 
 The Visibility popup remains in `rightOverlay` because it is a tall list window with its own resizer and right-side workflow.
+
+### Animation preview timeline
+
+`AnimationPreviewPanel` occupies the previously unused horizontal toolbar strip at the bottom of the Skinning Editor. It remains separate from `bottomOverlay`, so persistent clip playback controls do not overlap the active Weight Painter, Bone Inspector, Generate, Paste, Pivot, Influence, or Constraints panel.
+
+`AnimationPreviewController` reads supported Transform curves from the selected `AnimationClip`, matches binding paths to `BoneCache` hierarchy paths, and applies the sampled local position, rotation, and scale as a temporary preview pose. It drives the existing `skeletonPreviewPoseChanged` -> `MeshPreviewCache.SetSkinningDirty()` flow and never marks Sprite importer data modified.
 
 ### Top informational overlay
 

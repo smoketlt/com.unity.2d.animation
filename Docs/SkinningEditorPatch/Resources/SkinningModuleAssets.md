@@ -34,6 +34,7 @@ Do not rename the UXML element unless all C# lookups, USS selectors, and metadat
 - `GenerateWeightsPanel.uxml` / `.uss`
 - `PastePanel.uxml` / `.uss`
 - `WeightPainterPanel.uxml` / `.uss`
+- `AnimationPreviewPanel.uss` styles the persistent bottom timeline created by `AnimationPreviewPanel.cs`.
 - `VisibilityToolWindow.uxml`
 - `InfluenceWindow.uxml`
 - Constraint settings are built in `Editor/SkinningModule/ConstraintsTool.cs` and hosted in the bottom overlay.

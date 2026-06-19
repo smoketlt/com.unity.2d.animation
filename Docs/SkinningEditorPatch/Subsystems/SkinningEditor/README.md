@@ -30,6 +30,7 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 12. [WeightPainterTool](WeightPainterTool.md) when changing Weight Slider/Brush mode selection, brush settings, or weight inspector panel behavior
 13. [VisibilityTool](VisibilityTool.md) when changing the Visibility popup, opacity sliders, or visibility lists
 14. [Constraints](Constraints.md) when changing runtime bone constraint authoring or evaluation
+15. [AnimationPreview](AnimationPreview.md) when changing AnimationClip binding, frame scrubbing, playback, looping, or timeline UI
 
 ## Entity Pages
 
@@ -50,6 +51,7 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 - [GenerateWeightsTool](GenerateWeightsTool.md)
 - [BoneInfluence](BoneInfluence.md)
 - [WeightPainterTool](WeightPainterTool.md)
+- [AnimationPreview](AnimationPreview.md)
 - [VisibilityTool](VisibilityTool.md)
 - [Constraints](Constraints.md)
 

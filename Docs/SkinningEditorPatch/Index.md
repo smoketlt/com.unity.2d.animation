@@ -19,6 +19,7 @@
 | Weight generation/normalization/clearing | [Subsystems/SkinningEditor/GenerateWeightsTool](Subsystems/SkinningEditor/GenerateWeightsTool.md) | `Editor/SkinningModule/GenerateWeightsTool.cs` |
 | Bone Influence/Sprite Influence assignment and auto weights | [Subsystems/SkinningEditor/BoneInfluence](Subsystems/SkinningEditor/BoneInfluence.md) | `Editor/SkinningModule/SpriteBoneInfluence/**`, `Editor/SkinningModule/SkinningCache/SpriteCacheExtensions.cs` |
 | Weight Slider/Brush modes and painter panel | [Subsystems/SkinningEditor/WeightPainterTool](Subsystems/SkinningEditor/WeightPainterTool.md) | `Editor/SkinningModule/WeightPainterTool.cs`, `Editor/SkinningModule/UI/WeightPainterPanel.cs` |
+| Animation clip playback, frame scrubbing, Play/Pause, Stop, and Loop | [Subsystems/SkinningEditor/AnimationPreview](Subsystems/SkinningEditor/AnimationPreview.md) | `Editor/SkinningModule/AnimationPreviewController.cs`, `Editor/SkinningModule/UI/AnimationPreviewPanel.cs` |
 | Visibility window, opacity sliders, bone/sprite visibility lists | [Subsystems/SkinningEditor/VisibilityTool](Subsystems/SkinningEditor/VisibilityTool.md) | `Editor/SkinningModule/VisibilityTool/**`, `Editor/Assets/SkinningModule/VisibilityToolWindow.uxml` |
 | Runtime bone constraints | [Subsystems/SkinningEditor/Constraints](Subsystems/SkinningEditor/Constraints.md) | `Editor/SkinningModule/ConstraintsTool.cs`, `Editor/SkinningModule/UI/ConstraintsToolbar.cs`, `Runtime/SpriteSkinConstraintSet.cs`, `Runtime/SpriteSkinConstraintController.cs` |
 | Top informational overlay text | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/SkinningModule/UI/SkinningEditorInfoOverlay.cs` |
@@ -47,6 +48,7 @@
 | `GenerateWeightsTool` | Weight generation, normalization, and clearing panel | `Editor/SkinningModule/GenerateWeightsTool.cs` |
 | `SpriteBoneInfluenceTool` / `BoneSpriteInfluenceTool` | Assigned bone/sprite influence list tools and auto missing-weight fill after assignment | `Editor/SkinningModule/SpriteBoneInfluence/**` |
 | `WeightPainterTool` | Weight Slider/Brush editing, mode popup, brush settings, weight inspector panel | `Editor/SkinningModule/WeightPainterTool.cs`, `Editor/SkinningModule/UI/WeightPainterPanel.cs` |
+| `AnimationPreviewController` / `AnimationPreviewPanel` | AnimationClip binding, temporary bone-pose sampling, frame scrubbing, playback, loop state, and bottom timeline UI | `Editor/SkinningModule/AnimationPreviewController.cs`, `Editor/SkinningModule/UI/AnimationPreviewPanel.cs` |
 | `SkinningEditorInput` | Fork-specific shared modifier-key status for Skinning Editor tools | `Editor/SkinningModule/IMGUI/SkinningEditorInput.cs` |
 | `VisibilityTool` | Visibility popup window, tab state, and opacity slider preview behavior | `Editor/SkinningModule/VisibilityTool/VisibilityTool.cs` |
 | `ConstraintsTool` | Constraint set selection and Position/Rotation/Scale constraint editing panel | `Editor/SkinningModule/ConstraintsTool.cs` |

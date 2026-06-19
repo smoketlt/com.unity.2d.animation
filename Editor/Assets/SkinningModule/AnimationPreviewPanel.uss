@@ -1,0 +1,61 @@
+#AnimationPreviewPanel {
+    height: 44px;
+    min-height: 44px;
+    flex-grow: 1;
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 8px;
+    padding-right: 8px;
+    background-color: rgba(42, 42, 42, 0.96);
+    border-top-width: 1px;
+    border-top-color: rgba(95, 95, 95, 0.9);
+}
+
+#AnimationPreviewPanel .animation-preview-clip {
+    width: 250px;
+    min-width: 180px;
+    margin-right: 6px;
+}
+
+#AnimationPreviewPanel .animation-preview-button {
+    min-width: 30px;
+    height: 22px;
+    margin-left: 1px;
+    margin-right: 1px;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+#AnimationPreviewPanel .animation-preview-play {
+    min-width: 48px;
+}
+
+#AnimationPreviewPanel .animation-preview-slider {
+    flex-grow: 1;
+    min-width: 100px;
+    margin-left: 8px;
+    margin-right: 6px;
+}
+
+#AnimationPreviewPanel .animation-preview-frame {
+    width: 82px;
+    margin-left: 0;
+}
+
+#AnimationPreviewPanel .animation-preview-frame-count {
+    min-width: 42px;
+    margin-left: 3px;
+    margin-right: 8px;
+}
+
+#AnimationPreviewPanel #AnimationLoopToggle {
+    margin-right: 10px;
+}
+
+#AnimationPreviewPanel .animation-preview-status {
+    min-width: 110px;
+    max-width: 210px;
+    color: rgb(180, 180, 180);
+    -unity-text-align: middle-left;
+}

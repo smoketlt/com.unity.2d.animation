@@ -709,7 +709,10 @@ namespace UnityEditor.U2D.Animation
             mainView.Add(m_LayoutOverlay);
             m_LayoutOverlay.hasScrollbar = true;
             m_LayoutOverlay.verticalToolbar.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+            m_LayoutOverlay.horizontalToolbar.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             m_LayoutOverlay.StretchToParentSize();
+
+            CreateAnimationPreviewPanel();
 
             CreatePoseToolbar();
             CreateBoneToolbar();
@@ -735,6 +738,8 @@ namespace UnityEditor.U2D.Animation
 
         private void DoViewGUI()
         {
+            m_AnimationPreviewPanel.SetEnabled(!spriteEditor.editingDisabled);
+
             if (spriteEditor.editingDisabled == m_BoneToolbar.enabledSelf)
             {
                 m_BoneToolbar.SetEnabled(!spriteEditor.editingDisabled);
@@ -758,6 +763,13 @@ namespace UnityEditor.U2D.Animation
         private bool isFocused()
         {
             return spriteEditor != null && (EditorWindow.focusedWindow == spriteEditor as EditorWindow);
+        }
+
+        private void CreateAnimationPreviewPanel()
+        {
+            m_AnimationPreviewPanel = new AnimationPreviewPanel();
+            m_LayoutOverlay.horizontalToolbar.style.height = 44f;
+            m_LayoutOverlay.horizontalToolbar.AddToContainer(m_AnimationPreviewPanel);
         }
 
         private void CreatePoseToolbar()
