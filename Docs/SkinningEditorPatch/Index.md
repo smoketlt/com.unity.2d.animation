@@ -22,6 +22,7 @@
 | Animation clip playback, frame scrubbing, Play/Pause, Stop, and Loop | [Subsystems/SkinningEditor/AnimationPreview](Subsystems/SkinningEditor/AnimationPreview.md) | `Editor/SkinningModule/AnimationPreviewController.cs`, `Editor/SkinningModule/UI/AnimationPreviewPanel.cs` |
 | Visibility window, opacity sliders, bone/sprite visibility lists | [Subsystems/SkinningEditor/VisibilityTool](Subsystems/SkinningEditor/VisibilityTool.md) | `Editor/SkinningModule/VisibilityTool/**`, `Editor/Assets/SkinningModule/VisibilityToolWindow.uxml` |
 | Runtime bone constraints | [Subsystems/SkinningEditor/Constraints](Subsystems/SkinningEditor/Constraints.md) | `Editor/SkinningModule/ConstraintsTool.cs`, `Editor/SkinningModule/UI/ConstraintsToolbar.cs`, `Runtime/SpriteSkinConstraintSet.cs`, `Runtime/SpriteSkinConstraintController.cs` |
+| PSB scene hierarchy bone names such as `Nose_1` | [Subsystems/SkinningEditor/PSBHierarchyBoneNames](Subsystems/SkinningEditor/PSBHierarchyBoneNames.md) | `Editor/SpriteSkin/SpriteSkinBoneNameNormalizer.cs` |
 | Top informational overlay text | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/SkinningModule/UI/SkinningEditorInfoOverlay.cs` |
 | Skinning panel placement and draggable bottom overlays | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/LayoutOverlay/**`, `Editor/Assets/LayoutOverlay/**` |
 | UXML/USS resources | [Resources/SkinningModuleAssets](Resources/SkinningModuleAssets.md) | `Editor/Assets/SkinningModule/**` |

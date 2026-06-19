@@ -31,6 +31,7 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 13. [VisibilityTool](VisibilityTool.md) when changing the Visibility popup, opacity sliders, or visibility lists
 14. [Constraints](Constraints.md) when changing runtime bone constraint authoring or evaluation
 15. [AnimationPreview](AnimationPreview.md) when changing AnimationClip binding, frame scrubbing, playback, looping, or timeline UI
+16. [PSBHierarchyBoneNames](PSBHierarchyBoneNames.md) when changing automatic normalization of PSD Importer numeric bone-name suffixes in scene instances
 
 ## Entity Pages
 
@@ -54,6 +55,7 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 - [AnimationPreview](AnimationPreview.md)
 - [VisibilityTool](VisibilityTool.md)
 - [Constraints](Constraints.md)
+- [PSBHierarchyBoneNames](PSBHierarchyBoneNames.md)
 
 ## Current User-Facing Geometry Semantics
 
