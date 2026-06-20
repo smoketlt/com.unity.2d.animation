@@ -5,10 +5,14 @@ namespace UnityEditor.U2D.Animation
 {
     internal class SkinningModuleSettings
     {
+        public const float kMinBoneDisplayScale = 0.25f;
+        public const float kMaxBoneDisplayScale = 2f;
         public const string kCompactToolbarKey = UserSettings.kSettingsUniqueKey + "AnimationEditorSetting.compactToolbar";
         public const string kShowSpriteMeshOverwriteWarningKey = UserSettings.kSettingsUniqueKey + "AnimationEditorSetting.showSpriteMeshOverwriteWarning";
+        public const string kBoneDisplayScaleKey = UserSettings.kSettingsUniqueKey + "AnimationEditorSetting.boneDisplayScale";
         public static readonly GUIContent kCompactToolbarLabel = EditorGUIUtility.TrTextContent("Hide Tool Text");
         public static readonly GUIContent kShowSpriteMeshOverwriteWarning = new GUIContent(TextContent.showSpriteMeshOverwriteWarning, TextContent.showSpriteMeshOverwriteWarningTip);
+        public static readonly GUIContent kBoneDisplayScaleLabel = EditorGUIUtility.TrTextContent("Bone Size", "Scales the displayed size of bones without changing skeleton data or picking areas.");
 
         public static bool compactToolBar
         {
@@ -22,6 +26,12 @@ namespace UnityEditor.U2D.Animation
             set => EditorPrefs.SetBool(kShowSpriteMeshOverwriteWarningKey, value);
         }
 
+        public static float boneDisplayScale
+        {
+            get => Mathf.Clamp(EditorPrefs.GetFloat(kBoneDisplayScaleKey, 1f), kMinBoneDisplayScale, kMaxBoneDisplayScale);
+            set => EditorPrefs.SetFloat(kBoneDisplayScaleKey, Mathf.Clamp(value, kMinBoneDisplayScale, kMaxBoneDisplayScale));
+        }
+
         public void OnGUI()
         {
             EditorGUI.BeginChangeCheck();
@@ -33,6 +43,14 @@ namespace UnityEditor.U2D.Animation
             c = EditorGUILayout.Toggle(kShowSpriteMeshOverwriteWarning, showSpriteMeshOverwriteWarning);
             if (EditorGUI.EndChangeCheck())
                 showSpriteMeshOverwriteWarning = c;
+
+            EditorGUI.BeginChangeCheck();
+            float boneScale = EditorGUILayout.Slider(kBoneDisplayScaleLabel, boneDisplayScale, kMinBoneDisplayScale, kMaxBoneDisplayScale);
+            if (EditorGUI.EndChangeCheck())
+            {
+                boneDisplayScale = boneScale;
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+            }
         }
     }
 

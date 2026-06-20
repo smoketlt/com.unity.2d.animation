@@ -41,10 +41,12 @@ namespace UnityEditor.U2D.Animation
 
         public static void DrawBoneNode(Vector3 position, Vector3 forward, Color color, float scale = 1.0f)
         {
+            float displayScale = scale * SkinningModuleSettings.boneDisplayScale;
+
             if (scale <= 1f)
-                DrawTextureAt(position, B_Circle, color, kCircleSize, kCircleSize);
+                DrawTextureAt(position, B_Circle, color, kCircleSize * displayScale, kCircleSize * displayScale);
             else
-                DrawTextureAt(position, B_Circle_Selected, color, kCircleSize * scale, kCircleSize * scale);
+                DrawTextureAt(position, B_Circle_Selected, color, kCircleSize * displayScale, kCircleSize * displayScale);
         }
 
         public static void DrawBone(Vector3 position, Vector3 endPosition, Vector3 forward, Color color, float scale = 1.0f)
@@ -77,11 +79,17 @@ namespace UnityEditor.U2D.Animation
 
         public static void DrawBoneOutline(Vector3 position, Vector3 endPosition, Vector3 forward, Color color, float outlineScale = 1.35f, float scale = 1.0f)
         {
-            DrawTextureAt(position, B_Circle_Selected, color, kCircleSize * scale, kCircleSize * scale);
+            float displayScale = scale * SkinningModuleSettings.boneDisplayScale;
+            DrawTextureAt(position, B_Circle_Selected, color, kCircleSize * displayScale, kCircleSize * displayScale);
             DrawTexturedBone(position, endPosition, forward, color, color, true, scale);
         }
 
         public static bool ShouldDrawBoneBody(Vector3 position, Vector3 endPosition, float scale = 1.0f)
+        {
+            return ShouldDrawBoneBodyAtScale(position, endPosition, scale * SkinningModuleSettings.boneDisplayScale);
+        }
+
+        static bool ShouldDrawBoneBodyAtScale(Vector3 position, Vector3 endPosition, float scale)
         {
             Vector2 start = HandleUtility.WorldToGUIPoint(position);
             Vector2 end = HandleUtility.WorldToGUIPoint(endPosition);
@@ -93,12 +101,14 @@ namespace UnityEditor.U2D.Animation
             if (Event.current.type != EventType.Repaint)
                 return;
 
+            scale *= SkinningModuleSettings.boneDisplayScale;
+
             Vector2 start = HandleUtility.WorldToGUIPoint(position);
             Vector2 end = HandleUtility.WorldToGUIPoint(endPosition);
             Vector2 direction = end - start;
             float length = direction.magnitude;
 
-            if (!ShouldDrawBoneBody(position, endPosition, scale))
+            if (!ShouldDrawBoneBodyAtScale(position, endPosition, scale))
                 return;
 
             Texture2D head = selected ? B_Head_Selected : B_Head;

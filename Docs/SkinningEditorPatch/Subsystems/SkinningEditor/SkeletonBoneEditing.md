@@ -9,6 +9,7 @@ This page documents Skinning Editor bone creation and dynamic bone drawing.
 - `Editor/SkinningModule/IMGUI/SkeletonView.cs`
 - `Editor/SkinningModule/IMGUI/SkeletonController.cs`
 - `Editor/SkinningModule/BoneDrawingUtility.cs`
+- `Editor/SkinningModule/UserSettings.cs`
 - `Editor/Assets/SkinningModule/BoneToolbar.uxml`
 - `Editor/Assets/SkinningModule/BoneToolbarStyle.uss`
 
@@ -72,6 +73,12 @@ The toolbar icon is a separate UI resource:
 - selected: `Editor/Assets/EditorIcons/Selected/Create Bones.png`
 
 `BoneDrawingUtility.DrawBone(...)` draws the sliced bitmap body and `DrawBoneNode(...)` draws joint circles. Tail circles are not drawn over `B_EndCap`, and legacy square IMGUI handle caps are not drawn over bitmap joints. Preview bones use the same drawing methods as saved bones.
+
+## Bone Display Size
+
+`Preferences > 2D > Animation > Bone Size` controls the screen-space size of Skinning Editor bones and Sprite Skin Scene view gizmos. The user preference defaults to `1.0` and is clamped to `0.25-2.0`.
+
+The scale applies immediately to joint circles, textured body widths, fixed head/end-cap lengths, and the minimum projected length required to draw the textured body. It does not modify skeleton geometry, serialized bone data, or picking areas, so small displayed bones remain easy to select.
 
 Selected bones use the selected bitmap slices in the outline pass so selection remains readable against bone colors and mesh overlays.
 
