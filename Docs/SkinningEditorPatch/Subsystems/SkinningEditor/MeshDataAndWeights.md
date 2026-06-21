@@ -25,6 +25,12 @@ This page documents the mesh data model used by Skinning Editor geometry, includ
 
 `MeshCache` extends `BaseSpriteMeshData` for a concrete `SpriteCache`.
 
+Serialized mesh weights use indices into the complete saved `SpriteBone` array. That array can include generated constraint-parent bones, while `MeshCache.bones` intentionally excludes those service bones. During cache loading, `MeshCache` therefore temporarily keeps the complete unfiltered bone list while reading vertex weights, then remaps every weight channel into the filtered mesh-compatible list. The inverse remap is performed when Apply serializes mesh weights. Both directions are required to keep weights stable across Apply/reload.
+
+In Character mode, `MeshCache.bones` references character-skeleton bones and the sprite skeleton contains separate cloned `BoneCache` objects. During initial cache creation, saved weights are first loaded against sprite-skeleton order and then remapped by GUID into `CharacterPartCache.bones`. Apply performs the inverse GUID mapping back into serialized sprite-skeleton order. It must not treat an index in `CharacterPartCache.bones` as a sprite-skeleton index: that array is an influence list whose order can differ arbitrarily from both the character skeleton and sprite skeleton, including reversed chain order.
+
+The serialized `CharacterPart.bones` array has stricter semantics than the editor-side influence list: each entry maps the SpriteBone at the same array position to a bone in the character skeleton. Apply rebuilds this array by iterating the sprite's exact saved parent-first bone order and resolving each corresponding character bone by GUID. Saving the editor influence-list order directly can look correct inside Skinning Editor but binds runtime `SpriteSkin.boneTransforms` to the wrong SpriteBone indices after PSD Importer regenerates the prefab.
+
 ## Geometry Mutation
 
 Use `SpriteMeshDataController` for geometry operations:
@@ -86,3 +92,7 @@ When weights exist, the user must confirm the operation.
 - Changing indices must update outline edges through `SetIndices(...)`.
 - Triangulation can add or reorder geometry; preserve weight behavior when using it.
 - `MeshCache.SetBones(...)` fixes weights when the compatible bone set changes.
+- Loading saved weights directly against the filtered mesh bone list shifts every index after a generated constraint parent and corrupts weights on Apply/reload.
+- Treating a Character Part influence-list index as a sprite-skeleton index can reverse or otherwise permute weights when Apply serializes them; use bone GUID identity across the two skeleton caches.
+- Replacing the sprite-skeleton bone list with Character Part influence bones without remapping loaded channels causes the same permutation immediately after Apply reloads the cache.
+- Serializing `CharacterPart.bones` in influence-list order instead of saved SpriteBone order corrupts the generated runtime `SpriteSkin` binding even when Skinning Editor weights remain correct.

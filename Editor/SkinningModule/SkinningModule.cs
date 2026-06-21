@@ -700,11 +700,10 @@ namespace UnityEditor.U2D.Animation
                     Vertex2DMetaData[] vertices = new Vertex2DMetaData[mesh.vertexCount];
                     BoneCache[] spriteBones = GetBoneSaveOrder(sprite.GetSkeleton().bones);
                     BoneCache[] meshBones = mesh.bones;
-                    CharacterPartCache characterPart = skinningCache.hasCharacter ? sprite.GetCharacterPart() : null;
                     for (int i = 0; i < vertices.Length; ++i)
                     {
                         vertices[i].position = mesh.vertices[i];
-                        vertices[i].boneWeight = ToSpriteBoneWeight(mesh.vertexWeights[i], meshBones, spriteBones, characterPart);
+                        vertices[i].boneWeight = ToSpriteBoneWeight(mesh.vertexWeights[i], meshBones, spriteBones);
                     }
 
                     meshDataProvider.SetVertices(guid, vertices);
@@ -716,7 +715,7 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        static BoneWeight ToSpriteBoneWeight(EditableBoneWeight editableBoneWeight, BoneCache[] meshBones, BoneCache[] spriteBones, CharacterPartCache characterPart)
+        static BoneWeight ToSpriteBoneWeight(EditableBoneWeight editableBoneWeight, BoneCache[] meshBones, BoneCache[] spriteBones)
         {
             BoneWeight boneWeight = editableBoneWeight.ToBoneWeight(false);
 
@@ -730,7 +729,7 @@ namespace UnityEditor.U2D.Animation
                 if (meshBoneIndex < 0 || meshBoneIndex >= meshBones.Length)
                     continue;
 
-                int spriteBoneIndex = FindSpriteBoneIndex(meshBones[meshBoneIndex], spriteBones, characterPart);
+                int spriteBoneIndex = FindSpriteBoneIndex(meshBones[meshBoneIndex], spriteBones);
                 if (spriteBoneIndex == -1)
                     continue;
 
@@ -740,21 +739,18 @@ namespace UnityEditor.U2D.Animation
             return boneWeight;
         }
 
-        static int FindSpriteBoneIndex(BoneCache meshBone, BoneCache[] spriteBones, CharacterPartCache characterPart)
+        static int FindSpriteBoneIndex(BoneCache meshBone, BoneCache[] spriteBones)
         {
             int spriteBoneIndex = Array.IndexOf(spriteBones, meshBone);
-            if (spriteBoneIndex != -1 || characterPart == null)
+            if (spriteBoneIndex != -1 || meshBone == null)
                 return spriteBoneIndex;
 
-            int characterPartBoneIndex = characterPart.IndexOf(meshBone);
-            if (characterPartBoneIndex == -1)
-                return -1;
-
-            SkeletonCache spriteSkeleton = characterPart.sprite.GetSkeleton();
-            if (spriteSkeleton == null || characterPartBoneIndex >= spriteSkeleton.boneCount)
-                return -1;
-
-            return Array.IndexOf(spriteBones, spriteSkeleton.GetBone(characterPartBoneIndex));
+            // Character-mode meshes reference bones from the character skeleton while
+            // SpriteBone data is written from the sprite skeleton's cloned BoneCache objects.
+            // CharacterPart.bones is an influence list and may be in any order, so its list
+            // index cannot be used as a sprite-bone index. GUID is the stable identity shared
+            // by both caches.
+            return Array.FindIndex(spriteBones, bone => bone != null && bone.guid == meshBone.guid);
         }
 
         static BoneCache[] GetBoneSaveOrder(BoneCache[] bones)
@@ -797,13 +793,27 @@ namespace UnityEditor.U2D.Animation
                     {
                         spriteId = x.sprite.id,
                         spritePosition = new RectInt((int)x.position.x, (int)x.position.y, (int)x.sprite.textureRect.width, (int)x.sprite.textureRect.height),
-                        bones = x.bones.Select(bone => Array.IndexOf(characterBones, bone)).Where(bone => bone != -1).ToArray()
+                        // CharacterPart.bones is not just an influence set: its order maps each
+                        // serialized SpriteBone to the corresponding character-skeleton bone.
+                        // Keep it aligned with the exact parent-first order written by ApplyBone.
+                        bones = GetBoneSaveOrder(x.sprite.GetSkeleton().bones)
+                            .Select(spriteBone => FindBoneIndexByGuid(characterBones, spriteBone))
+                            .Where(boneIndex => boneIndex != -1)
+                            .ToArray()
                     }
                 ).ToArray();
 
                 characterDataProvider.SetCharacterData(data);
 
             }
+        }
+
+        static int FindBoneIndexByGuid(BoneCache[] bones, BoneCache target)
+        {
+            if (target == null)
+                return -1;
+
+            return Array.FindIndex(bones, bone => bone != null && bone.guid == target.guid);
         }
 
         void OnMeshPreviewBehaviourChange(IMeshPreviewBehaviour meshPreviewBehaviour)

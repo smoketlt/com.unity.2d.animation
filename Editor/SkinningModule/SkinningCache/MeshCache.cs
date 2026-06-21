@@ -73,31 +73,55 @@ namespace UnityEditor.U2D.Animation
 
         public void SetCompatibleBoneSet(BoneCache[] boneCache)
         {
-            m_Bones = new List<BoneCache>();
+            m_Bones = GetCompatibleBones(boneCache);
+        }
+
+        public void SetUnfilteredBoneSetForLoading(BoneCache[] boneCache)
+        {
+            m_Bones = new List<BoneCache>(boneCache);
+        }
+
+        void SetBones(BoneCache[] boneCache)
+        {
+            List<BoneCache> compatibleBones = GetCompatibleBones(boneCache);
+            FixWeights(compatibleBones);
+            m_Bones = compatibleBones;
+        }
+
+        static List<BoneCache> GetCompatibleBones(BoneCache[] boneCache)
+        {
+            List<BoneCache> compatibleBones = new List<BoneCache>();
             foreach (BoneCache bone in boneCache)
             {
                 if (bone == null || bone.IsConstraintParent())
                     continue;
 
-                m_Bones.Add(bone);
+                compatibleBones.Add(bone);
             }
+
+            return compatibleBones;
         }
 
-        void SetBones(BoneCache[] boneCache)
+        void FixWeights(IList<BoneCache> newBones)
         {
-            FixWeights(boneCache);
-            SetCompatibleBoneSet(boneCache);
-        }
-
-        void FixWeights(BoneCache[] newBones)
-        {
-            List<BoneCache> newBonesList = new List<BoneCache>(newBones);
             Dictionary<int, int> indexMap = new Dictionary<int, int>();
 
             for (int i = 0; i < m_Bones.Count; ++i)
             {
                 BoneCache bone = m_Bones[i];
-                int newIndex = newBonesList.IndexOf(bone);
+                int newIndex = newBones.IndexOf(bone);
+                if (newIndex == -1 && bone != null)
+                {
+                    for (int j = 0; j < newBones.Count; ++j)
+                    {
+                        BoneCache newBone = newBones[j];
+                        if (newBone != null && newBone.guid == bone.guid)
+                        {
+                            newIndex = j;
+                            break;
+                        }
+                    }
+                }
 
                 if (newIndex != -1)
                     indexMap.Add(i, newIndex);

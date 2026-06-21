@@ -769,7 +769,10 @@ namespace UnityEditor.U2D.Animation
             SkeletonCache skeleton = m_SkeletonMap[sprite] as SkeletonCache;
 
             mesh.sprite = sprite;
-            mesh.SetCompatibleBoneSet(skeleton.bones);
+            // Serialized SpriteBone weights address the complete saved skeleton, including
+            // generated constraint parents. Keep that index space while loading the weights,
+            // then remap them into the filtered mesh-compatible bone list below.
+            mesh.SetUnfilteredBoneSetForLoading(skeleton.bones);
 
             Vertex2DMetaData[] metaVertices = meshProvider.GetVertices(guid);
             if (metaVertices.Length > 0)
@@ -798,6 +801,8 @@ namespace UnityEditor.U2D.Animation
                 mesh.SetIndices(indices);
                 mesh.SetEdges(edges);
             }
+
+            mesh.bones = skeleton.bones;
 
             mesh.textureDataProvider = textureDataProvider;
 
@@ -883,7 +888,12 @@ namespace UnityEditor.U2D.Animation
 
                     MeshCache mesh = characterPart.sprite.GetMesh();
                     if (mesh != null)
-                        mesh.SetCompatibleBoneSet(characterPartBones);
+                    {
+                        // Mesh weights were loaded against the sprite skeleton. Character
+                        // mode uses a separately instantiated and arbitrarily ordered influence
+                        // list, so remap the channels by bone identity before switching lists.
+                        mesh.bones = characterPartBones;
+                    }
 
                     characterParts.Add(characterPart);
 
