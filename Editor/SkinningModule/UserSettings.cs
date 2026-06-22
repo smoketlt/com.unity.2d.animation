@@ -10,9 +10,15 @@ namespace UnityEditor.U2D.Animation
         public const string kCompactToolbarKey = UserSettings.kSettingsUniqueKey + "AnimationEditorSetting.compactToolbar";
         public const string kShowSpriteMeshOverwriteWarningKey = UserSettings.kSettingsUniqueKey + "AnimationEditorSetting.showSpriteMeshOverwriteWarning";
         public const string kBoneDisplayScaleKey = UserSettings.kSettingsUniqueKey + "AnimationEditorSetting.boneDisplayScale";
+        public const string kDefaultBoneColorKey = UserSettings.kSettingsUniqueKey + "AnimationEditorSetting.defaultBoneColor";
+        public const string kSelectedBoneColorKey = UserSettings.kSettingsUniqueKey + "AnimationEditorSetting.selectedBoneColor";
+        private const string kDefaultBoneColorHtml = "#5B729A";
+        private const string kDefaultSelectedBoneColorHtml = "#FFFFFF";
         public static readonly GUIContent kCompactToolbarLabel = EditorGUIUtility.TrTextContent("Hide Tool Text");
         public static readonly GUIContent kShowSpriteMeshOverwriteWarning = new GUIContent(TextContent.showSpriteMeshOverwriteWarning, TextContent.showSpriteMeshOverwriteWarningTip);
         public static readonly GUIContent kBoneDisplayScaleLabel = EditorGUIUtility.TrTextContent("Bone Size", "Scales the displayed size of bones without changing skeleton data or picking areas.");
+        public static readonly GUIContent kDefaultBoneColorLabel = EditorGUIUtility.TrTextContent("Default Bone Color", "Color assigned to newly created bones.");
+        public static readonly GUIContent kSelectedBoneColorLabel = EditorGUIUtility.TrTextContent("Selected Bone Color", "Fill color used for selected Sprite Skin bones in the Scene view.");
 
         public static bool compactToolBar
         {
@@ -32,6 +38,33 @@ namespace UnityEditor.U2D.Animation
             set => EditorPrefs.SetFloat(kBoneDisplayScaleKey, Mathf.Clamp(value, kMinBoneDisplayScale, kMaxBoneDisplayScale));
         }
 
+        public static Color defaultBoneColor
+        {
+            get => GetColor(kDefaultBoneColorKey, kDefaultBoneColorHtml);
+            set => SetColor(kDefaultBoneColorKey, value);
+        }
+
+        public static Color selectedBoneColor
+        {
+            get => GetColor(kSelectedBoneColorKey, kDefaultSelectedBoneColorHtml);
+            set => SetColor(kSelectedBoneColorKey, value);
+        }
+
+        private static Color GetColor(string key, string defaultHtml)
+        {
+            if (ColorUtility.TryParseHtmlString(EditorPrefs.GetString(key, defaultHtml), out Color color))
+                return color;
+
+            ColorUtility.TryParseHtmlString(defaultHtml, out color);
+            return color;
+        }
+
+        private static void SetColor(string key, Color color)
+        {
+            color.a = 1f;
+            EditorPrefs.SetString(key, $"#{ColorUtility.ToHtmlStringRGB(color)}");
+        }
+
         public void OnGUI()
         {
             EditorGUI.BeginChangeCheck();
@@ -49,6 +82,22 @@ namespace UnityEditor.U2D.Animation
             if (EditorGUI.EndChangeCheck())
             {
                 boneDisplayScale = boneScale;
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+            }
+
+            EditorGUI.BeginChangeCheck();
+            Color color = EditorGUILayout.ColorField(kDefaultBoneColorLabel, defaultBoneColor, true, false, false);
+            if (EditorGUI.EndChangeCheck())
+            {
+                defaultBoneColor = color;
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+            }
+
+            EditorGUI.BeginChangeCheck();
+            color = EditorGUILayout.ColorField(kSelectedBoneColorLabel, selectedBoneColor, true, false, false);
+            if (EditorGUI.EndChangeCheck())
+            {
+                selectedBoneColor = color;
                 UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
             }
         }

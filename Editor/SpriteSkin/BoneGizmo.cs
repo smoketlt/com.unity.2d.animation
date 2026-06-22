@@ -225,7 +225,7 @@ namespace UnityEditor.U2D.Animation
                 if (m_View.IsActionHot(SkeletonAction.None))
                     m_CachedBones.Add(boneTransform);
 
-                Color boneColor = bone.color.a > 0f ? bone.color : Color.white;
+                Color boneColor = bone.color.a > 0f ? bone.color : BoneColorUtility.DefaultCreatedBoneColor;
                 boneColor.a *= alpha;
 
                 m_BoneData.Add(boneTransform, new Vector2(bone.length, alpha));
@@ -436,8 +436,11 @@ namespace UnityEditor.U2D.Animation
 
         Color GetBoneColor(Transform bone, float alpha)
         {
-            if (!m_BoneColors.TryGetValue(bone, out Color color))
-                color = Color.white;
+            Color color;
+            if (Selection.Contains(bone.gameObject))
+                color = SkinningModuleSettings.selectedBoneColor;
+            else if (!m_BoneColors.TryGetValue(bone, out color))
+                color = BoneColorUtility.DefaultCreatedBoneColor;
 
             color.a = alpha;
             return color;

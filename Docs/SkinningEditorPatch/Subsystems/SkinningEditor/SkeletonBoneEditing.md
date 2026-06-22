@@ -84,7 +84,14 @@ Selected bones use the selected bitmap slices in the outline pass so selection r
 
 Unchained parent links are not drawn as ghost bones. `SkeletonController` draws them from the child joint to the parent bone's visual tail marker, and `BoneDrawingUtility.DrawBoneParentLink(...)` renders a colored thick dotted line with a filled triangle arrowhead at the parent tail marker. Links are semi-transparent by default and become fully opaque when their child bone is selected. Create Bone root-parent preview uses the same dotted arrow styling.
 
-Scene view Sprite Skin bone gizmos use `SpriteBone.color` for the normal bone body instead of forcing white. If a serialized sprite bone color has zero alpha, the gizmo falls back to white so older data does not become invisible.
+Scene view Sprite Skin bone gizmos use `SpriteBone.color` for the normal bone body. Selected scene bones use the configurable `Selected Bone Color` while preserving their gizmo alpha, and their selection outline remains visible. If a serialized sprite bone color has zero alpha, the gizmo falls back to the configured default bone color so older data does not become invisible.
+
+## Bone Colors
+
+`Preferences > 2D > Animation` exposes two user-specific color preferences stored in `EditorPrefs`:
+
+- `Default Bone Color` controls the color assigned to newly created bones and defaults to `#5B729A`. Changing it does not recolor existing bones.
+- `Selected Bone Color` controls the fill color of selected Sprite Skin bones in the Scene view and defaults to white.
 
 ## Change Risks
 

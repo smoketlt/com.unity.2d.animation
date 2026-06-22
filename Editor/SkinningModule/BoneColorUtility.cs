@@ -4,7 +4,7 @@ namespace UnityEditor.U2D.Animation
 {
     internal static class BoneColorUtility
     {
-        public static readonly Color32 DefaultCreatedBoneColor = new Color32(220, 220, 220, 255);
+        public static Color DefaultCreatedBoneColor => SkinningModuleSettings.defaultBoneColor;
 
         static readonly Color32[] kWeightMapColors =
         {
