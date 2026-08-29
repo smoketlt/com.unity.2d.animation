@@ -41,6 +41,8 @@ namespace UnityEditor.U2D.Animation
         private Slider m_AmountSlider;
         private Button m_SmoothButton;
         private Button m_PruneButton;
+        private Toggle m_ManipulateBonesToggle;
+        private Button m_RestorePoseButton;
         private VisualElement m_BonePopupContainer;
         private PopupField<string> m_BonePopup;
         private bool m_SliderActive = false;
@@ -53,6 +55,7 @@ namespace UnityEditor.U2D.Animation
         public event Action sliderEnded = () => { };
         public event Action smoothClicked = () => { };
         public event Action pruneClicked = () => { };
+        public event Action restorePoseClicked = () => { };
         public event Action<int, bool> boneButtonClicked = (boneIndex, additive) => {};
         public event Action<int> lockButtonClicked = (boneIndex) => {};
         public event Action weightsChanged = () => { };
@@ -123,6 +126,12 @@ namespace UnityEditor.U2D.Animation
             set { m_FeatherField.value = value; }
         }
 
+        public bool manipulateBones
+        {
+            get { return m_ManipulateBonesToggle.value; }
+            set { m_ManipulateBonesToggle.value = value; }
+        }
+
         public void SetBrushParametersWithoutPreview(int strengthValue, int sizeValue, int featherValue)
         {
             m_StrengthField.SetValueWithoutNotify(strengthValue);
@@ -170,6 +179,8 @@ namespace UnityEditor.U2D.Animation
             m_AmountField = this.Q<FloatField>("AmountField");
             m_SmoothButton = this.Q<Button>("SmoothButton");
             m_PruneButton = this.Q<Button>("PruneButton");
+            m_ManipulateBonesToggle = this.Q<Toggle>("ManipulateBonesToggle");
+            m_RestorePoseButton = this.Q<Button>("RestorePoseButton");
             m_AmountField.isDelayed = true;
             m_WeightInspectorPanel = this.Q<WeightInspectorIMGUIPanel>("WeightsInspector");
             m_PopupWindow = this.Q<UnityEngine.UIElements.PopupWindow>();
@@ -230,12 +241,20 @@ namespace UnityEditor.U2D.Animation
             m_PruneButton.text = TextContent.pruneWeights;
             m_PruneButton.tooltip = TextContent.pruneWeightsTooltip;
             m_PruneButton.clicked += () => pruneClicked();
+            m_RestorePoseButton.text = TextContent.restorePoseLocalized;
+            m_RestorePoseButton.clicked += () => restorePoseClicked();
+        }
+
+        public void SetRestorePoseEnabled(bool enabled)
+        {
+            m_RestorePoseButton.SetEnabled(enabled);
         }
 
         public void SetActive(bool active)
         {
             this.Q("Amount").SetEnabled(active);
             this.Q("SmoothButtonRow").SetEnabled(active);
+            this.Q("BoneManipulationRow").SetEnabled(active);
         }
 
         private void SetupMode()

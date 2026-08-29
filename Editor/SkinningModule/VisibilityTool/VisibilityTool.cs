@@ -240,7 +240,9 @@ namespace UnityEditor.U2D.Animation
 
         protected override void OnActivate()
         {
-            ShowInfoOverlay(SkinningEditorInfoText.Visibility);
+            // Visibility is a parallel horizontal tool. Keep its hint available as
+            // a fallback without replacing the active primary mode's instructions.
+            ShowInfoOverlay(SkinningEditorInfoText.Visibility, -1);
             m_MeshPreviewBehaviour.showWeightMap = true;
             m_MeshPreviewBehaviour.dimUnselectedSprites = true;
             m_MeshPreviewBehaviour.unselectedSpriteOpacity = VisibilityToolSettings.spriteOpacity;

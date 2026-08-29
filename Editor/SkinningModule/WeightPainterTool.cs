@@ -28,11 +28,16 @@ namespace UnityEditor.U2D.Animation
         const float kBrushSizeDragUnitsPerPixel = 0.5f;
         const float kBrushParameterScrollStep = 2f;
         const float kBrushStrengthRingOffsetRatio = 0.06f;
-        const float kBrushRingWidth = 2f;
+        const float kBrushRingWidth = 4f;
+        const float kBrushAreaGlowOuterWidth = 20f;
+        const float kBrushAreaGlowMiddleWidth = 14f;
+        const float kBrushAreaGlowInnerWidth = 8f;
+        const float kBrushAreaGlowOuterAlpha = 0.08f;
+        const float kBrushAreaGlowMiddleAlpha = 0.16f;
+        const float kBrushAreaGlowInnerAlpha = 0.32f;
         const float kBrushStrengthRingWidth = 6f;
         const double kBrushViewportParameterPreviewDuration = 0.35d;
         const double kBrushParameterPreviewDuration = 1.25d;
-        static readonly Color kBrushAreaColor = new Color(0.35f, 1f, 0.35f, 1f);
         static readonly Color kBrushFeatherColor = new Color(0.75f, 0.75f, 0.75f, 0.9f);
         static readonly Color kBrushStrengthColor = new Color(1f, 0.28f, 0.18f, 1f);
 
@@ -57,6 +62,7 @@ namespace UnityEditor.U2D.Animation
         private WeightEditorMode m_BrushStrokeMode;
         private BoneCache m_PendingBrushBoneClick;
         private bool m_PendingBrushBoneClickDragged;
+        private bool m_PendingBrushBoneClickAdditive;
         private Vector2 m_PendingBrushBoneClickMousePosition;
         private bool m_BrushVertexSelectionActive;
         private bool m_BrushVertexSelectionDragged;
@@ -184,6 +190,8 @@ namespace UnityEditor.U2D.Animation
             m_WeightSliderDragUndoStarted = false;
             m_BrushStrokeActive = false;
             m_PendingBrushBoneClick = null;
+            m_PendingBrushBoneClickAdditive = false;
+            m_Brush.deferStrokeStartUntilDrag = false;
             m_BrushVertexSelectionActive = false;
             m_BrushParameterPreviewUntil = 0d;
             m_BrushParameterDragMode = BrushParameterDragMode.None;
@@ -364,6 +372,7 @@ namespace UnityEditor.U2D.Animation
             m_WeightPainterPanel.weightsChanged += () => meshTool.UpdateWeights();
             m_WeightPainterPanel.smoothClicked += SmoothWeightSliderVerticesOnce;
             m_WeightPainterPanel.pruneClicked += ShowPruneWeightsWindow;
+            m_WeightPainterPanel.restorePoseClicked += RestorePose;
             m_WeightPainterPanel.boneButtonClicked += SelectWeightInspectorBone;
             m_WeightPainterPanel.lockButtonClicked += ToggleWeightInspectorBoneLock;
             m_WeightPainterPanel.brushPreviewChanged += ShowBrushParameterPreview;
@@ -429,6 +438,15 @@ namespace UnityEditor.U2D.Animation
             PruneWeightsWindow.ShowWindow(
                 (maxBones, threshold) => CountPrunedWeights(mesh, maxBones, threshold),
                 (maxBones, threshold) => ApplyPruneWeights(mesh, maxBones, threshold));
+        }
+
+        private void RestorePose()
+        {
+            using (skinningCache.UndoScope(TextContent.restorePose))
+            {
+                skinningCache.RestoreBindPose();
+                skinningCache.events.restoreBindPose.Invoke();
+            }
         }
 
         private int CountPrunedWeights(MeshCache mesh, int maxBones, float threshold)
@@ -719,11 +737,21 @@ namespace UnityEditor.U2D.Animation
             m_WeightEditor.spriteMeshData = meshTool.mesh;
             m_WeightEditor.mode = GetEffectiveWeightEditorMode();
             m_WeightEditor.boneIndex = ConvertBoneIndex(m_WeightPainterPanel.boneIndex);
+            m_WeightEditor.boneIndices = GetBrushEditBoneIndices(m_WeightEditor.mode);
             m_WeightEditor.lockedBoneIndices = GetLockedMeshBoneIndices();
             m_WeightEditor.smoothBoneIndices = GetBrushSmoothBoneIndices(m_WeightEditor.mode);
             m_WeightEditor.autoNormalize = true;
             m_WeightEditor.selection = selection;
             m_WeightEditor.emptySelectionEditsAll = true;
+        }
+
+        private int[] GetBrushEditBoneIndices(WeightEditorMode mode)
+        {
+            if (paintMode != WeightPainterMode.Brush || mode == WeightEditorMode.Smooth)
+                return null;
+
+            int[] selectedBoneIndices = GetSelectedMeshBoneIndices();
+            return selectedBoneIndices.Length > 1 ? selectedBoneIndices : null;
         }
 
         private int[] GetBrushSmoothBoneIndices(WeightEditorMode mode)
@@ -821,6 +849,77 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
+        private void HandlePendingBrushBoneClickBeforeBrush()
+        {
+            if (m_WeightPainterPanel.manipulateBones)
+            {
+                m_PendingBrushBoneClick = null;
+                m_PendingBrushBoneClickDragged = false;
+                m_PendingBrushBoneClickAdditive = false;
+                m_Brush.deferStrokeStartUntilDrag = false;
+                return;
+            }
+
+            Event evt = Event.current;
+            if (evt == null)
+                return;
+
+            if (evt.type == EventType.MouseDown &&
+                evt.button == 0 &&
+                !IsAltDown(evt) &&
+                skeletonTool.hoveredBone != null)
+            {
+                m_PendingBrushBoneClick = skeletonTool.hoveredBone;
+                m_PendingBrushBoneClickDragged = false;
+                m_PendingBrushBoneClickAdditive = evt.shift || EditorGUI.actionKey;
+                m_PendingBrushBoneClickMousePosition = evt.mousePosition;
+            }
+            else if (evt.rawType == EventType.MouseDrag && m_PendingBrushBoneClick != null)
+            {
+                if ((evt.mousePosition - m_PendingBrushBoneClickMousePosition).magnitude >= kBrushBoneClickDragThreshold)
+                    m_PendingBrushBoneClickDragged = true;
+            }
+
+            m_Brush.deferStrokeStartUntilDrag = m_PendingBrushBoneClick != null;
+        }
+
+        private void HandlePendingBrushBoneClickAfterBrush()
+        {
+            Event evt = Event.current;
+            if (evt == null || (evt.type != EventType.MouseUp && evt.rawType != EventType.MouseUp) || m_PendingBrushBoneClick == null)
+                return;
+
+            if (!m_PendingBrushBoneClickDragged)
+                SelectBrushClickedBone(m_PendingBrushBoneClick, m_PendingBrushBoneClickAdditive);
+
+            m_PendingBrushBoneClick = null;
+            m_PendingBrushBoneClickDragged = false;
+            m_PendingBrushBoneClickAdditive = false;
+            m_Brush.deferStrokeStartUntilDrag = false;
+        }
+
+        private void SelectBrushClickedBone(BoneCache bone, bool additive)
+        {
+            if (bone == null)
+                return;
+
+            BoneCache characterBone = bone.ToCharacterIfNeeded();
+            using (skinningCache.UndoScope(TextContent.boneSelection, true))
+            {
+                if (!additive)
+                {
+                    if (!skinningCache.skeletonSelection.Contains(characterBone))
+                        skinningCache.skeletonSelection.activeElement = characterBone;
+                }
+                else
+                {
+                    skinningCache.skeletonSelection.Select(characterBone, !skinningCache.skeletonSelection.Contains(characterBone));
+                }
+
+                InvokeBoneSelectionChanged();
+            }
+        }
+
         private Rect GetBrushVertexSelectionRect()
         {
             Rect rect = new Rect();
@@ -876,70 +975,6 @@ namespace UnityEditor.U2D.Animation
             return nearestVertex;
         }
 
-        private void HandlePendingBrushBoneClickBeforeBrush()
-        {
-            Event evt = Event.current;
-            if (evt == null)
-                return;
-
-            if (evt.type == EventType.MouseDown &&
-                evt.button == 0 &&
-                !IsAltDown(evt) &&
-                !evt.shift &&
-                !EditorGUI.actionKey &&
-                skeletonTool.hoveredBone != null)
-            {
-                m_PendingBrushBoneClick = skeletonTool.hoveredBone;
-                m_PendingBrushBoneClickDragged = false;
-                m_PendingBrushBoneClickMousePosition = evt.mousePosition;
-            }
-            else if (evt.rawType == EventType.MouseDrag && m_PendingBrushBoneClick != null)
-            {
-                if ((evt.mousePosition - m_PendingBrushBoneClickMousePosition).magnitude >= kBrushBoneClickDragThreshold)
-                    m_PendingBrushBoneClickDragged = true;
-            }
-
-            m_Brush.deferStrokeStartUntilDrag = m_PendingBrushBoneClick != null;
-        }
-
-        private void HandlePendingBrushBoneClickAfterBrush()
-        {
-            Event evt = Event.current;
-            if (evt == null || (evt.type != EventType.MouseUp && evt.rawType != EventType.MouseUp) || m_PendingBrushBoneClick == null)
-                return;
-
-            if (!m_PendingBrushBoneClickDragged)
-                SelectBrushClickedBone(m_PendingBrushBoneClick);
-
-            m_PendingBrushBoneClick = null;
-            m_PendingBrushBoneClickDragged = false;
-            m_Brush.deferStrokeStartUntilDrag = false;
-        }
-
-        private void SelectBrushClickedBone(BoneCache bone)
-        {
-            if (bone == null)
-                return;
-
-            BoneCache characterBone = bone.ToCharacterIfNeeded();
-            bool additive = EditorGUI.actionKey;
-
-            using (skinningCache.UndoScope(TextContent.boneSelection, true))
-            {
-                if (!additive)
-                {
-                    if (!skinningCache.skeletonSelection.Contains(characterBone))
-                        skinningCache.skeletonSelection.activeElement = characterBone;
-                }
-                else
-                {
-                    skinningCache.skeletonSelection.Select(characterBone, !skinningCache.skeletonSelection.Contains(characterBone));
-                }
-
-                InvokeBoneSelectionChanged();
-            }
-        }
-
         private void UpdateBrushSelection(Brush brush)
         {
             m_BrushSelection.Clear();
@@ -970,41 +1005,96 @@ namespace UnityEditor.U2D.Animation
         {
             Color oldColor = Handles.color;
 
-            Handles.color = kBrushFeatherColor;
-            DrawBrushCircleLine(position, GetBrushInnerRadius(size, feather), kBrushRingWidth);
-            if (TryGetBrushAreaColor(out Color areaColor))
+            float innerRadius = GetBrushInnerRadius(size, feather);
+            if (innerRadius > 0f)
             {
-                Handles.color = areaColor;
+                Handles.color = kBrushFeatherColor;
+                DrawBrushCircleLine(position, innerRadius, kBrushRingWidth);
+            }
+
+            Color[] areaColors = GetBrushAreaColors();
+            if (areaColors.Length > 0)
+            {
+                DrawBrushAreaSegments(position, size, areaColors);
+            }
+            else
+            {
+                Handles.color = kBrushFeatherColor;
                 DrawBrushCircleLine(position, size, kBrushRingWidth);
             }
+
             DrawBrushStrengthRing(position, size, strength);
 
             Handles.color = oldColor;
         }
 
-        private bool TryGetBrushAreaColor(out Color areaColor)
+        private static void DrawBrushAreaSegments(Vector3 position, float radius, Color[] colors)
         {
-            areaColor = kBrushAreaColor;
+            DrawBrushAreaGlowLayer(position, radius, colors, kBrushAreaGlowOuterWidth, kBrushAreaGlowOuterAlpha);
+            DrawBrushAreaGlowLayer(position, radius, colors, kBrushAreaGlowMiddleWidth, kBrushAreaGlowMiddleAlpha);
+            DrawBrushAreaGlowLayer(position, radius, colors, kBrushAreaGlowInnerWidth, kBrushAreaGlowInnerAlpha);
+            DrawBrushAreaLayer(position, radius, colors, kBrushRingWidth, 1f);
+        }
+
+        private static void DrawBrushAreaGlowLayer(Vector3 position, float radius, Color[] colors, float width, float alpha)
+        {
+            DrawBrushAreaLayer(position, radius, colors, width, alpha);
+        }
+
+        private static void DrawBrushAreaLayer(Vector3 position, float radius, Color[] colors, float width, float alpha)
+        {
+            float segmentSize = 1f / colors.Length;
+            for (int i = 0; i < colors.Length; ++i)
+            {
+                Color color = colors[i];
+                color.a *= alpha;
+                Handles.color = color;
+                DrawBrushCircleArc(position, radius, width, i * segmentSize, (i + 1) * segmentSize);
+            }
+        }
+
+        private Color[] GetBrushAreaColors()
+        {
             MeshCache mesh = meshTool.mesh;
             if (mesh == null)
-                return false;
+                return new Color[0];
+
+            int[] selectedBoneIndices = GetSelectedMeshBoneIndices();
+            if (selectedBoneIndices.Length > 1)
+            {
+                Color[] selectedColors = new Color[selectedBoneIndices.Length];
+                for (int i = 0; i < selectedBoneIndices.Length; ++i)
+                {
+                    BoneCache bone = mesh.bones[selectedBoneIndices[i]].ToSpriteSheetIfNeeded();
+                    selectedColors[i] = BoneColorUtility.GetWeightMapColor(bone);
+                }
+
+                return selectedColors;
+            }
 
             int meshBoneIndex = ConvertBoneIndex(m_WeightPainterPanel.boneIndex);
             if (meshBoneIndex < 0 || meshBoneIndex >= mesh.boneCount)
-                return false;
+                return new Color[0];
 
-            areaColor = BoneColorUtility.GetWeightMapColor(mesh.bones[meshBoneIndex].ToSpriteSheetIfNeeded());
-            return true;
+            Color areaColor = BoneColorUtility.GetWeightMapColor(mesh.bones[meshBoneIndex].ToSpriteSheetIfNeeded());
+            return new[] { areaColor };
         }
 
         private static void DrawBrushCircleLine(Vector3 position, float radius, float width)
         {
-            const int segmentCount = 64;
-            Vector3[] points = new Vector3[segmentCount + 1];
+            DrawBrushCircleArc(position, radius, width, 0f, 1f);
+        }
 
-            for (int i = 0; i <= segmentCount; ++i)
+        private static void DrawBrushCircleArc(Vector3 position, float radius, float width, float start, float end)
+        {
+            const int segmentCount = 64;
+            int arcSegmentCount = Mathf.Max(2, Mathf.CeilToInt(segmentCount * (end - start)));
+            Vector3[] points = new Vector3[arcSegmentCount + 1];
+
+            for (int i = 0; i <= arcSegmentCount; ++i)
             {
-                float radians = (90f - 360f * i / segmentCount) * Mathf.Deg2Rad;
+                float t = Mathf.Lerp(start, end, i / (float)arcSegmentCount);
+                float radians = (90f - 360f * t) * Mathf.Deg2Rad;
                 points[i] = position + new Vector3(Mathf.Cos(radians), Mathf.Sin(radians), 0f) * radius;
             }
 
@@ -1040,14 +1130,17 @@ namespace UnityEditor.U2D.Animation
             skeletonTool.skeletonStyle = SkeletonStyles.WeightMap;
 
             bool useBrush = paintMode == WeightPainterMode.Brush;
+            bool manipulateBones = useBrush && m_WeightPainterPanel.manipulateBones;
             m_WeightPainterPanel.SetModeDisplayOverride(useBrush && Event.current != null && Event.current.shift, WeightEditorMode.Smooth);
+            SkeletonCache effectiveSkeleton = skinningCache.GetEffectiveSkeleton(skinningCache.selectedSprite);
+            m_WeightPainterPanel.SetRestorePoseEnabled(useBrush && effectiveSkeleton != null && effectiveSkeleton.isPosePreview);
 
-            skeletonMode = useBrush ? SkeletonMode.Selection : SkeletonMode.EditPose;
+            skeletonMode = useBrush && !manipulateBones ? SkeletonMode.Selection : SkeletonMode.EditPose;
             meshMode = SpriteMeshViewMode.EditGeometry;
             disableMeshEditor = true;
             clearBoneSelectionOnEscape = true;
             clearBoneSelectionOnPrimaryEmptyClick = true;
-            skeletonTool.suppressBoneSelection = useBrush;
+            skeletonTool.suppressBoneSelection = useBrush && !manipulateBones;
 
             meshTool.selectionOverride = null;
 
@@ -1073,6 +1166,9 @@ namespace UnityEditor.U2D.Animation
                 }
                 else
                 {
+                    // With manipulation enabled, Edit Pose gets first chance to own a
+                    // bone drag. Otherwise selection clicks are deferred so a drag that
+                    // starts over a bone remains a paint stroke.
                     DoSkeletonGUI();
                     DoBrushGUI();
                     DoMeshGUI();

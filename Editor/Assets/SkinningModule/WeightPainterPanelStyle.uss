@@ -3,7 +3,7 @@
 /**********************************************************************************************************************/
 
 #WeightPainterPanel.BrushMode {
-  height: 255px;
+  height: 280px;
 }
 
 #WeightPainterPanel.SliderMode {
@@ -38,6 +38,48 @@
 #WeightPainterPanel.SliderMode #Strength.form-row,
 #WeightPainterPanel.SliderMode #Feather.form-row {
   display: none;
+}
+
+#WeightPainterPanel.SliderMode #BoneManipulationRow.form-row {
+  display: none;
+}
+
+#BoneManipulationRow {
+  flex-direction: row;
+  align-items: center;
+}
+
+#ManipulateBonesToggle {
+  flex-grow: 1;
+  flex-shrink: 0;
+  margin-left: 0;
+}
+
+#ManipulateBonesToggle > .unity-base-field__label {
+  width: 105px;
+  min-width: 105px;
+  max-width: 105px;
+  flex-grow: 0;
+  flex-shrink: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  -unity-text-align: middle-left;
+}
+
+#ManipulateBonesToggle > .unity-toggle__input {
+  flex-grow: 1;
+  justify-content: flex-start;
+}
+
+#RestorePoseButton {
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  flex-grow: 0;
+  flex-shrink: 0;
+  margin-right: 4px;
 }
 
 #WeightsInspector{

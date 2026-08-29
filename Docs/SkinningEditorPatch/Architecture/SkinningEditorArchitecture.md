@@ -81,7 +81,7 @@ The Visibility popup remains in `rightOverlay` because it is a tall list window 
 
 ### Top informational overlay
 
-`SkinningEditorInfoOverlay` is a static UI Toolkit helper for temporary text hints at the top of the Skinning Editor. Call `Show(layoutOverlay, text)` or `Show(host, text)` to create or update the dark-backed label, and call `Hide(...)` or `Remove(...)` when the active tool no longer needs the message. The overlay uses `PickingMode.Ignore` so it does not block editor input.
+`SkinningEditorInfoOverlay` is a static UI Toolkit helper for temporary text hints at the top of the Skinning Editor. `BaseTool` registers each hint with the tool instance as its owner and removes only that owner's request on deactivation. The overlay displays the highest-priority active request, using the most recently shown request to break equal-priority ties. This prevents a parallel tool from hiding or permanently replacing the primary mode's instructions. The horizontal Visibility tool registers its hint at lower priority, so Weight Brush and other primary modes keep their own text while Visibility is also active; the Visibility hint remains available as a fallback when no primary hint exists. The overlay uses `PickingMode.Ignore` so it does not block editor input.
 
 All primary Skinning Editor modes show a short hint through this overlay when activated. Shared mesh modes are handled in `MeshToolWrapper`, shared skeleton modes are handled in `SkeletonToolWrapper`, and specialized tools such as Weight Slider, Weight Brush, Auto Weights, Generate Geometry, Influence, Visibility, Pivot, Reparent, and Copy/Paste replace the shared text with tool-specific text from `SkinningEditorInfoText`.
 

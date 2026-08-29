@@ -37,6 +37,10 @@
           <eui:IntegerField name="FeatherField" class="slider-field" value="20" />
         </ui:VisualElement>
       </ui:VisualElement>
+      <ui:VisualElement name="BoneManipulationRow" class="form-row">
+        <ui:Toggle name="ManipulateBonesToggle" label="Manipulate Bones" value="true" tooltip="Allow moving and rotating bones in Weight Brush" />
+        <ui:Button name="RestorePoseButton" text="Restore Pose" tooltip="Restore bones to the setup pose" />
+      </ui:VisualElement>
       <ui:VisualElement name="divider" />
       <aui:WeightInspectorIMGUIPanel name ="WeightsInspector" />
     </ui:PopupWindow>

@@ -9,29 +9,60 @@ namespace UnityEditor.U2D.Animation
     {
         private const string k_OverlayName = "SkinningEditorInfoOverlay";
         private const string k_LabelName = "SkinningEditorInfoOverlayLabel";
-        private static readonly Dictionary<VisualElement, VisualElement> s_Overlays = new Dictionary<VisualElement, VisualElement>();
+
+        private sealed class OverlayRequest
+        {
+            public string text;
+            public int priority;
+            public long sequence;
+        }
+
+        private sealed class OverlayState
+        {
+            public VisualElement overlay;
+            public readonly Dictionary<object, OverlayRequest> requests = new Dictionary<object, OverlayRequest>();
+        }
+
+        private static readonly Dictionary<VisualElement, OverlayState> s_OverlayStates = new Dictionary<VisualElement, OverlayState>();
+        private static long s_Sequence;
 
         public static void Show(LayoutOverlay layoutOverlay, string text)
         {
             Show((VisualElement)layoutOverlay, text);
         }
 
+        public static void Show(LayoutOverlay layoutOverlay, string text, object owner, int priority)
+        {
+            Show((VisualElement)layoutOverlay, text, owner, priority);
+        }
+
         public static void Show(VisualElement host, string text)
+        {
+            Show(host, text, host, 0);
+        }
+
+        public static void Show(VisualElement host, string text, object owner, int priority)
         {
             if (host == null)
                 return;
 
+            if (owner == null)
+                owner = host;
+
             if (string.IsNullOrEmpty(text))
             {
-                Hide(host);
+                Hide(host, owner);
                 return;
             }
 
-            VisualElement overlay = GetOrCreateOverlay(host);
-            Label label = overlay.Q<Label>(k_LabelName);
-            label.text = text;
-            overlay.style.display = DisplayStyle.Flex;
-            overlay.BringToFront();
+            OverlayState state = GetOrCreateState(host);
+            state.requests[owner] = new OverlayRequest
+            {
+                text = text,
+                priority = priority,
+                sequence = ++s_Sequence
+            };
+            Refresh(state);
         }
 
         public static void Hide(LayoutOverlay layoutOverlay)
@@ -39,13 +70,30 @@ namespace UnityEditor.U2D.Animation
             Hide((VisualElement)layoutOverlay);
         }
 
+        public static void Hide(LayoutOverlay layoutOverlay, object owner)
+        {
+            Hide((VisualElement)layoutOverlay, owner);
+        }
+
         public static void Hide(VisualElement host)
         {
             if (host == null)
                 return;
 
-            if (s_Overlays.TryGetValue(host, out VisualElement overlay))
-                overlay.style.display = DisplayStyle.None;
+            if (s_OverlayStates.TryGetValue(host, out OverlayState state))
+            {
+                state.requests.Clear();
+                Refresh(state);
+            }
+        }
+
+        public static void Hide(VisualElement host, object owner)
+        {
+            if (host == null || owner == null)
+                return;
+
+            if (s_OverlayStates.TryGetValue(host, out OverlayState state) && state.requests.Remove(owner))
+                Refresh(state);
         }
 
         public static void Remove(LayoutOverlay layoutOverlay)
@@ -58,19 +106,19 @@ namespace UnityEditor.U2D.Animation
             if (host == null)
                 return;
 
-            if (!s_Overlays.TryGetValue(host, out VisualElement overlay))
+            if (!s_OverlayStates.TryGetValue(host, out OverlayState state))
                 return;
 
-            overlay.RemoveFromHierarchy();
-            s_Overlays.Remove(host);
+            state.overlay.RemoveFromHierarchy();
+            s_OverlayStates.Remove(host);
         }
 
-        private static VisualElement GetOrCreateOverlay(VisualElement host)
+        private static OverlayState GetOrCreateState(VisualElement host)
         {
-            if (s_Overlays.TryGetValue(host, out VisualElement overlay) && overlay.parent == host)
-                return overlay;
+            if (s_OverlayStates.TryGetValue(host, out OverlayState state) && state.overlay.parent == host)
+                return state;
 
-            overlay = new VisualElement
+            VisualElement overlay = new VisualElement
             {
                 name = k_OverlayName,
                 pickingMode = PickingMode.Ignore
@@ -105,8 +153,34 @@ namespace UnityEditor.U2D.Animation
 
             overlay.Add(label);
             host.Add(overlay);
-            s_Overlays[host] = overlay;
-            return overlay;
+            state = new OverlayState { overlay = overlay };
+            s_OverlayStates[host] = state;
+            return state;
+        }
+
+        private static void Refresh(OverlayState state)
+        {
+            OverlayRequest visibleRequest = null;
+            foreach (OverlayRequest request in state.requests.Values)
+            {
+                if (visibleRequest == null ||
+                    request.priority > visibleRequest.priority ||
+                    (request.priority == visibleRequest.priority && request.sequence > visibleRequest.sequence))
+                {
+                    visibleRequest = request;
+                }
+            }
+
+            if (visibleRequest == null)
+            {
+                state.overlay.style.display = DisplayStyle.None;
+                return;
+            }
+
+            Label label = state.overlay.Q<Label>(k_LabelName);
+            label.text = visibleRequest.text;
+            state.overlay.style.display = DisplayStyle.Flex;
+            state.overlay.BringToFront();
         }
     }
 
@@ -115,7 +189,7 @@ namespace UnityEditor.U2D.Animation
         public const string GenerateGeometry = "Generate Geometry: set detail, alpha, and subdivision, then generate the selected sprite or all visible sprites.";
         public const string GenerateWeights = "Auto Weights: generate, normalize, or clear weights. Select vertices to limit the operation; otherwise the visible mesh is affected.";
         public const string WeightSlider = "Weight Slider: select vertices and bones, then adjust listed weights. Smooth and Prune work on the selected vertices.";
-        public const string WeightBrush = "Weight Brush: select a bone to paint. Alt-click/drag selects vertices. S/B/F + drag or Ctrl/Shift/Ctrl+Shift + wheel adjust Strength/Size/Feather. Shift paints Smooth; Ctrl/Cmd subtracts.";
+        public const string WeightBrush = "Weight Brush: click or Shift/Ctrl-click bones to select paint targets. With Manipulate Bones enabled, drag a joint/body to move/rotate; otherwise bone drags paint. Drag outside bones to paint all selected bones. Alt-click/drag selects vertices. S/B/F + drag or Ctrl/Shift/Ctrl+Shift + wheel adjust Strength/Size/Feather. Shift paints Smooth; Ctrl/Cmd subtracts.";
         public const string BoneInfluence = "Bone Influence: choose which bones affect the selected sprite. Weight tools use this bone list for painting and sliders.";
         public const string SpriteInfluence = "Sprite Influence: select a bone, then choose which sprites it influences.";
         public const string CopyPaste = "Copy/Paste: copy mesh, bones, and weights, then paste or mirror them onto the selected sprite or character.";

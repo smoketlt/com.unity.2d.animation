@@ -36,6 +36,8 @@ If no bones are selected, `H` toggles the currently selected sprite's `Character
 
 `MeshToolWrapper` still sets `unselectedSpriteOpacity` to `0.1f` for `NewGeometry` so the New tool keeps its fixed dimming behavior. Visibility tool activation sets it from `VisibilityToolSettings.spriteOpacity`.
 
+Visibility is a parallel horizontal tool, so its top informational hint is registered below the active primary mode's hint. Opening Visibility while Weight Brush or another primary mode is active does not replace that mode's shortcut instructions. Closing Visibility removes only the Visibility-owned hint instead of hiding the primary hint.
+
 ## Change Risks
 
 - Do not change UXML names without updating `VisibilityToolWindow.BindElements` and USS selectors.

@@ -22,6 +22,7 @@ namespace UnityEditor.U2D.Animation
         public ICacheUndo cacheUndo { get; set; }
         public WeightEditorMode mode { get; set; }
         public int boneIndex { get; set; }
+        public int[] boneIndices { get; set; }
         public int[] lockedBoneIndices { get; set; }
         public int[] smoothBoneIndices { get; set; }
         public ISelection<int> selection { get; set; }
@@ -36,6 +37,7 @@ namespace UnityEditor.U2D.Animation
         float[] m_SmoothValues;
         readonly List<BoneWeight[]> m_SmoothedBoneWeights = new List<BoneWeight[]>();
         readonly List<BoneWeight> m_StoredBoneWeights = new List<BoneWeight>();
+        readonly List<int> m_TargetChannels = new List<int>(4);
         int boneCount => spriteMeshData != null ? spriteMeshData.boneCount : 0;
 
         public WeightEditor()
@@ -104,6 +106,12 @@ namespace UnityEditor.U2D.Animation
 
         void SetWeight(float value, bool createNewChannel = true)
         {
+            if (boneIndices != null && boneIndices.Length > 1)
+            {
+                SetWeights(value, createNewChannel);
+                return;
+            }
+
             if (boneIndex == -1 || spriteMeshData == null || IsBoneLocked(boneIndex))
                 return;
 
@@ -137,6 +145,57 @@ namespace UnityEditor.U2D.Animation
 
                     editableBoneWeight.FilterChannels(0f);
                 }
+            }
+        }
+
+        void SetWeights(float value, bool createNewChannel)
+        {
+            if (spriteMeshData == null)
+                return;
+
+            Debug.Assert(selection != null);
+
+            for (int vertexIndex = 0; vertexIndex < spriteMeshData.vertexCount; ++vertexIndex)
+            {
+                if (!(selection.Count == 0 && emptySelectionEditsAll ||
+                    selection.Count > 0 && selection.Contains(vertexIndex)))
+                {
+                    continue;
+                }
+
+                EditableBoneWeight editableBoneWeight = spriteMeshData.vertexWeights[vertexIndex];
+                m_TargetChannels.Clear();
+
+                for (int i = 0; i < boneIndices.Length; ++i)
+                {
+                    int targetBoneIndex = boneIndices[i];
+                    if (targetBoneIndex < 0 || targetBoneIndex >= boneCount || IsBoneLocked(targetBoneIndex))
+                        continue;
+
+                    int channel = editableBoneWeight.GetChannelFromBoneIndex(targetBoneIndex);
+                    if (channel == -1)
+                    {
+                        if (!createNewChannel || value <= 0f)
+                            continue;
+
+                        editableBoneWeight.AddChannel(targetBoneIndex, 0f, true);
+                        channel = editableBoneWeight.GetChannelFromBoneIndex(targetBoneIndex);
+                    }
+
+                    if (!m_TargetChannels.Contains(channel))
+                        m_TargetChannels.Add(channel);
+                }
+
+                if (m_TargetChannels.Count == 0)
+                    continue;
+
+                for (int i = 0; i < m_TargetChannels.Count; ++i)
+                    editableBoneWeight[m_TargetChannels[i]].weight += value;
+
+                if (editableBoneWeight.Sum() > 1f)
+                    CompensateOtherChannelsRespectingLocks(editableBoneWeight, m_TargetChannels);
+
+                editableBoneWeight.FilterChannels(0f);
             }
         }
 
@@ -269,6 +328,63 @@ namespace UnityEditor.U2D.Animation
                     editableBoneWeight[i].weight *= targetSum / sum;
                 else
                     editableBoneWeight[i].weight = targetSum / validChannelCount;
+            }
+        }
+
+        private void CompensateOtherChannelsRespectingLocks(EditableBoneWeight editableBoneWeight, List<int> masterChannels)
+        {
+            editableBoneWeight.ValidateChannels();
+
+            float lockedWeight = 0f;
+            float masterWeight = 0f;
+            float otherWeight = 0f;
+            int otherChannelCount = 0;
+
+            for (int i = 0; i < editableBoneWeight.Count; ++i)
+            {
+                BoneWeightChannel channel = editableBoneWeight[i];
+                if (!channel.enabled)
+                    continue;
+
+                if (masterChannels.Contains(i))
+                {
+                    masterWeight += channel.weight;
+                    continue;
+                }
+
+                if (IsBoneLocked(channel.boneIndex))
+                {
+                    lockedWeight += channel.weight;
+                    continue;
+                }
+
+                otherWeight += channel.weight;
+                ++otherChannelCount;
+            }
+
+            float availableWeight = Mathf.Max(0f, 1f - lockedWeight);
+            if (masterWeight > availableWeight && masterWeight > 0f)
+            {
+                float masterScale = availableWeight / masterWeight;
+                for (int i = 0; i < masterChannels.Count; ++i)
+                    editableBoneWeight[masterChannels[i]].weight *= masterScale;
+
+                masterWeight = availableWeight;
+            }
+
+            float otherTargetWeight = Mathf.Max(0f, availableWeight - masterWeight);
+            for (int i = 0; i < editableBoneWeight.Count; ++i)
+            {
+                BoneWeightChannel channel = editableBoneWeight[i];
+                if (!channel.enabled || masterChannels.Contains(i) || IsBoneLocked(channel.boneIndex))
+                    continue;
+
+                if (otherChannelCount == 0)
+                    channel.weight = 0f;
+                else if (otherWeight > 0f)
+                    channel.weight *= otherTargetWeight / otherWeight;
+                else
+                    channel.weight = otherTargetWeight / otherChannelCount;
             }
         }
 
