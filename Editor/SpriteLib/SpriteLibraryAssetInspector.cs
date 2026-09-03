@@ -1,3 +1,9 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
 using UnityEditor.Callbacks;
 using UnityEditor.U2D.Animation.Upgrading;
 using UnityEditorInternal;
@@ -12,9 +18,9 @@ namespace UnityEditor.U2D.Animation
     internal class SpriteLibraryAssetInspector : Editor
     {
         [OnOpenAssetAttribute(OnOpenAssetAttributeMode.Execute)]
-        public static bool ExecuteOpenSpriteLibraryAsset(int instanceID)
+        public static bool ExecuteOpenSpriteLibraryAsset(ObjectId instanceID)
         {
-            SpriteLibraryAsset spriteLibraryAsset = EditorUtility.InstanceIDToObject(instanceID) as SpriteLibraryAsset;
+            SpriteLibraryAsset spriteLibraryAsset = UnityEditorObjectCompatibility.FindObject(instanceID) as SpriteLibraryAsset;
             if (spriteLibraryAsset != null)
             {
                 SpriteLibraryEditor.SpriteLibraryEditorWindow.OpenWindow();

@@ -1,3 +1,10 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
+using UnityEngine.U2D.Animation;
 using UnityEngine;
 
 namespace UnityEditor.U2D.Animation
@@ -16,14 +23,14 @@ namespace UnityEditor.U2D.Animation
         static readonly int k_TailHashCode = "Tail".GetHashCode();
         static readonly int k_CreateBoneHashCode = "CreateBone".GetHashCode();
 
-        public int InvalidID { get; set; }
+        public ObjectId InvalidID { get; set; }
         public SkeletonMode mode { get; set; }
         public int defaultControlID { get; set; }
-        public int hoveredBoneID => m_HoveredBoneID;
-        public int hoveredJointID => m_HoveredJointID;
-        public int hoveredBodyID => m_HoveredBodyID;
-        public int hoveredTailID => m_HoveredTailID;
-        public int hotBoneID => m_HotBoneID;
+        public ObjectId hoveredBoneID => m_HoveredBoneID;
+        public ObjectId hoveredJointID => m_HoveredJointID;
+        public ObjectId hoveredBodyID => m_HoveredBodyID;
+        public ObjectId hoveredTailID => m_HoveredTailID;
+        public ObjectId hotBoneID => m_HotBoneID;
         IGUIWrapper m_GUIWrapper;
         int m_RotateControlID = -1;
         int m_MoveControlID = -1;
@@ -32,17 +39,17 @@ namespace UnityEditor.U2D.Animation
         int m_MoveEndPositionControlID = -1;
         int m_ChangeLengthControlID = -1;
         int m_CreateBoneControlID = -1;
-        int m_HoveredBoneID = 0;
-        int m_PrevHoveredBoneID = 0;
-        int m_HoveredBodyID = 0;
-        int m_HoveredJointID = 0;
-        int m_HoveredTailID = 0;
-        int m_HotBoneID = 0;
+        ObjectId m_HoveredBoneID = default(ObjectId);
+        ObjectId m_PrevHoveredBoneID = default(ObjectId);
+        ObjectId m_HoveredBodyID = default(ObjectId);
+        ObjectId m_HoveredJointID = default(ObjectId);
+        ObjectId m_HoveredTailID = default(ObjectId);
+        ObjectId m_HotBoneID = default(ObjectId);
         int m_HoveredBodyControlID = -1;
         int m_HoveredJointControlID = -1;
         int m_HoveredTailControlID = -1;
         bool m_PendingCreateBoneFromExistingBone;
-        int m_PendingCreateBoneBoneID = 0;
+        ObjectId m_PendingCreateBoneBoneID = default(ObjectId);
         Vector2 m_PendingCreateBoneMousePosition;
         Vector3 m_PendingCreateBoneStartPosition;
         SliderData m_PendingCreateBoneSliderData = SliderData.zero;
@@ -50,9 +57,9 @@ namespace UnityEditor.U2D.Animation
         float m_NearestBodyDistance;
         float m_NearestJointDistance;
         float m_NearestTailDistance;
-        int m_NearestBodyId = 0;
-        int m_NearestJointId = 0;
-        int m_NearestTailId = 0;
+        ObjectId m_NearestBodyId = default(ObjectId);
+        ObjectId m_NearestJointId = default(ObjectId);
+        ObjectId m_NearestTailId = default(ObjectId);
         SliderData m_HoveredSliderData = SliderData.zero;
         SliderData m_HotSliderData = SliderData.zero;
 
@@ -130,7 +137,7 @@ namespace UnityEditor.U2D.Animation
             return m_GUIWrapper.eventType == EventType.Layout;
         }
 
-        public void LayoutBone(int id, Vector3 position, Vector3 endPosition, Vector3 forward, Vector3 up, Vector3 right, bool isChainEnd)
+        public void LayoutBone(ObjectId id, Vector3 position, Vector3 endPosition, Vector3 forward, Vector3 up, Vector3 right, bool isChainEnd)
         {
             if (mode == SkeletonMode.Disabled)
                 return;
@@ -200,9 +207,9 @@ namespace UnityEditor.U2D.Animation
             return k_PickingRadius;
         }
 
-        public bool DoSelectBone(out int id, out bool additive)
+        public bool DoSelectBone(out ObjectId id, out bool additive)
         {
-            id = 0;
+            id = default(ObjectId);
             additive = false;
 
             if (IsActionTriggering(SkeletonAction.Select))
@@ -384,7 +391,7 @@ namespace UnityEditor.U2D.Animation
             return false;
         }
 
-        public bool DoSplitBone(out int id, out Vector3 position)
+        public bool DoSplitBone(out ObjectId id, out Vector3 position)
         {
             id = m_HoveredBodyID;
             position = GetMouseWorldPosition(m_HoveredSliderData.forward, m_HoveredSliderData.position);

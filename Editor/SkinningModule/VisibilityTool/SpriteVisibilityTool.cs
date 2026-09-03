@@ -1,3 +1,23 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
+#if UNITY_6000_4_OR_NEWER
+using TreeView = UnityEditor.IMGUI.Controls.TreeView<UnityEngine.EntityId>;
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<UnityEngine.EntityId>;
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<UnityEngine.EntityId>;
+#elif UNITY_6000_2_OR_NEWER
+using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
+#else
+using TreeView = UnityEditor.IMGUI.Controls.TreeView;
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem;
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState;
+#endif
+using UnityEngine.U2D.Animation;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,7 +43,7 @@ namespace UnityEditor.U2D.Animation
     {
         void Setup();
         void SetSelection(SpriteCache sprite);
-        void SetSelectionIds(IList<int> selectedIds);
+        void SetSelectionIds(IList<ObjectId> selectedIds);
     }
 
     internal class SpriteVisibilityToolData : CacheObject
@@ -222,7 +242,7 @@ namespace UnityEditor.U2D.Animation
             {
                 if (groups[j].parentGroup == level)
                 {
-                    TreeViewItemBase<ISpriteVisibilityItem> item = new TreeViewItemBase<ISpriteVisibilityItem>(groups[j].GetInstanceID(), depth, groups[j].name, new SpriteVisibilityGroupItem()
+                    TreeViewItemBase<ISpriteVisibilityItem> item = new TreeViewItemBase<ISpriteVisibilityItem>(groups[j].GetObjectId(), depth, groups[j].name, new SpriteVisibilityGroupItem()
                     {
                         group = groups[j],
                     });
@@ -259,7 +279,7 @@ namespace UnityEditor.U2D.Animation
         private TreeViewItem CreateTreeViewItem(CharacterPartCache part, CharacterGroupCache[] groups, int depth)
         {
             string name = part.sprite.name;
-            return new TreeViewItemBase<ISpriteVisibilityItem>(part.sprite.GetInstanceID(), depth, name,
+            return new TreeViewItemBase<ISpriteVisibilityItem>(part.sprite.GetObjectId(), depth, name,
                 new SpriteVisibilitySpriteItem()
                 {
                     sprite = part,
@@ -296,7 +316,7 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        public void SetSelectedSprite(IList<TreeViewItem> rows, IList<int> selectedIds)
+        public void SetSelectedSprite(IList<TreeViewItem> rows, IList<ObjectId> selectedIds)
         {
             SpriteCache newSelected = null;
             if (selectedIds.Count > 0)
@@ -304,7 +324,7 @@ namespace UnityEditor.U2D.Animation
                 TreeViewItemBase<ISpriteVisibilityItem> selected = rows.FirstOrDefault(x =>
                 {
                     SpriteVisibilitySpriteItem item = ((TreeViewItemBase<ISpriteVisibilityItem>)x).customData as SpriteVisibilitySpriteItem;
-                    if (item != null && item.sprite.sprite.GetInstanceID() == selectedIds[0])
+                    if (item != null && item.sprite.sprite.GetObjectId() == selectedIds[0])
                         return true;
                     return false;
                 }) as TreeViewItemBase<ISpriteVisibilityItem>;
@@ -321,11 +341,11 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        public int GetTreeViewSelectionID(SpriteCache sprite)
+        public ObjectId GetTreeViewSelectionID(SpriteCache sprite)
         {
             if (sprite != null)
-                return sprite.GetInstanceID();
-            return 0;
+                return sprite.GetObjectId();
+            return default(ObjectId);
         }
     }
 
@@ -496,7 +516,7 @@ namespace UnityEditor.U2D.Animation
             ((SpriteTreeView)m_TreeView).SetSelection(sprite);
         }
 
-        public void SetSelectionIds(IList<int> selectedIds)
+        public void SetSelectionIds(IList<ObjectId> selectedIds)
         {
             ((SpriteTreeView)m_TreeView).SetSelectionIds(selectedIds);
         }
@@ -616,25 +636,25 @@ namespace UnityEditor.U2D.Animation
 
         protected override TreeViewItem BuildRoot()
         {
-            TreeViewItem root = new TreeViewItem { id = 0, depth = -1, displayName = "Root" };
+            TreeViewItem root = new TreeViewItem { id = default(ObjectId), depth = -1, displayName = "Root" };
             List<TreeViewItem> rows = GetController() != null ? GetController().BuildTreeView() : new List<TreeViewItem>();
             SetupParentsAndChildrenFromDepths(root, rows);
             return root;
         }
 
-        protected override void SelectionChanged(IList<int> selectedIds)
+        protected override void SelectionChanged(IList<ObjectId> selectedIds)
         {
             GetController().SetSelectedSprite(GetRows(), selectedIds);
         }
 
-        public void SetSelectionIds(IList<int> selectedIds)
+        public void SetSelectionIds(IList<ObjectId> selectedIds)
         {
             SetSelection(selectedIds, TreeViewSelectionOptions.RevealAndFrame);
         }
 
         public void SetSelection(SpriteCache sprite)
         {
-            int id = GetController().GetTreeViewSelectionID(sprite);
+            ObjectId id = GetController().GetTreeViewSelectionID(sprite);
             SetSelection(new[] { id }, TreeViewSelectionOptions.RevealAndFrame);
         }
     }

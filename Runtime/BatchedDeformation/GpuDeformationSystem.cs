@@ -1,3 +1,9 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
@@ -14,9 +20,13 @@ namespace UnityEngine.U2D.Animation
         const string k_GpuSkinningShaderKeyword = "SKINNED_SPRITE";
         const string k_GlobalSpriteBoneBufferId = "_SpriteBoneTransforms";
 
-        readonly Dictionary<int, Material> m_KeywordEnabledMaterials = new Dictionary<int, Material>();
+        readonly Dictionary<ObjectId, Material> m_KeywordEnabledMaterials = new Dictionary<ObjectId, Material>();
 
+#if ANIMATION_COMMON_13_OR_NEWER
+        NativeArray<int> m_BoneTransformIndices;
+#else
         NativeArray<int> m_BoneTransformBufferSizes;
+#endif
         ComputeBuffer m_BoneTransformsComputeBuffer;
         static ComputeBuffer s_FallbackBuffer;
 
@@ -64,8 +74,12 @@ namespace UnityEngine.U2D.Animation
             base.InitializeArrays();
 
             const int startingCount = 0;
+#if ANIMATION_COMMON_13_OR_NEWER
+            m_BoneTransformIndices = new NativeArray<int>(startingCount, Allocator.Persistent);
+#else
             m_BoneTransformBuffers = new NativeArray<IntPtr>(startingCount, Allocator.Persistent);
             m_BoneTransformBufferSizes = new NativeArray<int>(startingCount, Allocator.Persistent);
+#endif
 
             CreateFallbackBuffer();
         }
@@ -74,8 +88,12 @@ namespace UnityEngine.U2D.Animation
         {
             base.Cleanup();
 
+#if ANIMATION_COMMON_13_OR_NEWER
+            m_BoneTransformIndices.DisposeIfCreated();
+#else
             m_BoneTransformBuffers.DisposeIfCreated();
             m_BoneTransformBufferSizes.DisposeIfCreated();
+#endif
 
             CleanupComputeResources();
 
@@ -85,8 +103,12 @@ namespace UnityEngine.U2D.Animation
         protected override void ResizeAndCopyArrays(int updatedCount)
         {
             base.ResizeAndCopyArrays(updatedCount);
+#if ANIMATION_COMMON_13_OR_NEWER
+            NativeArrayHelpers.ResizeAndCopyIfNeeded(ref m_BoneTransformIndices, updatedCount);
+#else
             NativeArrayHelpers.ResizeAndCopyIfNeeded(ref m_BoneTransformBuffers, updatedCount);
             NativeArrayHelpers.ResizeAndCopyIfNeeded(ref m_BoneTransformBufferSizes, updatedCount);
+#endif
 
             if (updatedCount == 0)
                 CleanupComputeResources();
@@ -119,7 +141,7 @@ namespace UnityEngine.U2D.Animation
             if (!sharedMaterial.IsKeywordEnabled(k_GpuSkinningShaderKeyword))
             {
                 sharedMaterial.EnableKeyword(k_GpuSkinningShaderKeyword);
-                m_KeywordEnabledMaterials.TryAdd(sharedMaterial.GetInstanceID(), sharedMaterial);
+                m_KeywordEnabledMaterials.TryAdd(sharedMaterial.GetObjectId(), sharedMaterial);
             }
 
             return success;
@@ -146,8 +168,12 @@ namespace UnityEngine.U2D.Animation
             Assert.AreEqual(m_Buffers.Length, count);
             Assert.AreEqual(m_BufferSizes.Length, count);
 
+#if ANIMATION_COMMON_13_OR_NEWER
+            Assert.AreEqual(m_BoneTransformIndices.Length, count);
+#else
             Assert.AreEqual(m_BoneTransformBuffers.Length, count);
             Assert.AreEqual(m_BoneTransformBufferSizes.Length, count);
+#endif
 
             PrepareDataForDeformation(out JobHandle localToWorldJobHandle, out JobHandle worldToLocalJobHandle);
 
@@ -170,7 +196,9 @@ namespace UnityEngine.U2D.Animation
             jobHandle = ScheduleBoneJobBatched(jobHandle, skinBatch);
             m_DeformJobHandle = ScheduleSkinDeformBatchedJob(jobHandle, skinBatch);
             jobHandle = ScheduleCopySpriteRendererBuffersJob(m_DeformJobHandle, batchCount);
+#if !ANIMATION_COMMON_13_OR_NEWER
             jobHandle = ScheduleCopySpriteRendererBoneTransformBuffersJob(jobHandle, batchCount);
+#endif
             jobHandle = ScheduleCalculateSpriteSkinAABBJob(jobHandle, batchCount);
             Profiling.scheduleJobs.End();
 
@@ -179,7 +207,14 @@ namespace UnityEngine.U2D.Animation
 
             using (Profiling.setBoneTransformsArray.Auto())
             {
+#if ANIMATION_COMMON_13_OR_NEWER
+                // PerSkinJobData already contains offsets into the packed bone matrix buffer.
+                // Invalid skins must explicitly clear their renderer's GPU offset.
+                FillBoneTransformIndices(m_IsSpriteSkinActiveForDeform, m_PerSkinJobData, m_BoneTransformIndices);
+                InternalEngineBridge.SetBatchBoneTransformIndexAndLocalAABBArray(m_SpriteRenderers, m_BoneTransformIndices, m_BoundsData);
+#else
                 InternalEngineBridge.SetBatchBoneTransformsAABBArray(m_SpriteRenderers, m_BoneTransformBuffers, m_BoneTransformBufferSizes, m_BoundsData);
+#endif
             }
 
             SetComputeBuffer();
@@ -191,6 +226,12 @@ namespace UnityEngine.U2D.Animation
             }
 
             DeactivateDeformableBuffers();
+        }
+
+        internal static void FillBoneTransformIndices(NativeArray<bool> activeSkins, NativeArray<PerSkinJobData> skinData, NativeArray<int> indices)
+        {
+            for (int i = 0; i < indices.Length; ++i)
+                indices[i] = activeSkins[i] ? skinData[i].bindPosesIndex.x : -1;
         }
 
         void ResizeBuffers(int vertexBufferSize, in PerSkinJobData skinBatch)
@@ -222,6 +263,7 @@ namespace UnityEngine.U2D.Animation
             Shader.SetGlobalBuffer(k_GlobalSpriteBoneBufferId, m_BoneTransformsComputeBuffer);
         }
 
+#if !ANIMATION_COMMON_13_OR_NEWER
         unsafe JobHandle ScheduleCopySpriteRendererBoneTransformBuffersJob(JobHandle jobHandle, int batchCount)
         {
             CopySpriteRendererBoneTransformBuffersJob copySpriteRendererBoneTransformBuffersJob = new CopySpriteRendererBoneTransformBuffersJob()
@@ -235,5 +277,6 @@ namespace UnityEngine.U2D.Animation
             };
             return copySpriteRendererBoneTransformBuffersJob.Schedule(batchCount, 16, jobHandle);
         }
+#endif
     }
 }

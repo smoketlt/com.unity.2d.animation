@@ -1,3 +1,10 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
+using UnityEngine.U2D.Animation;
 using UnityEngine;
 
 namespace UnityEditor.U2D.Animation
@@ -29,20 +36,20 @@ namespace UnityEditor.U2D.Animation
 
     internal interface ISkeletonView
     {
-        int InvalidID { get; set; }
+        ObjectId InvalidID { get; set; }
         SkeletonMode mode { get; set; }
         int defaultControlID { get; set; }
-        int hoveredBoneID { get; }
-        int hoveredJointID { get; }
-        int hoveredBodyID { get; }
-        int hoveredTailID { get; }
-        int hotBoneID { get; }
+        ObjectId hoveredBoneID { get; }
+        ObjectId hoveredJointID { get; }
+        ObjectId hoveredBodyID { get; }
+        ObjectId hoveredTailID { get; }
+        ObjectId hotBoneID { get; }
         void BeginLayout();
         void EndLayout();
         bool CanLayout();
         Vector3 GetMouseWorldPosition(Vector3 planeNormal, Vector3 planePosition);
-        void LayoutBone(int id, Vector3 position, Vector3 endPosition, Vector3 forward, Vector3 up, Vector3 right, bool isChainEnd);
-        bool DoSelectBone(out int id, out bool additive);
+        void LayoutBone(ObjectId id, Vector3 position, Vector3 endPosition, Vector3 forward, Vector3 up, Vector3 right, bool isChainEnd);
+        bool DoSelectBone(out ObjectId id, out bool additive);
         bool DoRotateBone(Vector3 pivot, Vector3 normal, out float deltaAngle);
         bool DoMoveBone(out Vector3 deltaPosition);
         bool DoFreeMoveBone(out Vector3 deltaPosition);
@@ -51,7 +58,7 @@ namespace UnityEditor.U2D.Animation
         bool DoChangeLength(out Vector3 endPosition);
         bool DoCreateBoneStart(out Vector3 position);
         bool DoCreateBone(out Vector3 position);
-        bool DoSplitBone(out int id, out Vector3 position);
+        bool DoSplitBone(out ObjectId id, out Vector3 position);
         bool DoRemoveBone();
         bool DoCancelMultistepAction(bool force);
         bool IsActionActive(SkeletonAction action);

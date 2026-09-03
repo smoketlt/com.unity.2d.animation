@@ -1,3 +1,9 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
 using System;
 using Unity.Burst;
 using Unity.Collections;
@@ -25,8 +31,8 @@ namespace UnityEngine.U2D.Animation
         public int spriteVertexCount;
         public int tangentVertexOffset;
         public int deformVerticesStartPos;
-        public int transformId;
-        public NativeCustomSlice<int> boneTransformId;
+        public ObjectId transformId;
+        public NativeCustomSlice<ObjectId> boneTransformId;
     }
 
     [BurstCompile]
@@ -71,9 +77,9 @@ namespace UnityEngine.U2D.Animation
         [ReadOnly]
         public NativeArray<SpriteSkinData> spriteSkinData;
         [ReadOnly]
-        public NativeHashMap<int, TransformAccessJob.TransformData> rootTransformIndex;
+        public NativeHashMap<ObjectId, TransformAccessJob.TransformData> rootTransformIndex;
         [ReadOnly]
-        public NativeHashMap<int, TransformAccessJob.TransformData> boneTransformIndex;
+        public NativeHashMap<ObjectId, TransformAccessJob.TransformData> boneTransformIndex;
         [WriteOnly]
         public NativeArray<float4x4> finalBoneTransforms;
 
@@ -82,7 +88,7 @@ namespace UnityEngine.U2D.Animation
             int x = boneLookupData[i].x;
             int y = boneLookupData[i].y;
             SpriteSkinData ssd = spriteSkinData[x];
-            int v = ssd.boneTransformId[y];
+            ObjectId v = ssd.boneTransformId[y];
             int index = boneTransformIndex[v].transformIndex;
             if (index < 0)
                 return;

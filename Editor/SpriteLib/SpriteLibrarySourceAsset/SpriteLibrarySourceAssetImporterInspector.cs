@@ -3,6 +3,13 @@ using UnityEditor.AssetImporters;
 using UnityEngine;
 using UnityEngine.U2D.Animation;
 using Object = UnityEngine.Object;
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+using AssetCreationAction = UnityEditor.ProjectWindowCallback.AssetCreationEndAction;
+#else
+using ObjectId = System.Int32;
+using AssetCreationAction = UnityEditor.ProjectWindowCallback.EndNameEditAction;
+#endif
 
 namespace UnityEditor.U2D.Animation
 {
@@ -139,12 +146,12 @@ namespace UnityEditor.U2D.Animation
         }
     }
 
-    internal class CreateSpriteLibrarySourceAsset : ProjectWindowCallback.EndNameEditAction
+    internal class CreateSpriteLibrarySourceAsset : AssetCreationAction
     {
         const int k_SpriteLibraryAssetMenuPriority = 30;
         string m_MainLibrary;
 
-        public override void Action(int instanceId, string pathName, string resourceFile)
+        public override void Action(ObjectId instanceId, string pathName, string resourceFile)
         {
             SpriteLibrarySourceAsset asset = CreateInstance<SpriteLibrarySourceAsset>();
             asset.SetPrimaryLibraryGUID(m_MainLibrary);
@@ -162,7 +169,7 @@ namespace UnityEditor.U2D.Animation
         {
             CreateSpriteLibrarySourceAsset action = CreateInstance<CreateSpriteLibrarySourceAsset>();
             Texture2D icon = EditorIconUtility.LoadIconResourceWithMipLevels("Animation.SpriteLibrary", "ComponentIcons", "ComponentIcons");
-            ProjectWindowUtil.StartNameEditingIfProjectWindowExists(0, action, SpriteLibrarySourceAsset.defaultName + SpriteLibrarySourceAsset.extension, icon, null);
+            ProjectWindowUtil.StartNameEditingIfProjectWindowExists(default(ObjectId), action, SpriteLibrarySourceAsset.defaultName + SpriteLibrarySourceAsset.extension, icon, null);
         }
 
         [MenuItem("Assets/Create/2D/Sprite Library Asset Variant", priority = k_SpriteLibraryAssetMenuPriority + 1)]
@@ -173,7 +180,7 @@ namespace UnityEditor.U2D.Animation
             if (asset != null)
                 action.m_MainLibrary = AssetDatabase.GUIDFromAssetPath(AssetDatabase.GetAssetPath(asset)).ToString();
             Texture2D icon = EditorIconUtility.LoadIconResourceWithMipLevels("Animation.SpriteLibrary", "ComponentIcons", "ComponentIcons");
-            ProjectWindowUtil.StartNameEditingIfProjectWindowExists(0, action, SpriteLibrarySourceAsset.defaultName + SpriteLibrarySourceAsset.extension, icon, null);
+            ProjectWindowUtil.StartNameEditingIfProjectWindowExists(default(ObjectId), action, SpriteLibrarySourceAsset.defaultName + SpriteLibrarySourceAsset.extension, icon, null);
         }
 
         [MenuItem("Assets/Create/2D/Sprite Library Asset Variant", true, priority = k_SpriteLibraryAssetMenuPriority + 1)]

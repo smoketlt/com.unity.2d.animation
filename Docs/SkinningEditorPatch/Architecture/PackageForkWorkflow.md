@@ -8,10 +8,15 @@ This project is a fork of Unity's `com.unity.2d.animation` package. The fork kee
 
 - package name: `com.unity.2d.animation`
 - package version in this fork: `10.2.2`
+- fork author shown in Package Manager: `Fedorov Mishaniya` (the `author.name` field in `package.json`)
 - Unity version targeted by the current user project: `6000.0.7`
 - expected branch: `codex/skinning-editor-fork`
 - editor assembly: `Unity.2D.Animation.Editor`
 - runtime assembly: `Unity.2D.Animation.Runtime`
+
+The fork retains its 10.2.2 baseline and minimum Unity version. Compatibility with later Unity 6 releases is implemented through targeted adapters, not by claiming to be the corresponding upstream Animation package. See [Unity Version Compatibility](UnityVersionCompatibility.md) for the API boundaries and verification matrix.
+
+The private upstream `com.unity.2d.animation.tests` and `com.unity.2d.common.tests` related-package entries have been removed: these versions are not available in the public registry and prevent resolving a testable local fork. Regression tests are included directly in this repository.
 
 ## Consumption Modes
 
@@ -59,6 +64,14 @@ Use this while iterating quickly. Unity should recompile from the local package 
 4. Update docs in the same change.
 5. Run at least `git diff --check`.
 6. Commit and push to `codex/skinning-editor-fork` when the user expects the Unity project to update from Git.
+
+## Compatibility Rollback
+
+The Unity 6000.0–6000.6 compatibility update and fork author metadata are delivered as one non-merge commit. The preceding revision is `2dbc7545d384c21ac4895f922bdd2d35434c1e19` (`Improve Weight Brush multi-bone workflow`).
+
+If this update causes a regression, revert the compatibility commit with `git revert <compatibility-commit-sha>` and push `codex/skinning-editor-fork`. Do not reset or force-push the shared branch. This rolls back the author metadata and compatibility documentation/tests along with the implementation.
+
+To test the previous package in only one Unity project without changing the shared branch, pin its Git dependency to `https://github.com/smoketlt/com.unity.2d.animation.git#2dbc7545d384c21ac4895f922bdd2d35434c1e19`. A project using a local `file:` dependency instead follows the checkout and must be switched explicitly if a pinned Git revision is desired.
 
 ## Change Risks
 

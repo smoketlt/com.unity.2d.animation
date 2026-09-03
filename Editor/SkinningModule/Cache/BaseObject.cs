@@ -1,3 +1,11 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
+using System.Collections.Generic;
+using UnityEngine.U2D.Animation;
 using System;
 using UnityEngine;
 
@@ -17,7 +25,7 @@ namespace UnityEditor.U2D.Animation
             {
                 var obj = o as BaseObject;
                 obj.OnDestroy();
-                s_Objects.Remove(obj.GetInstanceID());
+                s_Objects.Remove(obj.GetObjectId());
             }
             else if (o is UnityEngine.Object)
             {
@@ -27,14 +35,14 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        public static BaseObject InstanceIDToObject(int instanceID)
+        public static BaseObject InstanceIDToObject(ObjectId instanceID)
         {
             var obj = default(BaseObject);
             s_Objects.TryGetValue(instanceID, out obj);
             return obj;
         }
 
-        private static Dictionary<int, BaseObject> s_Objects = new Dictionary<int, BaseObject>();
+        private static Dictionary<ObjectId, BaseObject> s_Objects = new Dictionary<ObjectId, BaseObject>();
         private static int s_InstanceID = 0;
         private int m_InstanceID;
 
@@ -44,15 +52,20 @@ namespace UnityEditor.U2D.Animation
         public BaseObject()
         {
             m_InstanceID = ++s_InstanceID;
-            s_Objects.Add(m_InstanceID, this);
+            s_Objects.Add(GetObjectId(), this);
         }
 
         internal virtual void OnEnable() { }
         internal virtual void OnDestroy() { }
 
-        public int GetInstanceID()
+        public ObjectId GetObjectId()
         {
+#if UNITY_6000_4_OR_NEWER
+            // Synthetic IDs are used only by the non-Unity code coverage cache.
+            return EntityId.FromULong((ulong)m_InstanceID);
+#else
             return m_InstanceID;
+#endif
         }
 
         public override bool Equals(object other)
@@ -94,9 +107,9 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        public static BaseObject InstanceIDToObject(int instanceID)
+        public static BaseObject InstanceIDToObject(ObjectId instanceID)
         {
-            return EditorUtility.InstanceIDToObject(instanceID) as BaseObject;
+            return UnityEditorObjectCompatibility.FindObject(instanceID) as BaseObject;
         }
 
         internal virtual void OnEnable() { }

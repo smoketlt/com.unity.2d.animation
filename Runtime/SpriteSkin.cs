@@ -1,3 +1,9 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
 #pragma warning disable 0168 // variable declared but not used.
 
 using System;
@@ -134,22 +140,22 @@ namespace UnityEngine.U2D.Animation
         NativeByteArray m_DeformedVertices;
         int m_CurrentDeformVerticesLength = 0;
         SpriteRenderer m_SpriteRenderer;
-        int m_CurrentDeformSprite = 0;
-        int m_SpriteId = 0;
+        ObjectId m_CurrentDeformSprite = default(ObjectId);
+        ObjectId m_SpriteId = default(ObjectId);
         bool m_IsValid = false;
         SpriteSkinState m_State;
         int m_TransformsHash = 0;
         bool m_ForceCpuDeformation = false;
 
-        int m_TextureId;
-        int m_TransformId;
-        NativeArray<int> m_BoneTransformId;
-        int m_RootBoneTransformId;
+        ObjectId m_TextureId;
+        ObjectId m_TransformId;
+        NativeArray<ObjectId> m_BoneTransformId;
+        ObjectId m_RootBoneTransformId;
         NativeCustomSlice<Vector3> m_SpriteVertices;
         NativeCustomSlice<Vector4> m_SpriteTangents;
         NativeCustomSlice<BoneWeight> m_SpriteBoneWeights;
         NativeCustomSlice<Matrix4x4> m_SpriteBindPoses;
-        NativeCustomSlice<int> m_BoneTransformIdNativeSlice;
+        NativeCustomSlice<ObjectId> m_BoneTransformIdNativeSlice;
         bool m_SpriteHasTangents;
         int m_SpriteVertexStreamSize;
         int m_SpriteVertexCount;
@@ -165,8 +171,8 @@ namespace UnityEngine.U2D.Animation
         int m_VertexDeformationHash = 0;
         Sprite m_Sprite;
 
-        internal NativeArray<int> boneTransformId => m_BoneTransformId;
-        internal int rootBoneTransformId => m_RootBoneTransformId;
+        internal NativeArray<ObjectId> boneTransformId => m_BoneTransformId;
+        internal ObjectId rootBoneTransformId => m_RootBoneTransformId;
         internal DeformationMethods currentDeformationMethod { get; private set; }
         private BaseDeformationSystem m_DeformationSystem;
 
@@ -220,7 +226,7 @@ namespace UnityEngine.U2D.Animation
                 {
                     CacheHierarchy();
 
-                    m_CurrentDeformSprite = 0;
+                    m_CurrentDeformSprite = default(ObjectId);
                     CacheCurrentSprite(m_AutoRebind);
                 }
                 else
@@ -359,13 +365,13 @@ namespace UnityEngine.U2D.Animation
         {
             m_SpriteRenderer = GetComponent<SpriteRenderer>();
             m_Sprite = m_SpriteRenderer.sprite;
-            m_SpriteId = m_Sprite != null ? m_Sprite.GetInstanceID() : 0;
+            m_SpriteId = m_Sprite != null ? m_Sprite.GetObjectId() : default(ObjectId);
         }
 
         void OnEnable()
         {
             Awake();
-            m_TransformId = gameObject.transform.GetInstanceID();
+            m_TransformId = gameObject.transform.GetObjectId();
             m_TransformsHash = 0;
             currentDeformationMethod = SpriteSkinUtility.CanSpriteSkinUseGpuDeformation(this) ? DeformationMethods.Gpu : DeformationMethods.Cpu;
 
@@ -388,7 +394,7 @@ namespace UnityEngine.U2D.Animation
             m_SpriteRenderer.UnregisterSpriteChangeCallback(OnSpriteChanged);
 
             DeactivateSkinning();
-            BufferManager.instance.ReturnBuffer(GetInstanceID());
+            BufferManager.instance.ReturnBuffer(this.GetBufferId());
             m_DeformationSystem?.RemoveSpriteSkin(this);
             m_DeformationSystem = null;
             SpriteSkinContainer.instance.RemoveSpriteSkin(this);
@@ -408,7 +414,7 @@ namespace UnityEngine.U2D.Animation
         void OnSpriteChanged(SpriteRenderer updatedSpriteRenderer)
         {
             m_Sprite = updatedSpriteRenderer.sprite;
-            m_SpriteId = m_Sprite != null ? m_Sprite.GetInstanceID() : 0;
+            m_SpriteId = m_Sprite != null ? m_Sprite.GetObjectId() : default(ObjectId);
         }
 
         void CacheBoneTransformIds()
@@ -425,15 +431,15 @@ namespace UnityEngine.U2D.Animation
             if (m_BoneTransformId != default && m_BoneTransformId.IsCreated)
                 NativeArrayHelpers.ResizeIfNeeded(ref m_BoneTransformId, boneCount);
             else
-                m_BoneTransformId = new NativeArray<int>(boneCount, Allocator.Persistent);
+                m_BoneTransformId = new NativeArray<ObjectId>(boneCount, Allocator.Persistent);
 
-            m_RootBoneTransformId = rootBone != null ? rootBone.GetInstanceID() : 0;
-            m_BoneTransformIdNativeSlice = new NativeCustomSlice<int>(m_BoneTransformId);
+            m_RootBoneTransformId = rootBone != null ? rootBone.GetObjectId() : default(ObjectId);
+            m_BoneTransformIdNativeSlice = new NativeCustomSlice<ObjectId>(m_BoneTransformId);
             for (int i = 0, j = 0; i < boneTransforms?.Length; ++i)
             {
                 if (boneTransforms[i] != null)
                 {
-                    m_BoneTransformId[j] = boneTransforms[i].GetInstanceID();
+                    m_BoneTransformId[j] = boneTransforms[i].GetObjectId();
                     ++j;
                 }
             }
@@ -492,7 +498,7 @@ namespace UnityEngine.U2D.Animation
                 RefreshBoneTransforms();
 
             CacheCurrentSprite(m_AutoRebind);
-            bool hasSprite = m_CurrentDeformSprite != 0;
+            bool hasSprite = m_CurrentDeformSprite != default(ObjectId);
             return m_IsValid && hasSprite && m_SpriteRenderer.enabled && (alwaysUpdate || m_SpriteRenderer.isVisible);
         }
 
@@ -516,7 +522,7 @@ namespace UnityEngine.U2D.Animation
             m_BoneTransformId.DisposeIfCreated();
             m_BoneTransformId = default;
 
-            m_RootBoneTransformId = -1;
+            m_RootBoneTransformId = default(ObjectId);
             m_BoneCacheUpdateToDate = false;
         }
 
@@ -535,7 +541,7 @@ namespace UnityEngine.U2D.Animation
                 m_CurrentDeformVerticesLength = 0;
             }
 
-            m_DeformedVertices = BufferManager.instance.GetBuffer(GetInstanceID(), m_CurrentDeformVerticesLength);
+            m_DeformedVertices = BufferManager.instance.GetBuffer(this.GetBufferId(), m_CurrentDeformVerticesLength);
             return m_DeformedVertices;
         }
 
@@ -736,7 +742,7 @@ namespace UnityEngine.U2D.Animation
             {
                 DeactivateSkinning();
                 m_CurrentDeformSprite = m_SpriteId;
-                if (rebind && m_CurrentDeformSprite != 0 && rootBone != null)
+                if (rebind && m_CurrentDeformSprite != default(ObjectId) && rootBone != null)
                 {
                     if (!SpriteSkinHelpers.GetSpriteBonesTransforms(this, out Transform[] transforms))
                         Debug.LogWarning($"Rebind failed for {name}. Could not find all bones required by the Sprite: {sprite.name}.");
@@ -759,7 +765,7 @@ namespace UnityEngine.U2D.Animation
 
             if (sprite == null)
             {
-                m_TextureId = 0;
+                m_TextureId = default(ObjectId);
                 m_SpriteVertices = NativeCustomSlice<Vector3>.Default();
                 m_SpriteTangents = NativeCustomSlice<Vector4>.Default();
                 m_SpriteBoneWeights = NativeCustomSlice<BoneWeight>.Default();
@@ -771,7 +777,7 @@ namespace UnityEngine.U2D.Animation
             }
             else
             {
-                m_TextureId = sprite.texture != null ? sprite.texture.GetInstanceID() : 0;
+                m_TextureId = sprite.texture != null ? sprite.texture.GetObjectId() : default(ObjectId);
                 bool cacheFullMesh = currentDeformationMethod == DeformationMethods.Cpu || forceCpuDeformation;
                 if (cacheFullMesh)
                 {
@@ -889,7 +895,7 @@ namespace UnityEngine.U2D.Animation
 
         internal bool NeedToUpdateDeformationCache()
         {
-            int newTextureId = sprite.texture != null ? sprite.texture.GetInstanceID() : 0;
+            ObjectId newTextureId = sprite.texture != null ? sprite.texture.GetObjectId() : default(ObjectId);
             bool needUpdate = newTextureId != m_TextureId;
             if (needUpdate)
             {
@@ -947,7 +953,7 @@ namespace UnityEngine.U2D.Animation
 
         internal void ResetSprite()
         {
-            m_CurrentDeformSprite = 0;
+            m_CurrentDeformSprite = default(ObjectId);
             CacheValidFlag();
         }
 

@@ -1,3 +1,9 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
 using System.Collections.Generic;
 using System.Linq;
 using Unity.Profiling;
@@ -47,7 +53,7 @@ namespace UnityEngine.U2D.IK
         /// </summary>
         public List<Solver2D> solvers => m_Solvers;
 
-        int[] m_TransformIdCache;
+        ObjectId[] m_TransformIdCache;
 
         /// <summary>
         /// Solvers are always updated even if the underlying Sprite Skins are not visible.
@@ -199,7 +205,7 @@ namespace UnityEngine.U2D.IK
 
         void CacheSolversTransformIds()
         {
-            HashSet<int> transformCache = new HashSet<int>();
+            HashSet<ObjectId> transformCache = new HashSet<ObjectId>();
             for (int s = 0; s < solvers.Count; s++)
             {
                 Solver2D solver = solvers[s];
@@ -210,7 +216,7 @@ namespace UnityEngine.U2D.IK
                     {
                         Transform boneTransform = chain.transforms[b];
                         if (boneTransform != null)
-                            transformCache.Add(boneTransform.GetInstanceID());
+                            transformCache.Add(boneTransform.GetObjectId());
                     }
                 }
             }

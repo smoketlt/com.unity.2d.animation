@@ -45,7 +45,7 @@ namespace UnityEditor.U2D.Animation
 
         public void OnEnable()
         {
-            m_SpriteSelectorWidget.Initialize(GetInstanceID());
+            m_SpriteSelectorWidget.Initialize(this.GetObjectId());
 
             m_SpriteHash = serializedObject.FindProperty("m_SpriteHash");
             m_SpriteKey = serializedObject.FindProperty("m_SpriteKey");

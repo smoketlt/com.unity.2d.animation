@@ -18,6 +18,11 @@
     "defineConstraints": [],
     "versionDefines": [
         {
+            "name": "com.unity.2d.common",
+            "expression": "13.0.0",
+            "define": "ANIMATION_COMMON_13_OR_NEWER"
+        },
+        {
             "name": "com.unity.render-pipelines.universal",
             "expression": "1.0.0",
             "define": "ENABLE_URP"

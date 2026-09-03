@@ -1,3 +1,9 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
 using System;
 using System.Collections.Generic;
 using Unity.Burst;
@@ -25,7 +31,7 @@ namespace UnityEngine.U2D.Animation
 
         Transform[] m_Transform;
         TransformAccessArray m_TransformAccessArray;
-        NativeHashMap<int, TransformData> m_TransformData;
+        NativeHashMap<ObjectId, TransformData> m_TransformData;
         NativeArray<float4x4> m_TransformMatrix;
         bool m_Dirty;
         JobHandle m_JobHandle;
@@ -46,7 +52,7 @@ namespace UnityEngine.U2D.Animation
         void InitializeDataStructures()
         {
             m_TransformMatrix = new NativeArray<float4x4>(1, Allocator.Persistent);
-            m_TransformData = new NativeHashMap<int, TransformData>(1, Allocator.Persistent);
+            m_TransformData = new NativeHashMap<ObjectId, TransformData>(1, Allocator.Persistent);
             m_Transform = Array.Empty<Transform>();
         }
 
@@ -67,7 +73,7 @@ namespace UnityEngine.U2D.Animation
             InitializeDataStructures();
         }
 
-        public NativeHashMap<int, TransformData> transformData => m_TransformData;
+        public NativeHashMap<ObjectId, TransformData> transformData => m_TransformData;
 
         public NativeArray<float4x4> transformMatrix => m_TransformMatrix;
 
@@ -80,7 +86,7 @@ namespace UnityEngine.U2D.Animation
             if (t == null || !m_TransformData.IsCreated)
                 return;
             m_JobHandle.Complete();
-            int instanceId = t.GetInstanceID();
+            ObjectId instanceId = t.GetObjectId();
             if (m_TransformData.ContainsKey(instanceId))
             {
                 TransformData transformData = m_TransformData[instanceId];
@@ -127,7 +133,7 @@ namespace UnityEngine.U2D.Animation
             {
                 if (m_Transform[i] != null)
                 {
-                    int instanceId = m_Transform[i].GetInstanceID();
+                    ObjectId instanceId = m_Transform[i].GetObjectId();
                     TransformData transformData = m_TransformData[instanceId];
                     transformData.transformIndex = i;
                     m_TransformData[instanceId] = transformData;
@@ -186,11 +192,11 @@ namespace UnityEngine.U2D.Animation
             log += "Transform Count: " + m_Transform.Length + "\n";
             foreach (Transform ss in m_Transform)
             {
-                log += ss == null ? "null" : ss.name + " " + ss.GetInstanceID();
+                log += ss == null ? "null" : ss.name + " " + ss.GetObjectId();
                 log += "\n";
                 if (ss != null)
                 {
-                    log += "RefCount: " + m_TransformData[ss.GetInstanceID()].refCount + "\n";
+                    log += "RefCount: " + m_TransformData[ss.GetObjectId()].refCount + "\n";
                 }
 
                 log += "\n";
@@ -212,14 +218,14 @@ namespace UnityEngine.U2D.Animation
             return count;
         }
 
-        internal void RemoveTransformsByIds(IList<int> idsToRemove)
+        internal void RemoveTransformsByIds(IList<ObjectId> idsToRemove)
         {
             if (!m_TransformData.IsCreated)
                 return;
             m_JobHandle.Complete();
             for (int i = idsToRemove.Count - 1; i >= 0; --i)
             {
-                int id = idsToRemove[i];
+                ObjectId id = idsToRemove[i];
                 if (!m_TransformData.ContainsKey(id))
                 {
                     idsToRemove.Remove(id);
@@ -239,10 +245,10 @@ namespace UnityEngine.U2D.Animation
                 return;
 
             List<Transform> transformList = new List<Transform>(m_Transform);
-            foreach (int id in idsToRemove)
+            foreach (ObjectId id in idsToRemove)
             {
                 m_TransformData.Remove(id);
-                int index = transformList.FindIndex(t => t.GetInstanceID() == id);
+                int index = transformList.FindIndex(t => t.GetObjectId() == id);
                 if (index >= 0)
                     transformList.RemoveAt(index);
             }
@@ -250,7 +256,7 @@ namespace UnityEngine.U2D.Animation
             m_Transform = transformList.ToArray();
         }
 
-        internal void RemoveTransformById(int transformId)
+        internal void RemoveTransformById(ObjectId transformId)
         {
             if (!m_TransformData.IsCreated)
                 return;
@@ -261,7 +267,7 @@ namespace UnityEngine.U2D.Animation
                 if (transformData.refCount == 1)
                 {
                     m_TransformData.Remove(transformId);
-                    int index = Array.FindIndex(m_Transform, t => t.GetInstanceID() == transformId);
+                    int index = Array.FindIndex(m_Transform, t => t.GetObjectId() == transformId);
                     if (index >= 0)
                     {
                         ArrayRemoveAt(ref m_Transform, index);

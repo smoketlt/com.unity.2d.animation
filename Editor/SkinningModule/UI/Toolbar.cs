@@ -37,12 +37,12 @@ namespace UnityEditor.U2D.Animation
         public void SetButtonChecked(Button toCheck)
         {
             UQueryBuilder<Button> buttons = this.Query<Button>();
-            buttons.ForEach((button) => { button.SetChecked(button == toCheck); });
+            buttons.ForEach((button) => { button.SetAnimationChecked(button == toCheck); });
         }
 
         protected void SetButtonChecked(Button button, bool check)
         {
-            if (button.IsChecked() != check)
+            if (button.IsAnimationChecked() != check)
             {
                 if (check)
                 {
@@ -52,7 +52,7 @@ namespace UnityEditor.U2D.Animation
                 else
                     button.RemoveFromClassList("Checked");
 
-                button.SetChecked(check);
+                button.SetAnimationChecked(check);
             }
         }
 

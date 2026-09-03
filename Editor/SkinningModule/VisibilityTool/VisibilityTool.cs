@@ -175,8 +175,8 @@ namespace UnityEditor.U2D.Animation
         {
             if (m_Tabs.Count > toolIndex && toolIndex >= 0)
             {
-                m_Tabs[m_CurrentSelectedTab].SetChecked(false);
-                m_Tabs[toolIndex].SetChecked(true);
+                m_Tabs[m_CurrentSelectedTab].SetAnimationChecked(false);
+                m_Tabs[toolIndex].SetAnimationChecked(true);
                 m_CurrentSelectedTab = toolIndex;
             }
         }

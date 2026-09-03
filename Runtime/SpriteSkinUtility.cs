@@ -41,7 +41,11 @@ namespace UnityEngine.U2D.Animation
             return CanUseGpuDeformation() &&
                 GraphicsSettings.currentRenderPipeline != null &&
                 UniversalRenderPipeline.asset != null && UniversalRenderPipeline.asset.useSRPBatcher &&
+#if ANIMATION_COMMON_13_OR_NEWER
+                InternalEngineBridge.IsGPUSkinningEnabled(null);
+#else
                 InternalEngineBridge.IsGPUSkinningEnabled();
+#endif
 #else
             return false;
 #endif
@@ -52,7 +56,11 @@ namespace UnityEngine.U2D.Animation
 #if ENABLE_URP
             return CanUseGpuDeformation() &&
                 InternalEngineBridge.IsSRPBatchingEnabled(spriteRenderer) &&
+#if ANIMATION_COMMON_13_OR_NEWER
+                InternalEngineBridge.IsGPUSkinningEnabled(spriteRenderer);
+#else
                 InternalEngineBridge.IsGPUSkinningEnabled();
+#endif
 #else
             return false;
 #endif

@@ -1,3 +1,9 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.U2D;
@@ -85,16 +91,16 @@ namespace UnityEditor.U2D.Animation
 
         public Transform hotBone => GetBone(m_View.hotBoneID);
 
-        static Transform GetBone(int instanceID)
+        static Transform GetBone(ObjectId instanceID)
         {
-            return EditorUtility.InstanceIDToObject(instanceID) as Transform;
+            return UnityEditorObjectCompatibility.FindObject(instanceID) as Transform;
         }
 
         public BoneGizmoController(ISkeletonView view, IUndo undo, IBoneGizmoToggle toggle)
         {
             m_View = view;
             m_View.mode = SkeletonMode.EditPose;
-            m_View.InvalidID = 0;
+            m_View.InvalidID = default(ObjectId);
             m_Undo = undo;
             boneGizmoToggle = toggle;
         }
@@ -264,14 +270,14 @@ namespace UnityEditor.U2D.Animation
                 if (bone != hotBone)
                 {
                     Vector3 bonePosition = bone.position;
-                    m_View.LayoutBone(bone.GetInstanceID(), bonePosition, bonePosition + bone.GetScaledRight() * length, bone.forward, bone.up, bone.right, false);
+                    m_View.LayoutBone(bone.GetObjectId(), bonePosition, bonePosition + bone.GetScaledRight() * length, bone.forward, bone.up, bone.right, false);
                 }
             }
         }
 
         void HandleSelectBone()
         {
-            if (m_View.DoSelectBone(out int instanceID, out bool additive))
+            if (m_View.DoSelectBone(out ObjectId instanceID, out bool additive))
             {
                 Transform bone = GetBone(instanceID);
 

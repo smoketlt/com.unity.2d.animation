@@ -1,3 +1,9 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
 using UnityEngine;
 using UnityEngine.U2D.Animation;
 
@@ -11,9 +17,15 @@ namespace UnityEditor.U2D.Animation
 
         static SpriteLibraryAssetDragAndDrop()
         {
+#if UNITY_6000_4_OR_NEWER
+            DragAndDrop.AddDropHandlerV2(HandleDropInspector);
+            DragAndDrop.AddDropHandlerV2(HandleDropHierarchy);
+            DragAndDrop.AddDropHandlerV2(HandleDropScene);
+#else
             DragAndDrop.AddDropHandler(HandleDropInspector);
             DragAndDrop.AddDropHandler(HandleDropHierarchy);
             DragAndDrop.AddDropHandler(HandleDropScene);
+#endif
         }
 
         static DragAndDropVisualMode HandleDropInspector(Object[] targets, bool perform)
@@ -21,7 +33,7 @@ namespace UnityEditor.U2D.Animation
             return HandleDropInspectorInternal(DragAndDrop.objectReferences, targets, perform);
         }
 
-        static DragAndDropVisualMode HandleDropHierarchy(int dropTargetInstanceID, HierarchyDropFlags dropMode, Transform parentForDraggedObjects, bool perform)
+        static DragAndDropVisualMode HandleDropHierarchy(ObjectId dropTargetInstanceID, HierarchyDropFlags dropMode, Transform parentForDraggedObjects, bool perform)
         {
             return HandleDropHierarchyInternal(DragAndDrop.objectReferences, dropTargetInstanceID, dropMode, perform);
         }
@@ -50,13 +62,13 @@ namespace UnityEditor.U2D.Animation
             return DragAndDropVisualMode.Copy;
         }
 
-        internal static DragAndDropVisualMode HandleDropHierarchyInternal(Object[] draggedObjects, int dropTargetInstanceID, HierarchyDropFlags dropMode, bool perform)
+        internal static DragAndDropVisualMode HandleDropHierarchyInternal(Object[] draggedObjects, ObjectId dropTargetInstanceID, HierarchyDropFlags dropMode, bool perform)
         {
             SpriteLibraryAsset spriteLibraryAsset = GetSpriteLibraryAsset(draggedObjects);
             if (spriteLibraryAsset == null)
                 return DragAndDropVisualMode.None;
 
-            Object dropUpon = EditorUtility.InstanceIDToObject(dropTargetInstanceID);
+            Object dropUpon = UnityEditorObjectCompatibility.FindObject(dropTargetInstanceID);
             if (dropUpon == null || dropMode == HierarchyDropFlags.DropBetween)
             {
                 DragAndDrop.AcceptDrag();

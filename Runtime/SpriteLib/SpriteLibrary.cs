@@ -1,3 +1,9 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine.Scripting.APIUpdating;
@@ -31,7 +37,7 @@ namespace UnityEngine.U2D.Animation
         // Cache for combining data in sprite library asset and main library
         Dictionary<int, CategoryEntrySprite> m_CategoryEntryHashCache = null;
         Dictionary<string, HashSet<string>> m_CategoryEntryCache = null;
-        int m_PreviousSpriteLibraryAsset;
+        ObjectId m_PreviousSpriteLibraryAsset;
         long m_PreviousModificationHash;
 
         /// <summary>Get or Set the current SpriteLibraryAsset to use.</summary>
@@ -80,7 +86,7 @@ namespace UnityEngine.U2D.Animation
         void UpdateCacheOverridesIfNeeded()
         {
             if (m_CategoryEntryCache == null ||
-                m_PreviousSpriteLibraryAsset != m_SpriteLibraryAsset?.GetInstanceID() ||
+                m_PreviousSpriteLibraryAsset != m_SpriteLibraryAsset?.GetObjectId() ||
                 m_PreviousModificationHash != m_SpriteLibraryAsset?.modificationHash)
                 CacheOverrides();
         }
@@ -286,13 +292,13 @@ namespace UnityEngine.U2D.Animation
 
         internal void CacheOverrides()
         {
-            m_PreviousSpriteLibraryAsset = 0;
+            m_PreviousSpriteLibraryAsset = default(ObjectId);
             m_PreviousModificationHash = 0;
             m_CategoryEntryHashCache = new Dictionary<int, CategoryEntrySprite>();
             m_CategoryEntryCache = new Dictionary<string, HashSet<string>>();
             if (m_SpriteLibraryAsset)
             {
-                m_PreviousSpriteLibraryAsset = m_SpriteLibraryAsset.GetInstanceID();
+                m_PreviousSpriteLibraryAsset = m_SpriteLibraryAsset.GetObjectId();
                 m_PreviousModificationHash = m_SpriteLibraryAsset.modificationHash;
                 foreach (SpriteLibCategory category in m_SpriteLibraryAsset.categories)
                 {

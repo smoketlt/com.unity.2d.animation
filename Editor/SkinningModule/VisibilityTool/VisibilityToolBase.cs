@@ -1,3 +1,23 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
+#if UNITY_6000_4_OR_NEWER
+using TreeView = UnityEditor.IMGUI.Controls.TreeView<UnityEngine.EntityId>;
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<UnityEngine.EntityId>;
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<UnityEngine.EntityId>;
+#elif UNITY_6000_2_OR_NEWER
+using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
+#else
+using TreeView = UnityEditor.IMGUI.Controls.TreeView;
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem;
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState;
+#endif
+using UnityEngine.U2D.Animation;
 using System;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
@@ -22,7 +42,7 @@ namespace UnityEditor.U2D.Animation
     {
         IMGUIContainer m_Container;
         SearchField m_SearchField;
-        protected IMGUI.Controls.TreeView m_TreeView;
+        protected TreeView m_TreeView;
         protected TreeViewState m_TreeViewState = new TreeViewState();
 
         public Action<float> SetOpacityValue = null;
@@ -84,13 +104,13 @@ namespace UnityEditor.U2D.Animation
     {
         public T customData;
 
-        public TreeViewItemBase(int id, int depth, string name, T data) : base(id, depth, name)
+        public TreeViewItemBase(ObjectId id, int depth, string name, T data) : base(id, depth, name)
         {
             customData = data;
         }
     }
 
-    internal class VisibilityTreeViewBase : IMGUI.Controls.TreeView
+    internal class VisibilityTreeViewBase : TreeView
     {
         static internal class VisibilityIconStyle
         {
@@ -119,7 +139,7 @@ namespace UnityEditor.U2D.Animation
 
         protected override TreeViewItem BuildRoot()
         {
-            return new TreeViewItem { id = 0, depth = -1 };
+            return new TreeViewItem { id = default(ObjectId), depth = -1 };
         }
     }
 }

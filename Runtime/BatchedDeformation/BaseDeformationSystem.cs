@@ -1,3 +1,9 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
@@ -22,14 +28,14 @@ namespace UnityEngine.U2D.Animation
 
         public abstract DeformationMethods deformationMethod { get; }
 
-        protected int m_ObjectId;
+        protected ulong m_ObjectId;
 
         protected readonly HashSet<SpriteSkin> m_SpriteSkins = new HashSet<SpriteSkin>();
         protected SpriteRenderer[] m_SpriteRenderers = new SpriteRenderer[0];
 
         readonly HashSet<SpriteSkin> m_SpriteSkinsToAdd = new HashSet<SpriteSkin>();
         readonly HashSet<SpriteSkin> m_SpriteSkinsToRemove = new HashSet<SpriteSkin>();
-        readonly List<int> m_TransformIdsToRemove = new List<int>();
+        readonly List<ObjectId> m_TransformIdsToRemove = new List<ObjectId>();
 
         protected NativeByteArray m_DeformedVerticesBuffer;
         protected NativeArray<float4x4> m_FinalBoneTransforms;
@@ -57,7 +63,7 @@ namespace UnityEngine.U2D.Animation
                 return;
 
             m_LocalToWorldTransformAccessJob.RemoveTransformById(spriteSkin.rootBoneTransformId);
-            NativeArray<int> boneTransforms = spriteSkin.boneTransformId;
+            NativeArray<ObjectId> boneTransforms = spriteSkin.boneTransformId;
             if (boneTransforms == default || !boneTransforms.IsCreated)
                 return;
 
@@ -124,7 +130,7 @@ namespace UnityEngine.U2D.Animation
             if (m_SpriteSkins.Contains(spriteSkin) && !m_SpriteSkinsToRemove.Contains(spriteSkin))
             {
                 m_SpriteSkinsToRemove.Add(spriteSkin);
-                m_TransformIdsToRemove.Add(spriteSkin.transform.GetInstanceID());
+                m_TransformIdsToRemove.Add(spriteSkin.transform.GetObjectId());
             }
 
             if (m_SpriteSkinsToAdd.Contains(spriteSkin))
@@ -140,7 +146,7 @@ namespace UnityEngine.U2D.Animation
 
         internal void Initialize(int objectId)
         {
-            m_ObjectId = objectId;
+            m_ObjectId = unchecked((ulong)objectId);
 
             if (m_LocalToWorldTransformAccessJob == null)
                 m_LocalToWorldTransformAccessJob = new TransformAccessJob();

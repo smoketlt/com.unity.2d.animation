@@ -22,6 +22,8 @@ Use this checklist before committing or pushing changes to the Skinning Editor f
 
 ## Manual Unity Checks
 
+For cross-version changes, follow [Unity Version Compatibility](Architecture/UnityVersionCompatibility.md), run the included EditMode compatibility suite in separate projects, and record exact versions and limitations. Passing a headless suite is not a substitute for visual GPU and input testing.
+
 When a Unity editor is available, verify in the local test project:
 
 - package recompiles from the expected dependency source;

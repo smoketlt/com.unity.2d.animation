@@ -1,3 +1,9 @@
+#if UNITY_6000_4_OR_NEWER
+using ObjectId = UnityEngine.EntityId;
+#else
+using ObjectId = System.Int32;
+#endif
+
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -9,17 +15,17 @@ namespace UnityEngine.U2D.Animation
     internal struct UpdateBoundJob : IJobParallelFor
     {
         [ReadOnly]
-        public NativeArray<int> rootTransformId;
+        public NativeArray<ObjectId> rootTransformId;
         [ReadOnly]
-        public NativeArray<int> rootBoneTransformId;
+        public NativeArray<ObjectId> rootBoneTransformId;
         [ReadOnly]
         public NativeArray<float4x4> rootTransform;
         [ReadOnly]
         public NativeArray<float4x4> boneTransform;
         [ReadOnly]
-        public NativeHashMap<int, TransformAccessJob.TransformData> rootTransformIndex;
+        public NativeHashMap<ObjectId, TransformAccessJob.TransformData> rootTransformIndex;
         [ReadOnly]
-        public NativeHashMap<int, TransformAccessJob.TransformData> boneTransformIndex;
+        public NativeHashMap<ObjectId, TransformAccessJob.TransformData> boneTransformIndex;
         [ReadOnly]
         public NativeArray<Bounds> spriteSkinBound;
         public NativeArray<Bounds> bounds;

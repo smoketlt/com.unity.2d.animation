@@ -5,6 +5,7 @@
 | If you need... | Read first | Then |
 | --- | --- | --- |
 | Overall package/fork workflow | [Architecture/PackageForkWorkflow](Architecture/PackageForkWorkflow.md) | `package.json`, Unity project `Packages/manifest.json` |
+| Unity 6000.0–6000.6 compatibility, EntityId, GPU bridge, regression tests | [Architecture/UnityVersionCompatibility](Architecture/UnityVersionCompatibility.md) | `Runtime/UnityObjectCompatibility.cs`, `Editor/UnityEditorObjectCompatibility.cs`, `Editor/AnimationUICompatibility.cs`, `Tests/Editor/UnityCompatibilityTests.cs` |
 | Skinning Editor architecture | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/SkinningModule/SkinningModule*.cs` |
 | Skinning Editor shortcuts, copy/paste, bone transform copy/paste, F2 rename, Ctrl+D bone duplicate | [Subsystems/SkinningEditor/SkinningModule](Subsystems/SkinningEditor/SkinningModule.md) | `Editor/SkinningModule/SkinningModuleView.cs`, `Editor/SkinningModule/RenameSelectionWindow.cs` |
 | Geometry toolbar behavior | [Subsystems/SkinningEditor/MeshToolbar](Subsystems/SkinningEditor/MeshToolbar.md) | `Editor/SkinningModule/UI/MeshToolbar.cs`, `Editor/Assets/SkinningModule/MeshToolbar.uxml` |
@@ -61,6 +62,7 @@
 ## Current Fork Behavior
 
 - The package is used as a fork of Unity `com.unity.2d.animation` 10.2.2 for Unity 6000.0.
+- A shared compatibility layer targets Unity 6000.0–6000.6; the exact tested versions and remaining verification limits are listed in [Unity Version Compatibility](Architecture/UnityVersionCompatibility.md).
 - The expected development branch is `codex/skinning-editor-fork`.
 - The local Unity test project can consume the package through a `file:` dependency pointed at this repository.
 - The Geometry toolbar labels are customized as `Modify`, `Create`, `New`, `Reset`, `Generate`.
