@@ -79,12 +79,17 @@ namespace UnityEditor.U2D.Animation
 
         public void RemoveVertex(int index)
         {
+            RemoveVertex(index, new List<int2>(spriteMeshData.outlineEdges));
+        }
+
+        void RemoveVertex(int index, List<int2> outlineEdges)
+        {
             Debug.Assert(spriteMeshData != null);
 
             //We need to delete the edges that reference the index
             if (FindEdgesContainsIndex(index, out List<int2> edgesWithIndex))
             {
-                if (TryGetVertexRemovalReplacementEdge(index, edgesWithIndex, out int2 replacementEdge))
+                if (TryGetVertexRemovalReplacementEdge(index, edgesWithIndex, outlineEdges, out int2 replacementEdge))
                     CreateEdge(replacementEdge.x, replacementEdge.y);
 
                 //remove found edges
@@ -107,17 +112,38 @@ namespace UnityEditor.U2D.Animation
                 spriteMeshData.edges[i] = edge;
             }
 
+            // Triangle-derived outlineEdges stay unchanged until retriangulation. Keep a
+            // separate boundary in the current vertex index space throughout a batch.
+            List<int2> boundaryEdges = outlineEdges.FindAll(edge => edge.x == index || edge.y == index);
+            outlineEdges.RemoveAll(edge => edge.x == index || edge.y == index);
+            if (boundaryEdges.Count == 2 &&
+                TryCreateReplacementEdge(index, boundaryEdges[0], boundaryEdges[1], out int2 boundaryReplacement) &&
+                !outlineEdges.Exists(edge =>
+                    (edge.x == boundaryReplacement.x && edge.y == boundaryReplacement.y) ||
+                    (edge.x == boundaryReplacement.y && edge.y == boundaryReplacement.x)))
+                outlineEdges.Add(boundaryReplacement);
+
+            for (int i = 0; i < outlineEdges.Count; ++i)
+            {
+                int2 edge = outlineEdges[i];
+                if (edge.x > index)
+                    edge.x--;
+                if (edge.y > index)
+                    edge.y--;
+                outlineEdges[i] = edge;
+            }
+
             spriteMeshData.RemoveVertex(index);
         }
 
-        bool TryGetVertexRemovalReplacementEdge(int index, List<int2> edgesWithIndex, out int2 replacementEdge)
+        bool TryGetVertexRemovalReplacementEdge(int index, List<int2> edgesWithIndex, List<int2> outlineEdges, out int2 replacementEdge)
         {
             replacementEdge = new int2(-1, -1);
 
             List<int2> outlineEdgesWithIndex = new List<int2>();
-            for (int i = 0; i < spriteMeshData.outlineEdges.Length; ++i)
+            for (int i = 0; i < outlineEdges.Count; ++i)
             {
-                int2 edge = spriteMeshData.outlineEdges[i];
+                int2 edge = outlineEdges[i];
                 if (edge.x == index || edge.y == index)
                     outlineEdgesWithIndex.Add(edge);
             }
@@ -148,10 +174,11 @@ namespace UnityEditor.U2D.Animation
                 return;
 
             sortedIndexList.Sort();
+            var outlineEdges = new List<int2>(spriteMeshData.outlineEdges);
 
             for (int i = sortedIndexList.Count - 1; i >= 0; --i)
             {
-                RemoveVertex(sortedIndexList[i]);
+                RemoveVertex(sortedIndexList[i], outlineEdges);
             }
         }
 

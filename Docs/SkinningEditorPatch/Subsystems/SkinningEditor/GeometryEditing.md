@@ -55,6 +55,7 @@ This page documents the Geometry editing workflow: selection, vertex creation, e
 - Primary empty click clears geometry selection.
 - In `Modify`, pressing Delete with a selected edge removes only that edge. It does not remove the two endpoint vertices.
 - In `Modify`, deleting a boundary vertex that also has internal edges stitches the two boundary neighbors together before retriangulation. Internal edges attached to the deleted vertex are removed.
+- Batch vertex deletion tracks and remaps the boundary after each removal. Deleting a disconnected island preserves other contours even when their vertex indices are interleaved; deleting adjacent boundary vertices stitches only their surviving boundary neighbors.
 - In `Create`, dragging from a vertex starts edge creation.
 - In `Create`, vertex moving is disabled so drag from a vertex is not stolen by move behavior.
 - Edge-drag state is reset on mouse up so the tool returns to plain `Create`.
