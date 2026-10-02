@@ -75,7 +75,9 @@ Shader "Hidden/SkinningModule-GUITextureClip"
         if (_AdjustLinearForGamma)
             col.rgb = LinearToGammaSpace(col.rgb);
 
-        col = lerp(col, i.color, _VertexColorBlend);
+        // Weight opacity changes the color overlay, never the sprite coverage.
+        // Transparent texels can contain atlas padding RGB that must stay hidden.
+        col.rgb = lerp(col.rgb, i.color.rgb, _VertexColorBlend);
         col.a *= tex2D(_GUIClipTexture, i.clipUV).a * _Opacity;
         return col;
     }
