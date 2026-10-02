@@ -54,7 +54,7 @@ namespace UnityEditor.U2D.Animation
             m_WorkspaceBackgroundTexture = new Texture2D(1, 1, TextureFormat.RGBAHalf, false, true);
 
             m_WorkspaceBackgroundTexture.hideFlags = HideFlags.HideAndDontSave;
-            m_WorkspaceBackgroundTexture.SetPixel(1, 1, new Color(0, 0, 0, 0));
+            m_WorkspaceBackgroundTexture.SetPixel(0, 0, Color.clear);
             m_WorkspaceBackgroundTexture.Apply();
 
             AddMainUI(spriteEditor.GetMainVisualContainer());
@@ -334,6 +334,7 @@ namespace UnityEditor.U2D.Animation
             if (!spriteEditor.editingDisabled)
                 ApplyConstraintPreviews();
 
+            m_MeshPreviewTool.showAlpha = spriteEditor.showAlpha;
             m_MeshPreviewTool.previewBehaviourOverride = m_MeshPreviewBehaviourOverride != null ? m_MeshPreviewBehaviourOverride : currentTool.previewBehaviour;
             m_MeshPreviewTool.DoGUI();
             m_MeshPreviewTool.DrawOverlay();

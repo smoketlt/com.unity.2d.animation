@@ -5,6 +5,7 @@ Shader "Hidden/SkinningModule-GUITextureClip"
         _MainTex ("Texture", Any) = "white" {}
         _Opacity ("Opacity", Float) = 1
         _VertexColorBlend ("VertexColorBlend", Float) = 0
+        _ShowAlpha ("Show Alpha", Float) = 0
         _Color ("Tint", Color) = (1,1,1,1)
     }
 
@@ -37,6 +38,7 @@ Shader "Hidden/SkinningModule-GUITextureClip"
     fixed4 _Color;
     uniform fixed _Opacity;
     uniform fixed _VertexColorBlend;
+    uniform fixed _ShowAlpha;
     uniform float4x4 unity_GUIClipTextureMatrix;
     uniform bool _AdjustLinearForGamma;
 
@@ -55,7 +57,18 @@ Shader "Hidden/SkinningModule-GUITextureClip"
 
     fixed4 frag (v2f i) : SV_Target
     {
-        fixed4 col = tex2D(_MainTex, i.texcoord) * _Color;
+        fixed4 col = tex2D(_MainTex, i.texcoord);
+
+        if (_ShowAlpha > 0.5)
+        {
+            // White blended onto the black workspace displays the source alpha.
+            // Ignore texture RGB, weight colors, tint and preview opacity.
+            col.rgb = 1;
+            col.a *= tex2D(_GUIClipTexture, i.clipUV).a;
+            return col;
+        }
+
+        col *= _Color;
 
         if (_AdjustLinearForGamma)
             col.rgb = LinearToGammaSpace(col.rgb);

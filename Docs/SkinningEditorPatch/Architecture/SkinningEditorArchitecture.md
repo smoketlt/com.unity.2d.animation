@@ -53,6 +53,16 @@ The forked toolbar uses user-facing labels:
 
 `SkinningModule.DoMainGUI()` draws sprite rect gizmos after mesh preview overlays and before the active tool GUI. This keeps sprite bounds visible above the preview/wireframe while letting tool handles, including Weight Slider vertex pies, draw above the blue sprite bounds rectangle.
 
+### Alpha-channel preview
+
+`SkinningModule.DoMainGUI()` copies the public `ISpriteEditor.showAlpha` state to `MeshPreviewTool` on every GUI event. This API is available in both Unity 6000.0 and 6000.6, so no version-specific adapter is needed.
+
+Skinning supplies a transparent 1x1 workspace texture to the host Sprite Editor. The host alpha toggle renders that texture black, then Skinning draws its meshes separately. Previously this left the sprite meshes colored. Initialize the workspace's only pixel at `(0, 0)`.
+
+`SkinningModule-GUITextureClip.shader` now uses `_ShowAlpha` for both normal meshes and the default mesh fallback. Alpha mode draws white with source texture alpha over the black workspace: opaque regions are white, transparent regions black, and partial coverage gray. Source RGB, weight-map colors, tint, RGB gamma correction, and preview opacity/dimming do not affect the mask. Overlapping sprites composite their alpha coverage. Hidden character parts stay hidden. Bones, bounds, wireframe, and editing handles remain available; wireframe explicitly disables `_ShowAlpha` on the shared material. Returning to RGB restores normal color, weight, and opacity behavior.
+
+Sources: `Editor/SkinningModule/MeshPreviewTool/MeshPreviewTool.cs`, `Editor/Assets/SkinningModule/SkinningModule-GUITextureClip.shader`, and `Editor/SkinningModule/SkinningModule.cs`.
+
 ### Shared Alt state
 
 `SkinningEditorInput` owns the shared `Alt` key state. `MeshToolWrapper` reads this state and computes the effective mode. `SpriteMeshView` does not query Alt directly for mode switching.

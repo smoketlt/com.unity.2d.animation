@@ -27,6 +27,7 @@ For cross-version changes, follow [Unity Version Compatibility](Architecture/Uni
 When a Unity editor is available, verify in the local test project:
 
 - package recompiles from the expected dependency source;
+- alpha-channel toggle shows grayscale source alpha in normal and deformed mesh previews, including the default mesh fallback; partial alpha stays gray with weight colors or reduced Visibility opacity, and switching back restores RGB;
 - Geometry toolbar labels show `Modify`, `Create`, `New`, `Reset`, `Generate`;
 - `Alt` swaps `Modify` and `Create` while held and returns on release;
 - drag from vertex in `Create` creates an edge and exits edge-drag state on mouse up;

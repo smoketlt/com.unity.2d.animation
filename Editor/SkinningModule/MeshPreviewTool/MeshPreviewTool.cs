@@ -12,6 +12,7 @@ namespace UnityEditor.U2D.Animation
         private IMeshPreviewBehaviour m_DefaultPreviewBehaviour = new DefaultPreviewBehaviour();
 
         public IMeshPreviewBehaviour previewBehaviourOverride { get; set; }
+        public bool showAlpha { get; set; }
 
         public override IMeshPreviewBehaviour previewBehaviour
         {
@@ -215,6 +216,7 @@ namespace UnityEditor.U2D.Animation
             if (meshPreview.canSkin == false || skeleton.isPosePreview == false)
             {
                 m_Material.mainTexture = meshCache.textureDataProvider.texture;
+                m_Material.SetFloat("_ShowAlpha", showAlpha ? 1f : 0f);
                 m_Material.SetFloat("_Opacity", previewBehaviour.GetMeshOpacity(sprite));
                 m_Material.SetFloat("_VertexColorBlend", 0f);
                 m_Material.color = new Color(1f, 1f, 1f, 1f);
@@ -286,6 +288,7 @@ namespace UnityEditor.U2D.Animation
             else
             {
                 m_Material.mainTexture = meshCache.textureDataProvider.texture;
+                m_Material.SetFloat("_ShowAlpha", showAlpha ? 1f : 0f);
                 m_Material.SetFloat("_Opacity", previewBehaviour.GetMeshOpacity(sprite));
                 m_Material.SetFloat("_VertexColorBlend", weightMapOpacity);
 
@@ -336,6 +339,7 @@ namespace UnityEditor.U2D.Animation
             Debug.Assert(meshPreview != null);
 
             m_Material.mainTexture = null;
+            m_Material.SetFloat("_ShowAlpha", 0f);
             m_Material.SetFloat("_Opacity", 0.35f);
             m_Material.SetFloat("_VertexColorBlend", 0f);
             m_Material.color = Color.white;
