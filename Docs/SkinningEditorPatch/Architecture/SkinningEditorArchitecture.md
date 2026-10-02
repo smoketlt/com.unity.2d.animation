@@ -63,6 +63,14 @@ Skinning supplies a transparent 1x1 workspace texture to the host Sprite Editor.
 
 Sources: `Editor/SkinningModule/MeshPreviewTool/MeshPreviewTool.cs`, `Editor/Assets/SkinningModule/SkinningModule-GUITextureClip.shader`, and `Editor/SkinningModule/SkinningModule.cs`.
 
+### Atlas sampling in mesh previews
+
+The preview shader explicitly samples texture mip level 0 for both RGB and alpha, including the default mesh fallback. Automatic mip selection on deformed triangles can vary across the mesh and use atlas mipmaps that blend neighboring PSB layers across their padding. This produces colored blocks, halos, and triangle-dependent blur. Base-level sampling prevents that source of preview artifacts without changing importer settings, runtime rendering, texture providers, or mesh UVs. The shader uses target 3.0 for fragment `tex2Dlod`, supported by the desktop editors in Unity 6000.0 and 6000.5 or newer; no version-specific API branch is needed.
+
+This does not recover detail already lost to importer downscaling or texture compression. Magnified previews still show the imported base-level quality; strongly minified previews can alias because atlas mipmaps are deliberately bypassed.
+
+Verification on 2026-10-02: the modified shader compiled without shader errors and rendered on the GPU in Unity 6000.6.0f1. A synthetic texture with green/25%-alpha mip 0 and opaque magenta lower mips was rendered to a 2x2 target. Automatic sampling produced magenta RGB and opaque white alpha; base-level sampling produced green at 25% coverage and a 25% gray alpha mask. The connected Bard importer used a 2048x2048 DXT5 texture with 12 mip levels from a 4096x4096 source atlas. Its readable duplicate contained identical rendered pixels, so changing to that provider would not improve the base image. The exact reported Bard pose and Unity 6000.0 visual output have not yet been verified with this patch.
+
 ### Shared Alt state
 
 `SkinningEditorInput` owns the shared `Alt` key state. `MeshToolWrapper` reads this state and computes the effective mode. `SpriteMeshView` does not query Alt directly for mode switching.

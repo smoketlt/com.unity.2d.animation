@@ -12,7 +12,7 @@ Shader "Hidden/SkinningModule-GUITextureClip"
     CGINCLUDE
     #pragma vertex vert
     #pragma fragment frag
-    #pragma target 2.0
+    #pragma target 3.0
 
     #include "UnityCG.cginc"
 
@@ -57,7 +57,9 @@ Shader "Hidden/SkinningModule-GUITextureClip"
 
     fixed4 frag (v2f i) : SV_Target
     {
-        fixed4 col = tex2D(_MainTex, i.texcoord);
+        // Atlas mipmaps mix neighboring sprites and can select different levels
+        // across deformed triangles. Preview the base level in both RGB and alpha.
+        fixed4 col = tex2Dlod(_MainTex, float4(i.texcoord, 0, 0));
 
         if (_ShowAlpha > 0.5)
         {

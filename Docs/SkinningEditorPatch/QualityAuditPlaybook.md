@@ -28,6 +28,7 @@ When a Unity editor is available, verify in the local test project:
 
 - package recompiles from the expected dependency source;
 - alpha-channel toggle shows grayscale source alpha in normal and deformed mesh previews, including the default mesh fallback; partial alpha stays gray with weight colors or reduced Visibility opacity, and switching back restores RGB;
+- with mipmaps enabled on a packed PSB atlas, zoom and deform the mesh in RGB and alpha modes: neighboring-layer colors and inconsistent mip blur must not appear across triangles; distinguish remaining base-level compression/downscaling artifacts from mip sampling;
 - Geometry toolbar labels show `Modify`, `Create`, `New`, `Reset`, `Generate`;
 - `Alt` swaps `Modify` and `Create` while held and returns on release;
 - drag from vertex in `Create` creates an edge and exits edge-drag state on mouse up;
