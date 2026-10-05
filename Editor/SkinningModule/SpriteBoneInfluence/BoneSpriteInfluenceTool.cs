@@ -97,7 +97,7 @@ namespace UnityEditor.U2D.Animation
         void ShowHideView(bool show)
         {
             if (!show)
-                LayoutOverlayUtility.ResetDraggableOverlayPanel((VisualElement)m_Model.view);
+                LayoutOverlayUtility.SaveDraggableOverlayPanel((VisualElement)m_Model.view);
             m_Model.view.SetHiddenFromLayout(!show);
             if (show)
             {
@@ -339,7 +339,7 @@ namespace UnityEditor.U2D.Animation
                 m_Controller.OnViewCreated();
             }
 
-            layout.AddBottomOverlayPanel(m_View);
+            layout.AddBottomOverlayPanel(m_View, "SpriteInfluence", new UnityEngine.Vector2(300, 160));
         }
 
         protected override void OnGUI()

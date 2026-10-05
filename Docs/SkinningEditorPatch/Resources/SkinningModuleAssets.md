@@ -46,7 +46,7 @@ Do not rename the UXML element unless all C# lookups, USS selectors, and metadat
 
 ## Overlay Placement
 
-Skinning tool panels that are short inspector/control windows are hosted in `LayoutOverlay.bottomOverlay`, appear centered at the bottom by default, and can be dragged by their title-bar area. This includes Weight Painter, Bone Inspector, Generate Geometry, Generate Weights, Paste, Pivot, and Influence panels. Dragged absolute positioning is reset when the owning tool hides the panel, so switching tools shows the panel centered again instead of preserving a stale hidden position.
+Skinning tool panels that are short inspector/control windows are hosted in `LayoutOverlay.bottomOverlay`, appear centered at the bottom by default, and can be moved by their title bars or resized with the lower-right grip. This includes Weight Painter, Bone Inspector, Generate Geometry, Generate Weights, Paste, Pivot, Influence, and Constraints panels. Each panel saves its customized position and size across tool changes and editor reopening; see [Tool Panel Layout](../Subsystems/SkinningEditor/PanelLayout.md). Shared popup backgrounds and content follow the root's resized dimensions, and scrollable weight/influence lists use the available height.
 
 The persistent Animation Preview timeline is hosted in `LayoutOverlay.timelineOverlay`, an absolute 44-pixel strip at the bottom edge. `bottomOverlay` reserves 54 pixels beneath its draggable panels so they remain above the timeline.
 

@@ -89,7 +89,7 @@ The `Reset` toolbar button is now a command handled by `SkinningModuleView.Reset
 
 `LayoutOverlay` exposes a `bottomOverlay` area for Skinning tool panels that should not stack under the right-side Visibility window. Weight Painter, Bone Inspector, Generate Geometry, Generate Weights, Paste, Pivot, and Influence panels are added through `LayoutOverlay.AddBottomOverlayPanel(...)`.
 
-These panels initially appear centered along the bottom edge. `LayoutOverlayUtility.MakeDraggableOverlayPanel(...)` adds a title-bar drag handle to each panel and `OverlayPanelDragger` switches the panel to absolute positioning after the first drag, clamped inside the bottom overlay. Tools call `LayoutOverlayUtility.ResetDraggableOverlayPanel(...)` before hiding their panel so a dragged panel returns to the normal bottom-center layout the next time that tool is shown.
+These panels initially appear centered along the bottom edge. `LayoutOverlayUtility.MakeDraggableOverlayPanel(...)` adds title-bar and lower-right resize handles. `OverlayPanelLayout` preserves a separate position and size for each panel in project-specific user preferences; `OverlayPanelDragger` captures the pointer for moving or resizing inside the overlay bounds. Tools save their layout before hiding instead of resetting it. Weight Brush/Slider, Bone/Sprite Influence, and each Constraints type have distinct layout identities. See [Tool Panel Layout](../Subsystems/SkinningEditor/PanelLayout.md) for persistence, sizing, and verification.
 
 The Visibility popup remains in `rightOverlay` because it is a tall list window with its own resizer and right-side workflow.
 

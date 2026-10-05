@@ -4,6 +4,8 @@ namespace UnityEditor.U2D.Animation
 {
     internal static class TextContent
     {
+        public static string resizePanelTooltip = L10n.Tr("Drag to resize");
+
         // Undo
         public static string setMode = "Set Mode";
         public static string setTool = "Set Tool";

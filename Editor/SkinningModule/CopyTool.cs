@@ -770,7 +770,7 @@ namespace UnityEditor.U2D.Animation
 
         public void Hide()
         {
-            LayoutOverlayUtility.ResetDraggableOverlayPanel(m_PastePanel);
+            LayoutOverlayUtility.SaveDraggableOverlayPanel(m_PastePanel);
             m_PastePanel.SetHiddenFromLayout(true);
         }
 

@@ -58,6 +58,14 @@ Use this while iterating quickly. Unity should recompile from the local package 
 
 ## Update Flow
 
+### Local files excluded from Git
+
+The root `.gitignore` excludes nested JetBrains `.idea` and Visual Studio `.vs` directories, per-user IDE files, root-generated Unity caches/logs and solution/project files, and operating-system folder metadata. These files are machine-local and are not package sources. Generated-directory rules are scoped to the checkout root so they do not hide package resources with similar names.
+
+Unity `.meta` files, C# sources, shaders, UXML/USS, and package resources remain tracked. Do not ignore all `.meta` files or use `skip-worktree`/`assume-unchanged` to hide importer churn: those files carry GUIDs and import settings. Automatic icon-importer rewrites should be reviewed and selectively restored separately; adding ignore rules does not remove changes from already tracked files.
+
+### Publishing changes
+
 1. Read `Docs/SkinningEditorPatch/Index.md`.
 2. Read subsystem/entity docs for the task.
 3. Make the code change.

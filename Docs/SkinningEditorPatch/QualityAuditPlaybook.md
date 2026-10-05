@@ -27,6 +27,8 @@ For cross-version changes, follow [Unity Version Compatibility](Architecture/Uni
 When a Unity editor is available, verify in the local test project:
 
 - package recompiles from the expected dependency source;
+- select a bone from the Weight Brush rows, rename it with F2, and confirm the renamed row/popup target, viewport bones, and Visibility list remain available without `ArgumentOutOfRangeException`; also check Weight Slider and canceling the rename dialog;
+- settings panels move by their title bars and resize by the lower-right grip; positions and sizes survive tool changes, Sprite Editor reopening, and Unity restart, with separate Brush/Slider, Bone/Sprite Influence, and Constraints-mode layouts; lists expand and scroll correctly, and smaller viewports keep panels reachable;
 - alpha-channel toggle shows grayscale source alpha in normal and deformed mesh previews, including the default mesh fallback; partial alpha stays gray with weight colors or reduced Visibility opacity, and switching back restores RGB;
 - set Adjust Weight Opacity to 0%, 50%, and 100% on a sprite with transparent regions: only RGB weight tint changes; transparent texels stay transparent, partial-alpha edges keep their coverage, and no padding RGB or opaque mesh rectangle appears;
 - with mipmaps enabled on a packed PSB atlas, zoom and deform the mesh in RGB and alpha modes: neighboring-layer colors and inconsistent mip blur must not appear across triangles; distinguish remaining base-level compression/downscaling artifacts from mip sampling;

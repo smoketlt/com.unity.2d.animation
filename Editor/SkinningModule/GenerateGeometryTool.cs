@@ -292,7 +292,7 @@ namespace UnityEditor.U2D.Animation
 
         private void Hide()
         {
-            LayoutOverlayUtility.ResetDraggableOverlayPanel(m_GenerateGeometryPanel);
+            LayoutOverlayUtility.SaveDraggableOverlayPanel(m_GenerateGeometryPanel);
             m_GenerateGeometryPanel.SetHiddenFromLayout(true);
         }
 

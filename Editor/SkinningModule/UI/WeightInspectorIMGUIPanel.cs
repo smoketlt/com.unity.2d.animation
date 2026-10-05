@@ -31,7 +31,14 @@ namespace UnityEditor.U2D.Animation
             m_WeightInspector.boneButtonClicked = (boneIndex, additive) => boneButtonClicked(boneIndex, additive);
             m_WeightInspector.lockButtonClicked = (boneIndex) => lockButtonClicked(boneIndex);
 
-            this.Add(new IMGUIContainer(OnGUI));
+            var container = new IMGUIContainer(OnGUI);
+            container.RegisterCallback<GeometryChangedEvent>(evt =>
+            {
+                m_WeightInspector.availableHeight = Mathf.Max(EditorGUIUtility.singleLineHeight,
+                    evt.newRect.height - EditorGUIUtility.singleLineHeight - 6);
+                container.MarkDirtyRepaint();
+            });
+            this.Add(container);
             this.pickingMode = PickingMode.Ignore;
             this.RegisterCallback<MouseDownEvent>((e) => { e.StopPropagation(); });
             this.RegisterCallback<MouseUpEvent>((e) => { e.StopPropagation(); });

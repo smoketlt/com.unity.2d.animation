@@ -27,7 +27,7 @@
 | Runtime bone constraints | [Subsystems/SkinningEditor/Constraints](Subsystems/SkinningEditor/Constraints.md) | `Editor/SkinningModule/ConstraintsTool.cs`, `Editor/SkinningModule/UI/ConstraintsToolbar.cs`, `Runtime/SpriteSkinConstraintSet.cs`, `Runtime/SpriteSkinConstraintController.cs` |
 | PSB scene hierarchy bone names such as `Nose_1` | [Subsystems/SkinningEditor/PSBHierarchyBoneNames](Subsystems/SkinningEditor/PSBHierarchyBoneNames.md) | `Editor/SpriteSkin/SpriteSkinBoneNameNormalizer.cs` |
 | Top informational overlay text | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/SkinningModule/UI/SkinningEditorInfoOverlay.cs` |
-| Skinning panel placement and draggable bottom overlays | [Architecture/SkinningEditorArchitecture](Architecture/SkinningEditorArchitecture.md) | `Editor/LayoutOverlay/**`, `Editor/Assets/LayoutOverlay/**` |
+| Settings panel dragging, resizing, per-mode positions and sizes | [Subsystems/SkinningEditor/PanelLayout](Subsystems/SkinningEditor/PanelLayout.md) | `Editor/LayoutOverlay/**`, `Editor/Assets/LayoutOverlay/**`, `Tests/Editor/OverlayPanelLayoutTests.cs` |
 | UXML/USS resources | [Resources/SkinningModuleAssets](Resources/SkinningModuleAssets.md) | `Editor/Assets/SkinningModule/**` |
 | Regression sweep before push | [QualityAuditPlaybook](QualityAuditPlaybook.md) | diff, Unity compile, local Unity test project |
 

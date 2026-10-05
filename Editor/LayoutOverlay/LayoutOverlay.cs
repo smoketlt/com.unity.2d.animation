@@ -1,4 +1,5 @@
 using UnityEditor.U2D.Animation;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace UnityEditor.U2D.Layout
@@ -92,9 +93,9 @@ namespace UnityEditor.U2D.Layout
             }
         }
 
-        public void AddBottomOverlayPanel(VisualElement panel)
+        public void AddBottomOverlayPanel(VisualElement panel, string layoutKey = null, Vector2? minimumSize = null)
         {
-            LayoutOverlayUtility.MakeDraggableOverlayPanel(panel);
+            LayoutOverlayUtility.MakeDraggableOverlayPanel(panel, layoutKey, minimumSize);
             bottomOverlay.Add(panel);
         }
 

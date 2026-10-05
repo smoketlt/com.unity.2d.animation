@@ -105,7 +105,7 @@ namespace UnityEditor.U2D.Animation
 
         public int boneIndex
         {
-            get { return m_BonePopup.index - 1; }
+            get { return m_BonePopup == null ? -1 : Mathf.Max(-1, m_BonePopup.index - 1); }
         }
 
         public int size
@@ -345,7 +345,12 @@ namespace UnityEditor.U2D.Animation
         internal void SetBoneSelectionByName(string boneName)
         {
             if (m_BonePopup != null)
-                m_BonePopup.value = boneName;
+            {
+                // This reflects skeleton selection; it must not fire a new selection
+                // command, especially while a rename refreshes the popup choices.
+                string value = m_BonePopup.choices.Contains(boneName) ? boneName : kNone;
+                m_BonePopup.SetValueWithoutNotify(value);
+            }
         }
 
         private static string GetModeLabel(WeightEditorMode mode)

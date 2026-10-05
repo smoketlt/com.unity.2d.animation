@@ -75,7 +75,7 @@ namespace UnityEditor.U2D.Animation
 
         public void Hide()
         {
-            LayoutOverlayUtility.ResetDraggableOverlayPanel(m_BoneInspectorPanel);
+            LayoutOverlayUtility.SaveDraggableOverlayPanel(m_BoneInspectorPanel);
             m_BoneInspectorPanel.HidePanel();
             m_BoneInspectorPanel.target = null;
             m_BoneInspectorPanel.targets = Array.Empty<BoneCache>();

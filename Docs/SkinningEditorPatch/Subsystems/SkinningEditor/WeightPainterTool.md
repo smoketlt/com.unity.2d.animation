@@ -28,6 +28,10 @@ The core difference between `AddAndSubtract` and `GrowAndShrink` is channel crea
 
 ## Bone Selection Clearing
 
+Weight Slider and Weight Brush refresh their bone popup and assigned-bone rows on `boneNameChanged`, including F2 rename. Programmatic synchronization of the active bone uses `SetValueWithoutNotify`: reflecting a selection must not issue another bone-selection command. A name temporarily missing from the popup choices maps to `None`, and popup/brush index consumers reject indices outside the current skeleton. This prevents a renamed label in stale choices from producing index `-2` and interrupting Skinning Editor drawing (including the Visibility list).
+
+On 2026-10-05, `WeightPainterRenameTests` passed all three cases in both Unity `6000.0.81f1` and `6000.5.7f1`, using attached UI Toolkit panels in isolated batch editors with graphics enabled. Coverage includes a renamed selected bone arriving before popup choices refresh, rebuilding those choices in Brush and Slider Smooth mode without issuing selection commands, and genuine popup selection still issuing a command. Package assemblies compiled in both editors. The full interactive F2 modal and Visibility repaint sequence remains a manual check.
+
 All Weight toolbar modes use `SkeletonTool` for bone picking. Weight Slider, Weight Brush, Auto Weights, Bone Influence, and Sprite Influence enable `SkeletonTool` bone unselection so `Esc` and primary empty click clear the selected bones through `UnselectTool<BoneCache>`. Right-click does not clear selected bones.
 
 For tools that also run `MeshTool`, bone unselection treats the mesh default control as an empty-space target so clicks in the sprite mesh area can clear bones when no bone is hit.
@@ -78,6 +82,12 @@ Holding `Shift` while using Weight Brush temporarily edits in `Smooth` mode and 
 
 In Weight Brush `Smooth`, if more than one mesh bone is selected, smoothing only changes those selected bone channels and preserves the other channels on each affected vertex. If zero or one mesh bone is selected, smoothing uses all mesh bone channels.
 
+Preserving the unselected channels also fixes the total weight available to the selected set on each vertex. For example, selecting RED and PINK while leaving BLUE unselected redistributes only the existing RED/PINK budget; it cannot reduce BLUE or expand the combined RED/PINK influence. A vertex with BLUE weight `1.0` therefore remains unchanged. Where the RED/PINK ratio is already similar across connected vertices, changes can be very small even if their combined influence varies strongly. Select BLUE as well when the intended operation is to smooth that boundary. Neighbor averages are calculated from triangle-connected vertices, rather than all vertices inside the brush circle.
+
+With only one persistent vertex selected, all brush stamps rewrite only that vertex. Neighbor weights remain unchanged, so repeated strokes can quickly settle near the same selected-bone ratio. Increasing Strength reaches that neighborhood-derived result faster; it does not prescribe equal weights between the selected bones.
+
+Smooth accumulates up to eight neighborhood iterations per vertex within one stroke, using a snapshot taken at stroke start. Strength and feather falloff determine how quickly each covered vertex advances through that range. After a vertex reaches the limit, further movement in the same stroke leaves it unchanged; releasing the mouse and starting another stroke takes a fresh snapshot and resets the accumulation.
+
 In Weight Brush `AddAndSubtract` and `GrowAndShrink`, selecting two or more bones from the current mesh paints all selected unlocked bone channels in one simultaneous edit. Each target channel receives the same signed brush amount after feather falloff. When the added total would exceed `1.0`, selected channels are preserved together and the remaining unlocked, unselected channels are compensated proportionally, avoiding selection-order bias. Unity's four-influence-per-vertex limit still applies when a stroke introduces more than four non-zero channels.
 
 Weight Brush keeps the brush gizmo visible while hovering bones and exposes a `Manipulate Bones` toggle, enabled by default, beside a `Restore Pose` button. With manipulation enabled, Weight Brush embeds Preview Pose-style bone manipulation: a primary click on a bone selects it, a primary drag that starts on a bone joint moves the bone, and a drag that starts on its body rotates it. The initial mouse-down target owns the whole gesture, so a paint drag that starts outside every bone remains a brush stroke even if it later crosses a bone. With manipulation disabled, bones cannot move or rotate; a click on a bone still selects it, while dragging from a bone becomes a brush stroke so bones do not create dead paint areas. `Alt` gestures remain reserved for persistent vertex selection.
@@ -90,7 +100,7 @@ Clicking a bone name selects that mesh bone in the Skeleton selection; clicking 
 
 Clicking the color swatch toggles a per-Weight-Slider lock for that bone. A locked bone shows a lock icon in the swatch. Locked bone weights are preserved by direct row edits, Weight Slider drag edits, Smooth, and Prune.
 
-When the assigned bone list is longer than the visible row budget, the bone weight rows scroll vertically inside the Vertex Weight list instead of expanding past the Weight Slider panel.
+The panel can be resized by its lower-right grip. Weight Brush and Weight Slider remember separate positions and sizes, even though they share one panel instance; see [Tool Panel Layout](PanelLayout.md). The Vertex Weight list uses the available panel height and scrolls when its rows do not fit. Increasing the height shows more bones, and increasing the width expands the row sliders.
 
 Changing a row's weight rebuilds the selected vertex weights across assigned bones: the edited bone receives the requested value, and the remaining weight is distributed across the other assigned bones. If the other assigned bones currently have zero weight, the remaining weight is distributed evenly among them.
 

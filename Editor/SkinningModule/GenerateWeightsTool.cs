@@ -65,7 +65,7 @@ namespace UnityEditor.U2D.Animation
             base.OnDeactivate();
             skinningCache.events.skinningModeChanged.RemoveListener(OnModeChanged);
             skinningCache.events.selectedSpriteChanged.RemoveListener(OnSpriteSelectionChanged);
-            LayoutOverlayUtility.ResetDraggableOverlayPanel(m_GenerateWeightsPanel);
+            LayoutOverlayUtility.SaveDraggableOverlayPanel(m_GenerateWeightsPanel);
             m_GenerateWeightsPanel.SetHiddenFromLayout(true);
         }
 

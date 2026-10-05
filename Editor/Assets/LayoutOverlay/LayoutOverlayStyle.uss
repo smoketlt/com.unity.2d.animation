@@ -68,6 +68,31 @@ LayoutOverlay > #BottomOverlay > .DraggableOverlayPanel > .OverlayDragHandle {
     right: 0;
     top: 0;
     height: 22px;
+    cursor: move-arrow;
+}
+
+LayoutOverlay > #BottomOverlay > .DraggableOverlayPanel > .OverlayResizeHandle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    padding: 0;
+    color: rgb(160, 160, 160);
+    -unity-text-align: lower-right;
+    cursor: resize-up-left;
+}
+
+LayoutOverlay > #BottomOverlay > .DraggableOverlayPanel > PopupWindow {
+    width: auto;
+    min-width: 0;
+    flex-shrink: 1;
+}
+
+LayoutOverlay > #BottomOverlay > .DraggableOverlayPanel > PopupWindow > #unity-content-container {
+    flex-shrink: 1;
+    min-height: 0;
 }
 
 LayoutOverlay > #HorizontalHolder > #LeftOverlay {

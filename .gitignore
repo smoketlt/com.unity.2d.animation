@@ -1,0 +1,23 @@
+# Local IDE settings and caches (at any nesting level)
+.idea/
+.vs/
+*.suo
+*.user
+*.userprefs
+
+# Generated Unity/IDE files at the package checkout root
+/Library/
+/Temp/
+/Obj/
+/obj/
+/Logs/
+/UserSettings/
+/bin/
+/*.csproj
+/*.sln
+/*.slnx
+
+# Operating-system folder metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

@@ -161,6 +161,7 @@ namespace UnityEditor.U2D.Animation
         protected override void OnActivate()
         {
             base.OnActivate();
+            LayoutOverlayUtility.SetOverlayPanelLayoutKey(m_WeightPainterPanel, "WeightPainter." + paintMode);
             m_WeightPainterPanel.SetHiddenFromLayout(false);
             if (paintMode == WeightPainterMode.Brush)
                 ShowInfoOverlay(SkinningEditorInfoText.WeightBrush);
@@ -170,6 +171,7 @@ namespace UnityEditor.U2D.Animation
             skinningCache.events.selectedSpriteChanged.AddListener(OnSelectedSpriteChanged);
             skinningCache.events.skinningModeChanged.AddListener(OnSkinningModeChanged);
             skinningCache.events.boneSelectionChanged.AddListener(OnBoneSelectionChanged);
+            skinningCache.events.boneNameChanged.AddListener(OnBoneNameChanged);
 
             m_Brush.size = skinningCache.brushSize;
             m_Brush.hardness = skinningCache.brushHardness;
@@ -200,14 +202,20 @@ namespace UnityEditor.U2D.Animation
             skinningCache.events.selectedSpriteChanged.RemoveListener(OnSelectedSpriteChanged);
             skinningCache.events.skinningModeChanged.RemoveListener(OnSkinningModeChanged);
             skinningCache.events.boneSelectionChanged.RemoveListener(OnBoneSelectionChanged);
+            skinningCache.events.boneNameChanged.RemoveListener(OnBoneNameChanged);
 
-            LayoutOverlayUtility.ResetDraggableOverlayPanel(m_WeightPainterPanel);
+            LayoutOverlayUtility.SaveDraggableOverlayPanel(m_WeightPainterPanel);
             m_WeightPainterPanel.SetHiddenFromLayout(true);
         }
 
         private void OnBoneSelectionChanged()
         {
             UpdateSelectedBone();
+        }
+
+        private void OnBoneNameChanged(BoneCache bone)
+        {
+            UpdatePanel();
         }
 
         private void OnSelectedSpriteChanged(SpriteCache sprite)
@@ -333,7 +341,7 @@ namespace UnityEditor.U2D.Animation
 
             m_WeightPainterPanel = WeightPainterPanel.GenerateFromUXML();
             m_WeightPainterPanel.SetHiddenFromLayout(true);
-            layout.AddBottomOverlayPanel(m_WeightPainterPanel);
+            layout.AddBottomOverlayPanel(m_WeightPainterPanel, "WeightPainter." + paintMode, new Vector2(300, 220));
 
             m_WeightPainterPanel.sliderStarted += () =>
             {
@@ -354,6 +362,9 @@ namespace UnityEditor.U2D.Animation
 
                 if (skeleton != null)
                 {
+                    if (i < -1 || i >= skeleton.boneCount)
+                        return;
+
                     BoneCache bone = null;
 
                     if (i != -1)
@@ -722,10 +733,14 @@ namespace UnityEditor.U2D.Animation
             {
                 SkeletonCache skeleton = skinningCache.GetEffectiveSkeleton(meshTool.mesh.sprite);
 
-                if (skeleton != null)
+                if (skeleton != null && index >= 0 && index < skeleton.boneCount)
                 {
                     BoneCache bone = skeleton.GetBone(index).ToCharacterIfNeeded();
                     index = Array.IndexOf(meshTool.mesh.bones, bone);
+                }
+                else
+                {
+                    index = -1;
                 }
             }
 

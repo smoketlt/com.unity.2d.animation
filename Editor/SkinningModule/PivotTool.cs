@@ -151,7 +151,7 @@ namespace UnityEditor.U2D.Animation
             if (skinningCache.hasCharacter)
             {
                 base.OnDeactivate();
-                LayoutOverlayUtility.ResetDraggableOverlayPanel(m_InspectorPanel);
+                LayoutOverlayUtility.SaveDraggableOverlayPanel(m_InspectorPanel);
                 m_InspectorPanel.SetHiddenFromLayout(true);
 
                 skinningCache.selectionTool.CanSelect -= CanSelectWhileInPivotTool;

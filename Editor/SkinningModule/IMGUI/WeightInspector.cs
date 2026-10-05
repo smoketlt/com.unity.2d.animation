@@ -65,6 +65,7 @@ namespace UnityEditor.U2D.Animation
         public ICacheUndo cacheUndo { get; set; }
         public ISelection<int> selection { get; set; }
         public bool weightsEditable { get; set; }
+        public float availableHeight { get; set; } = GetVisibleBoneRowsHeight(kMaxVisibleBoneRows);
         public Action<int, bool> boneButtonClicked = (boneIndex, additive) => {};
         public Action<int> lockButtonClicked = (boneIndex) => {};
 
@@ -90,9 +91,11 @@ namespace UnityEditor.U2D.Animation
             if (m_BoneNameContents == null)
                 return;
 
-            bool useScroll = m_BoneNameContents.Length > kMaxVisibleBoneRows;
+            float rowsHeight = GetVisibleBoneRowsHeight(m_BoneNameContents.Length);
+            float visibleHeight = Mathf.Max(kRowHeight, availableHeight);
+            bool useScroll = rowsHeight > visibleHeight;
             if (useScroll)
-                m_ScrollPosition = EditorGUILayout.BeginScrollView(m_ScrollPosition, false, false, GUILayout.Height(GetVisibleBoneRowsHeight(kMaxVisibleBoneRows)));
+                m_ScrollPosition = EditorGUILayout.BeginScrollView(m_ScrollPosition, false, false, GUILayout.Height(visibleHeight));
 
             for (int boneIndex = 0; boneIndex < m_BoneNameContents.Length; ++boneIndex)
             {
@@ -138,7 +141,7 @@ namespace UnityEditor.U2D.Animation
             using (new EditorGUI.DisabledScope(!weightsEditable || isLocked))
             {
                 EditorGUI.showMixedValue = isWeightMixed;
-                weight = GUILayout.HorizontalSlider(weight, 0f, 1f, GUILayout.Width(kSliderWidth));
+                weight = GUILayout.HorizontalSlider(weight, 0f, 1f, GUILayout.MinWidth(kSliderWidth), GUILayout.ExpandWidth(true));
                 GUILayout.Space(6f);
 
                 EditorGUIUtility.fieldWidth = kValueFieldWidth;

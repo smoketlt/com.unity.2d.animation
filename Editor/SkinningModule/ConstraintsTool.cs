@@ -43,7 +43,7 @@ namespace UnityEditor.U2D.Animation
             m_Panel.onPickDriven += PickDrivenBone;
             m_Panel.onFindConstraintForSelected += FindConstraintForSelectedBone;
             m_Panel.onSelectedConstraintChanged += SelectConstraintBones;
-            layout.AddBottomOverlayPanel(m_Panel);
+            layout.AddBottomOverlayPanel(m_Panel, "Constraints." + constraintType);
             HidePanel();
         }
 
@@ -69,7 +69,7 @@ namespace UnityEditor.U2D.Animation
             skinningCache.events.selectedSpriteChanged.RemoveListener(OnSelectedSpriteChanged);
             if (m_Panel != null)
             {
-                LayoutOverlayUtility.ResetDraggableOverlayPanel(m_Panel);
+                LayoutOverlayUtility.SaveDraggableOverlayPanel(m_Panel);
                 HidePanel();
             }
             base.OnDeactivate();
@@ -679,7 +679,7 @@ namespace UnityEditor.U2D.Animation
                 name = "ConstraintSettingsWindow",
                 text = "Constraint Settings"
             };
-            popup.style.width = k_PanelWidth;
+            popup.style.width = StyleKeyword.Auto;
             popup.style.paddingLeft = 14;
             popup.style.paddingRight = 14;
             Add(popup);
@@ -754,7 +754,8 @@ namespace UnityEditor.U2D.Animation
                 name = "ConstraintListView",
                 selectionType = SelectionType.Single
             };
-            m_ListView.style.width = k_ContentWidth;
+            m_ListView.style.alignSelf = Align.Stretch;
+            m_ListView.style.flexGrow = 1;
             m_ListView.style.height = 120;
             m_ListView.style.marginTop = 4;
             m_ListView.onSelectionChange += OnSelectionChange;

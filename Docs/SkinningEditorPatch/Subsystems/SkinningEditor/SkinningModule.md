@@ -60,6 +60,8 @@ When invoked, `SkinningModuleView.ShowRenameSelectionWindow()` chooses the targe
 
 Accepted bone names use `TextContent.boneName` undo and invoke `skinningCache.events.boneNameChanged`. Accepted sprite names use `TextContent.spriteName` undo and mark Sprite Editor data modified. `SkinningModule.ApplyChanges(...)` writes renamed sprites back to `ISpriteEditorDataProvider.SetSpriteRects(...)` before applying bones, mesh, and character data.
 
+Weight Brush and Weight Slider listen for `boneNameChanged` and rebuild their popup choices before synchronizing the selected bone. Their programmatic popup updates do not emit selection commands, so F2 rename preserves the existing bone selection and does not interrupt the bone/weight/Visibility UI with an invalid popup index. Regression coverage is in `Tests/Editor/WeightPainterRenameTests.cs`.
+
 ## Bone Duplicate
 
 `Ctrl+D` on Windows/Linux and `Cmd+D` on macOS is registered as `ShortcutIds.duplicateBone` in the Skinning Editor shortcut context.
