@@ -18,8 +18,10 @@ namespace UnityEditor.U2D.Animation
 
         public static bool Update(Event evt)
         {
+#if !UNITY_EDITOR_WIN
             if (evt == null)
                 return false;
+#endif
 
             bool previousAltKeyDown = altKeyDown;
 

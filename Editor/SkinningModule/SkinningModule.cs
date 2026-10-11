@@ -9,6 +9,13 @@ namespace UnityEditor.U2D.Animation
     [RequireSpriteDataProvider(typeof(ISpriteMeshDataProvider), typeof(ISpriteBoneDataProvider))]
     internal partial class SkinningModule : SpriteEditorModuleBase
     {
+        static readonly HashSet<SkinningModule> s_ActiveModules = new HashSet<SkinningModule>();
+
+        internal static bool IsEditingAsset(string path)
+        {
+            return s_ActiveModules.Any(module =>
+                AssetDatabase.GetAssetPath(module.spriteEditor.GetDataProvider<ISpriteEditorDataProvider>().targetObject) == path);
+        }
         private static class Styles
         {
             public static string moduleName = L10n.Tr("Skinning Editor");
@@ -50,6 +57,7 @@ namespace UnityEditor.U2D.Animation
 
         public override void OnModuleActivate()
         {
+            s_ActiveModules.Add(this);
             m_SkinningCache = Cache.Create<SkinningCache>();
             m_WorkspaceBackgroundTexture = new Texture2D(1, 1, TextureFormat.RGBAHalf, false, true);
 
@@ -138,6 +146,7 @@ namespace UnityEditor.U2D.Animation
 
         public override void OnModuleDeactivate()
         {
+            s_ActiveModules.Remove(this);
             CancelNewGeometryModeOnDeactivate();
             SkinningEditorInput.Reset();
 

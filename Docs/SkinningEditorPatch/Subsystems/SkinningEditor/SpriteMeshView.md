@@ -56,6 +56,7 @@
 
 - `MoveVertex` is inactive in `CreateVertex` mode so vertex drag can create edges.
 - `CreateEdge` in `CreateVertex` mode triggers on mouse up, not mouse down.
+- With `useSceneHandles`, edge dragging captures a dedicated control rather than a move-slider control. Action checks admit that owned capture; cursor/hover refresh on captured drag/repaint/release even without Layout, keeping the edge preview live. Release/cancel clears only this control. Scene's initial press is consumed by its host after selection runs. Without `useSceneHandles`, the legacy uncaptured workflow remains unchanged.
 - `CreateVertex` in `EditGeometry` still requires double-click.
 - `NewGeometry` creates vertices on empty clicks, completes on first-vertex click, and deletes vertices on double-click.
 - `NewGeometry` forwards `Delete`/`SoftDelete` commands so the controller can remove selected open-hull vertices.

@@ -1,0 +1,2 @@
+#uniskinEditMesh { height: 24px; flex-direction: row; justify-content: center; align-items: center; margin-top: 6px; }
+.uniskin-inspector-icon { width: 16px; height: 16px; margin-right: 4px; flex-shrink: 0; }

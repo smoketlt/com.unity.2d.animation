@@ -19,6 +19,7 @@ This page documents the fork-specific Alt behavior in Geometry mode.
 - `Editor/SkinningModule/UI/MeshToolbar.cs`
 - `Editor/SkinningModule/SkinningModule.cs`
 - `Editor/SkinningModule/IMGUI/SpriteMeshView.cs`
+- `Editor/SkinningModule/SceneMesh/SceneEditMeshWindow.cs`
 
 ## Architecture
 
@@ -41,6 +42,12 @@ On non-Windows editor builds, it falls back to IMGUI event tracking.
 `SkinningModule.ConsumeUnhandledAltMouseNavigation()` consumes unhandled `Alt` mouse down/drag/up events in `Modify` and `Create` after Skinning Editor tools have had first chance to process them. This prevents leftover `Alt + mouse` input from reaching the base Sprite Editor pan handler when a mesh action did not use the event.
 
 `SkinningModule.DisableBaseSpriteEditorAltNavigation()` also clears the Alt modifier from the current event after Skinning Editor GUI has run. This keeps non-mouse and already-handled events from carrying Alt into base Sprite Editor navigation without forking `com.unity.2d.sprite`.
+
+## Scene mesh editor
+
+Scene Edit Mesh shares the same Alt state and swaps only its selected Modify/Create modes. Session mode stays unchanged; Scene handles, direct double-click deletion and toolbar highlighting use the effective mode. Alt is latched before event modifiers are cleared for primary-button mesh input; unhandled primary mouse down/drag/up is consumed after the mesh controller. Right/middle mouse navigation remains available. New, Delete and active Trace do not swap.
+
+On Windows, Scene's editor-update callback calls `SkinningEditorInput.Update(null)` for physical-key polling and repaints when the state changes, including when focus moves to the popup. Non-Windows null updates do nothing and original Scene IMGUI events drive the existing fallback. The callback is unsubscribed when the window disables. Scene uses the existing physical-key implementation rather than a second Alt tracker.
 
 ## Known Failure Modes
 

@@ -18,6 +18,7 @@ This page maps the editor-side architecture used by the forked Skinning Editor p
 
 ## Major Areas
 
+- Scene View authoring host: [Scene Mesh Editing](../Subsystems/SkinningEditor/SceneMeshEditing.md). It stages geometry independently, then uses the common Sprite importer providers for Apply and reimport.
 - lifecycle and module host: `SkinningModule.cs`
 - UI and shortcuts: `SkinningModuleView.cs`
 - tool creation and state: `SkinningCache.cs`

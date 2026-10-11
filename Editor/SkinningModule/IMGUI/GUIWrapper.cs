@@ -177,7 +177,7 @@ namespace UnityEditor.U2D.Animation
             return MathUtility.DistanceToSegmentClamp(mousePosition, p1, p2);
         }
 
-        public float DistanceToCircle(Vector3 center, float radius)
+        public virtual float DistanceToCircle(Vector3 center, float radius)
         {
             return HandleUtility.DistanceToCircle(center, radius);
         }

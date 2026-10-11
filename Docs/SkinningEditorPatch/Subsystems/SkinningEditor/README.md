@@ -36,6 +36,7 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 
 ## Entity Pages
 
+- [SceneMeshEditing](SceneMeshEditing.md): Scene View authoring of the same shared Sprite asset mesh.
 - [SkinningModule](SkinningModule.md)
 - [SkinningCache](SkinningCache.md)
 - [MeshToolbar](MeshToolbar.md)

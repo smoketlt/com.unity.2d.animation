@@ -8,6 +8,7 @@ namespace UnityEditor.U2D.Animation
     {
         readonly int m_VertexHashCode = "Vertex".GetHashCode();
         readonly int m_EdgeHashCode = "Edge".GetHashCode();
+        readonly int m_CreateEdgeDragHashCode = "CreateEdgeDrag".GetHashCode();
         const string kDeleteCommandName = "Delete";
         const string kSoftDeleteCommandName = "SoftDelete";
         static readonly Color kEdgeColor = Color.cyan;
@@ -15,6 +16,7 @@ namespace UnityEditor.U2D.Animation
         static readonly Color kEdgeSelectedColor = Color.yellow;
         const float kEdgeWidth = 2f;
         const float kVertexHitRadius = 16f;
+        const float kScenePickDistance = 5f;
         const float kNewGeometryFrameHitRadius = 16f;
         const float kWeightVertexRadius = 11.2f;
         const float kWeightVertexSelectedRadius = kWeightVertexRadius * 1.2f;
@@ -83,9 +85,21 @@ namespace UnityEditor.U2D.Animation
         private int m_NearestVertex = -1;
         private int m_NearestEdge = -1;
         private bool m_CreateEdgeDragActive;
+        private int m_CreateEdgeDragControlID = -1;
+
+        internal bool isCreateEdgeDragActive => m_CreateEdgeDragActive;
+        bool ownsSceneEdgeDrag => useSceneHandles && m_CreateEdgeDragActive &&
+            guiWrapper.IsControlHot(m_CreateEdgeDragControlID);
+
+        internal void CancelCreateEdgeDrag()
+        {
+            if (ownsSceneEdgeDrag) guiWrapper.SetControlHot(0);
+            m_CreateEdgeDragActive = false;
+        }
 
 
         public SpriteMeshViewMode mode { get; set; }
+        public bool useSceneHandles { get; set; }
         public ISelection<int> selection { get; set; }
         public int defaultControlID { get; set; }
         public bool drawVertexWeights { get; set; }
@@ -124,7 +138,16 @@ namespace UnityEditor.U2D.Animation
             int vertexControlID = guiWrapper.GetControlID(m_VertexHashCode, FocusType.Passive);
             int edgeControlID = guiWrapper.GetControlID(m_EdgeHashCode, FocusType.Passive);
 
-            if (guiWrapper.eventType == EventType.Layout || guiWrapper.eventType == EventType.MouseMove)
+            if (useSceneHandles)
+            {
+                m_CreateEdgeDragControlID = guiWrapper.GetControlID(m_CreateEdgeDragHashCode, FocusType.Passive);
+                if (mode != SpriteMeshViewMode.CreateVertex || guiWrapper.IsEventOutsideWindow() ||
+                    guiWrapper.IsKeyDown(KeyCode.Escape) || (m_CreateEdgeDragActive && !ownsSceneEdgeDrag))
+                    CancelCreateEdgeDrag();
+                m_MouseWorldPosition = guiWrapper.GUIToWorld(guiWrapper.mousePosition);
+            }
+
+            if (guiWrapper.eventType == EventType.Layout || guiWrapper.eventType == EventType.MouseMove || ownsSceneEdgeDrag)
             {
                 m_NearestVertexDistance = float.MaxValue;
                 m_NearestEdgeDistance = float.MaxValue;
@@ -150,11 +173,20 @@ namespace UnityEditor.U2D.Animation
             guiWrapper.LayoutControl(m_HoveredEdgeControlID, m_NearestEdgeDistance);
             guiWrapper.LayoutControl(m_HoveredVertexControlID, m_NearestVertexDistance);
 
-            if (guiWrapper.IsControlNearest(m_HoveredVertexControlID))
-                m_HoveredVertex = m_NearestVertex;
-
-            if (guiWrapper.IsControlNearest(m_HoveredEdgeControlID))
-                m_HoveredEdge = m_NearestEdge;
+            if (ownsSceneEdgeDrag)
+            {
+                m_HoveredVertex = m_NearestVertexDistance <= kScenePickDistance &&
+                    m_NearestVertexDistance <= m_NearestEdgeDistance ? m_NearestVertex : -1;
+                m_HoveredEdge = m_NearestEdgeDistance <= kScenePickDistance &&
+                    m_NearestEdgeDistance < m_NearestVertexDistance ? m_NearestEdge : -1;
+            }
+            else
+            {
+                if (guiWrapper.IsControlNearest(m_HoveredVertexControlID))
+                    m_HoveredVertex = m_NearestVertex;
+                if (guiWrapper.IsControlNearest(m_HoveredEdgeControlID))
+                    m_HoveredEdge = m_NearestEdge;
+            }
 
             if (guiWrapper.eventType == EventType.Layout || guiWrapper.eventType == EventType.MouseMove)
                 if (m_PrevHoveredVertex != m_HoveredVertex)
@@ -163,7 +195,7 @@ namespace UnityEditor.U2D.Animation
 
         public void LayoutVertex(Vector2 position, int index)
         {
-            if (guiWrapper.eventType == EventType.Layout)
+            if (guiWrapper.eventType == EventType.Layout || ownsSceneEdgeDrag)
             {
                 float distance = guiWrapper.DistanceToCircle(position, kVertexHitRadius);
 
@@ -177,7 +209,7 @@ namespace UnityEditor.U2D.Animation
 
         public void LayoutEdge(Vector2 startPosition, Vector2 endPosition, int index)
         {
-            if (guiWrapper.eventType == EventType.Layout)
+            if (guiWrapper.eventType == EventType.Layout || ownsSceneEdgeDrag)
             {
                 float distance = guiWrapper.DistanceToSegment(startPosition, endPosition);
 
@@ -346,14 +378,14 @@ namespace UnityEditor.U2D.Animation
 
             if (IsActionTriggered(MeshEditorAction.CreateEdge))
             {
-                m_CreateEdgeDragActive = false;
+                CancelCreateEdgeDrag();
                 guiWrapper.SetGuiChanged(true);
                 guiWrapper.UseCurrentEvent();
                 return true;
             }
 
             if (mode == SpriteMeshViewMode.CreateVertex && guiWrapper.IsMouseUp(0))
-                m_CreateEdgeDragActive = false;
+                CancelCreateEdgeDrag();
 
             return false;
         }
@@ -401,7 +433,7 @@ namespace UnityEditor.U2D.Animation
 
         public void DrawVertex(Vector2 position)
         {
-            DrawingUtility.DrawGUIStyleCap(0, position, Quaternion.identity, 1f, styles.pointNormalStyle);
+            DrawVertexHandle(position, styles.pointNormalStyle);
         }
 
         public void DrawVertex(Vector2 position, EditableBoneWeight weight)
@@ -417,7 +449,7 @@ namespace UnityEditor.U2D.Animation
 
         public void DrawVertexHovered(Vector2 position)
         {
-            DrawingUtility.DrawGUIStyleCap(0, position, Quaternion.identity, 1f, styles.pointHoveredStyle);
+            DrawVertexHandle(position, styles.pointHoveredStyle);
         }
 
         public void DrawVertexHovered(Vector2 position, EditableBoneWeight weight)
@@ -433,7 +465,7 @@ namespace UnityEditor.U2D.Animation
 
         public void DrawVertexSelected(Vector2 position)
         {
-            DrawingUtility.DrawGUIStyleCap(0, position, Quaternion.identity, 1f, styles.pointSelectedStyle);
+            DrawVertexHandle(position, styles.pointSelectedStyle);
         }
 
         public void DrawVertexSelected(Vector2 position, EditableBoneWeight weight)
@@ -447,12 +479,32 @@ namespace UnityEditor.U2D.Animation
             DrawVertexSelected(position);
         }
 
+        void DrawVertexHandle(Vector2 position, GUIStyle style)
+        {
+            if (!useSceneHandles)
+            {
+                DrawingUtility.DrawGUIStyleCap(0, position, Quaternion.identity, 1f, style);
+                return;
+            }
+            if (Event.current.type != EventType.Repaint)
+                return;
+            var world = Handles.matrix.MultiplyPoint(position);
+            if (Camera.current != null && Vector3.Dot(world - Camera.current.transform.position, Camera.current.transform.forward) < 0f)
+                return;
+            var point = HandleUtility.WorldToGUIPoint(position);
+            Handles.BeginGUI();
+            style.Draw(new Rect(point.x - style.fixedWidth / 2f, point.y - style.fixedHeight / 2f,
+                style.fixedWidth, style.fixedHeight), GUIContent.none, 0);
+            Handles.EndGUI();
+        }
+
         public void BeginDrawEdges()
         {
             if (guiWrapper.eventType != EventType.Repaint)
                 return;
 
-            DrawingUtility.BeginSolidLines();
+            if (!useSceneHandles)
+                DrawingUtility.BeginSolidLines();
             m_TempColor = Handles.color;
         }
 
@@ -461,7 +513,8 @@ namespace UnityEditor.U2D.Animation
             if (guiWrapper.eventType != EventType.Repaint)
                 return;
 
-            DrawingUtility.EndLines();
+            if (!useSceneHandles)
+                DrawingUtility.EndLines();
             Handles.color = m_TempColor;
         }
 
@@ -482,7 +535,7 @@ namespace UnityEditor.U2D.Animation
 
         public bool IsActionActive(MeshEditorAction action)
         {
-            if (!guiWrapper.IsControlHot(0))
+            if (!guiWrapper.IsControlHot(0) && !ownsSceneEdgeDrag)
                 return false;
 
             bool canCreateEdge = CanCreateEdge();
@@ -605,7 +658,7 @@ namespace UnityEditor.U2D.Animation
 
         private bool CanCreateEdge()
         {
-            if (!frame.Contains(mouseWorldPosition) || !(guiWrapper.IsControlNearest(defaultControlID) || guiWrapper.IsControlNearest(m_HoveredVertexControlID) || guiWrapper.IsControlNearest(m_HoveredEdgeControlID)))
+            if (!frame.Contains(mouseWorldPosition) || !(ownsSceneEdgeDrag || guiWrapper.IsControlNearest(defaultControlID) || guiWrapper.IsControlNearest(m_HoveredVertexControlID) || guiWrapper.IsControlNearest(m_HoveredEdgeControlID)))
                 return false;
 
             if (mode == SpriteMeshViewMode.EditGeometry)
@@ -623,7 +676,15 @@ namespace UnityEditor.U2D.Animation
             if (mode == SpriteMeshViewMode.CreateVertex)
             {
                 if (guiWrapper.IsMouseDown(0) && guiWrapper.IsControlNearest(m_HoveredVertexControlID) && hoveredVertex != -1)
+                {
                     m_CreateEdgeDragActive = true;
+                    if (useSceneHandles)
+                    {
+                        m_MoveVertexControlID = -1;
+                        m_MoveEdgeControlID = -1;
+                        guiWrapper.SetControlHot(m_CreateEdgeDragControlID);
+                    }
+                }
 
                 return m_CreateEdgeDragActive && selection.Count == 1 && !selection.Contains(hoveredVertex);
             }
@@ -669,6 +730,11 @@ namespace UnityEditor.U2D.Animation
                 return;
 
             Handles.color = color;
+            if (useSceneHandles)
+            {
+                Handles.DrawAAPolyLine(kEdgeWidth, startPosition, endPosition);
+                return;
+            }
             float width = kEdgeWidth / Handles.matrix.m00;
 
             DrawingUtility.DrawSolidLine(width, startPosition, endPosition);
@@ -957,7 +1023,7 @@ namespace UnityEditor.U2D.Animation
 
         public bool CanLayout()
         {
-            return guiWrapper.eventType == EventType.Layout;
+            return guiWrapper.eventType == EventType.Layout || ownsSceneEdgeDrag;
         }
     }
 }

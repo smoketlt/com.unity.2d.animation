@@ -1,0 +1,40 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+  <ui:Style src="SceneEditMeshWindow.uss" />
+  <ui:VisualElement class="uniskin-mesh-window">
+    <ui:VisualElement name="windowHeader" class="mesh-header">
+      <ui:Label text="Edit Mesh" name="windowTitle" class="mesh-window-title" picking-mode="Ignore" />
+      <ui:Button name="closeWindow" text="×" tooltip="Close Edit Mesh" />
+    </ui:VisualElement>
+    <ui:VisualElement name="commands" class="mesh-body">
+      <ui:VisualElement class="mesh-block">
+        <ui:VisualElement name="mainControls">
+          <ui:VisualElement class="mesh-row">
+            <ui:Button name="modify" text="Modify" />
+            <ui:Button name="create" text="Create" />
+            <ui:Button name="delete" text="Delete" />
+          </ui:VisualElement>
+          <ui:VisualElement class="mesh-row">
+            <ui:Button name="newMesh" text="New" />
+            <ui:Button name="reset" text="Reset" />
+            <ui:Button name="generate" text="Generate" />
+            <ui:Button name="trace" text="Trace" />
+          </ui:VisualElement>
+          <ui:VisualElement class="mesh-row mesh-options">
+            <ui:Toggle name="triangles" text="Triangles" value="true" class="mesh-option-toggle" />
+            <ui:Toggle name="dim" text="Dim" class="mesh-option-toggle" />
+            <ui:Toggle name="isolate" text="Isolate" class="mesh-option-toggle" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="traceSettings" class="mesh-hidden">
+          <ui:Slider name="detail" label="Detail" low-value="0" high-value="1" value="0.5" show-input-field="true" />
+          <ui:SliderInt name="alpha" label="Alpha threshold" low-value="0" high-value="254" value="10" show-input-field="true" />
+          <ui:VisualElement class="mesh-row">
+            <ui:Button name="traceCancel" text="Cancel" />
+            <ui:Button name="traceOK" text="OK" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:Label name="vertexCount" class="mesh-count" />
+      </ui:VisualElement>
+    </ui:VisualElement>
+  </ui:VisualElement>
+</ui:UXML>
