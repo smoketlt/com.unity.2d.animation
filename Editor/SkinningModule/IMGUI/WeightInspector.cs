@@ -249,7 +249,7 @@ namespace UnityEditor.U2D.Animation
             get { return s_RectangleTexture ?? (s_RectangleTexture = MakeTexture(ref s_RectanglePng)); }
         }
 
-        private static Texture2D LockTexture
+        internal static Texture2D LockTexture
         {
             get { return s_LockTexture ?? (s_LockTexture = MakeTexture(ref s_LockPng)); }
         }

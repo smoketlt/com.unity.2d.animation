@@ -1,0 +1,29 @@
+.uniskin-weights-window #weightsIcon { width: 16px; height: 16px; margin: 7px 0 0 6px; }
+.uniskin-weights-window #mode { flex-grow: 1; }
+.uniskin-weights-window #prune { flex-grow: 0; flex-basis: auto; width: 80px; }
+.uniskin-weights-window .unity-base-field__label { min-width: 65px; color: #CFCFCF; }
+.uniskin-weights-window #weightMode { margin: 0 4px 0 0; height: 24px; }
+.uniskin-weights-window .unity-base-popup-field__input { background-color: #272D35; border-width: 0; border-radius: 0; }
+.uniskin-weights-window .unity-base-popup-field__text { color: #CFCFCF; }
+.uniskin-weights-window Slider > .unity-base-field__label { min-width: 65px; }
+.uniskin-weights-window .mesh-body, .uniskin-weights-window .mesh-block { flex-grow: 1; flex-shrink: 1; min-height: 0; }
+.uniskin-weights-window .mesh-block > .mesh-row, .uniskin-weights-window .mesh-block > Slider, .uniskin-weights-window #status, .weight-list-title { flex-shrink: 0; }
+.uniskin-weights-window #bones { flex-grow: 1; flex-shrink: 1; min-height: 40px; background-color: #1D2228; margin-bottom: 6px; }
+.uniskin-weights-window #heightResizeGrip { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; cursor: resize-vertical; background-color: #14171B; }
+.uniskin-weights-window .mesh-body { padding-bottom: 10px; }
+.weight-list-title { border-top-width: 1px; border-color: #14171B; padding-top: 5px; margin-bottom: 4px; }
+.weight-bone-row { flex-direction: row; align-items: center; height: 27px; min-height: 27px; flex-shrink: 0; padding: 2px 4px; }
+.weight-bone-selected { background-color: #005050; }
+.weight-drop-before { border-top-width: 2px; border-top-color: #A8D4DD; }
+.weight-drop-after { border-bottom-width: 2px; border-bottom-color: #A8D4DD; }
+.weight-bone-row > Button.weight-swatch { width: 20px; height: 20px; min-width: 20px; min-height: 20px; flex-shrink: 0; padding: 0; margin: 0; border-width: 0; color: white; border-radius: 3px; }
+.weight-swatch #weightLock { width: 16px; height: 16px; flex-shrink: 0; }
+.weight-bone-row > Button.weight-bone-name { width: 80px; min-width: 0; flex-shrink: 0; height: 20px; margin: 0 0 0 4px; padding: 0; -unity-text-align: middle-left; justify-content: flex-start; background-color: transparent; border-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.weight-bone-name > .unity-text-element { overflow: hidden; text-overflow: ellipsis; }
+.weight-bone-row > Slider { flex-grow: 1; margin: 0 2px 0 0; height: 20px; }
+.uniskin-weights-window .unity-base-slider__drag-container { height: 20px; align-self: stretch; min-width: 0; }
+.uniskin-weights-window .unity-base-slider__tracker { top: 0; bottom: 0; height: 20px; margin-top: 0; }
+.weight-bone-row .unity-base-slider__dragger { visibility: hidden; }
+.weight-bone-row .unity-base-slider__text-field { height: 20px; }
+.uniskin-weights-window #status { white-space: normal; color: #9099A4; font-size: 10px; margin-top: 2px; }
+.uniskin-weights-window #bindPulse { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background-color: rgba(40, 220, 190, 0.35); }

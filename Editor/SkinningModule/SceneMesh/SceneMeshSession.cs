@@ -239,7 +239,7 @@ namespace UnityEditor.U2D.Animation
             return mesh;
         }
 
-        public void WriteMesh(SpriteMeshData mesh)
+        public bool WriteMesh(SpriteMeshData mesh)
         {
             Validate(mesh);
             var vertices = new Vertex2DMetaData[mesh.vertexCount];
@@ -249,11 +249,23 @@ namespace UnityEditor.U2D.Animation
                 // Keep the importer's full SpriteBone index space, including service bones.
                 vertices[i].boneWeight = mesh.vertexWeights[i].ToBoneWeight(false);
             }
+            var indices = mesh.indices;
+            var edges = EditorUtilities.ToVector2Int(mesh.edges);
+            // Compare the actual provider payload, not session JSON (which also includes
+            // derived outlines and editable weight channels). Do not reimport a PSB merely
+            // because a gesture changed those transient details, then returned to its start.
+            var storedVertices = meshProvider.GetVertices(rect.spriteID);
+            if (storedVertices != null && storedVertices.Length == vertices.Length &&
+                storedVertices.Zip(vertices, (a, b) => a.position.Equals(b.position) && a.boneWeight.Equals(b.boneWeight)).All(equal => equal) &&
+                (meshProvider.GetIndices(rect.spriteID) ?? Array.Empty<int>()).SequenceEqual(indices) &&
+                (meshProvider.GetEdges(rect.spriteID) ?? Array.Empty<Vector2Int>()).SequenceEqual(edges))
+                return false;
             meshProvider.SetVertices(rect.spriteID, vertices);
-            meshProvider.SetIndices(rect.spriteID, (int[])mesh.indices.Clone());
-            meshProvider.SetEdges(rect.spriteID, EditorUtilities.ToVector2Int(mesh.edges));
+            meshProvider.SetIndices(rect.spriteID, (int[])indices.Clone());
+            meshProvider.SetEdges(rect.spriteID, edges);
             provider.Apply();
             importer.SaveAndReimport();
+            return true;
         }
 
         internal static void Validate(BaseSpriteMeshData mesh)

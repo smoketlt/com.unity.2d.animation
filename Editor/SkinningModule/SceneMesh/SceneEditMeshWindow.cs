@@ -23,7 +23,7 @@ namespace UnityEditor.U2D.Animation
         [SerializeField] int m_TraceEntryAlpha;
         [SerializeField] int m_TraceTransactionUndoGroup = -1;
         [SerializeField] UnityEngine.Object[] m_SelectionObjects;
-        bool m_SelectionCloseQueued;
+        bool m_SelectionRestoreQueued;
         SceneMeshSource m_Source;
         SpriteMeshView m_View;
         SpriteMeshController m_Controller;
@@ -34,6 +34,8 @@ namespace UnityEditor.U2D.Animation
         readonly List<GameObject> m_HiddenObjects = new List<GameObject>();
         Mesh m_ImageMesh;
         Material m_ImageMaterial;
+        readonly Vector3[] m_ImageBoundsPoints = new Vector3[4];
+        readonly Vector3[] m_ImageBoundsDash = new Vector3[2];
         string m_Error;
         bool m_BoxSelecting;
         Vector2 m_BoxStart;
@@ -43,6 +45,7 @@ namespace UnityEditor.U2D.Animation
         int m_TraceUndoGroup = -1;
         bool m_TraceInProgress;
         bool m_MeshMutationInProgress;
+        bool m_SaveInProgress;
         string m_LastImporterFingerprint;
 
         sealed class SceneGUIWrapper : GUIWrapper
@@ -53,15 +56,11 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        [MenuItem("Window/Fedorov/Uniskin/Edit Mesh")]
-        internal static void Open()
-        {
-            var renderer = Selection.activeGameObject != null ? Selection.activeGameObject.GetComponent<SpriteRenderer>() : null;
-            OpenForRenderer(renderer, false);
-        }
-
         internal static bool IsEditingRenderer(SpriteRenderer renderer) => renderer != null &&
             Resources.FindObjectsOfTypeAll<SceneEditMeshWindow>().Any(window => window.m_Renderer == renderer);
+
+        internal static bool IsEditingAsset(string path) => Resources.FindObjectsOfTypeAll<SceneEditMeshWindow>()
+            .Any(window => window.m_Session != null && window.m_Session.assetPath == path);
 
         internal static void OpenForRenderer(SpriteRenderer renderer, bool createMesh)
         {
@@ -73,6 +72,10 @@ namespace UnityEditor.U2D.Animation
             SceneEditMeshWindow openingWindow = null;
             try
             {
+                foreach (var boneWindow in Resources.FindObjectsOfTypeAll<SceneEditBoneWindow>())
+                    if (!boneWindow.RequestClose()) return;
+                foreach (var weightWindow in Resources.FindObjectsOfTypeAll<SceneEditWeightsWindow>())
+                    if (!weightWindow.RequestClose()) return;
                 var source = new SceneMeshSource(renderer.sprite);
                 if (!createMesh && !source.hasAuthoredMesh && !IsEditingRenderer(renderer))
                     throw new InvalidOperationException("Use Create Mesh in the SpriteRenderer Inspector first.");
@@ -111,8 +114,9 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        bool RequestClose()
+        internal bool RequestClose()
         {
+            if (m_SaveInProgress) return false;
             if (m_Source != null && m_Session.dirty)
             {
                 var choice = EditorUtility.DisplayDialogComplex("Unsaved Sprite Mesh",
@@ -256,6 +260,7 @@ namespace UnityEditor.U2D.Animation
 
         void UpdateUI()
         {
+            if (m_SaveInProgress) return;
             if (rootVisualElement.Q<VisualElement>("commands") == null) return;
             var blocked = BlockReason();
             rootVisualElement.Q<VisualElement>("mainControls").SetEnabled(blocked == null);
@@ -288,15 +293,23 @@ namespace UnityEditor.U2D.Animation
 
         void OnSelectionChanged()
         {
-            if (m_Renderer == null || m_SelectionCloseQueued ||
-                (m_SelectionObjects != null && Selection.objects.SequenceEqual(m_SelectionObjects))) return;
-            m_SelectionCloseQueued = true;
+            if (m_SaveInProgress) return;
+            if (m_Renderer == null || m_SelectionRestoreQueued || m_SelectionObjects == null ||
+                Selection.objects.SequenceEqual(m_SelectionObjects)) return;
+            // Scene picking (including other Scene GUI handlers) must not turn a mesh
+            // authoring click into an exit request. Keep the entry renderer selected.
+            m_SelectionRestoreQueued = true;
             EditorApplication.delayCall += () =>
             {
                 if (this == null) return;
-                m_SelectionCloseQueued = false;
-                if (m_SelectionObjects != null && Selection.objects.SequenceEqual(m_SelectionObjects)) return;
-                if (!RequestClose() && m_SelectionObjects != null) Selection.objects = m_SelectionObjects;
+                try
+                {
+                    if (m_SaveInProgress || m_Renderer == null) return;
+                    var pinned = m_SelectionObjects.Where(item => item != null).ToArray();
+                    if (pinned.Length == 0) pinned = new UnityEngine.Object[] { m_Renderer.gameObject };
+                    if (!Selection.objects.SequenceEqual(pinned)) Selection.objects = pinned;
+                }
+                finally { m_SelectionRestoreQueued = false; }
             };
         }
 
@@ -312,6 +325,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnUndoRedo()
         {
+            if (m_SaveInProgress) return;
             m_TraceUndoGroup = -1;
             m_TraceTransactionUndoGroup = -1;
             if (m_Session.hasBoneWeights) ExitTrace();
@@ -340,6 +354,9 @@ namespace UnityEditor.U2D.Animation
 
         bool Apply()
         {
+            if (m_SaveInProgress) return false;
+            m_SaveInProgress = true;
+            rootVisualElement.SetEnabled(false);
             try
             {
                 if (BlockReason() != null) throw new InvalidOperationException(BlockReason());
@@ -356,14 +373,20 @@ namespace UnityEditor.U2D.Animation
                 m_Session.pendingCreation = false;
                 m_Session.savedMesh = JsonUtility.ToJson(m_Session.mesh);
                 RefreshSource();
-                m_Session.sourceMesh = m_Source.Fingerprint();
+                if (m_Source == null) throw new InvalidOperationException(m_Error ?? "Could not reload the saved Sprite mesh.");
+                m_Session.sourceMesh = m_LastImporterFingerprint;
                 Undo.CollapseUndoOperations(m_AppliedUndoGroup);
                 m_Error = null;
                 SceneView.RepaintAll();
-                UpdateUI();
                 return true;
             }
             catch (Exception ex) { ReportError(ex); return false; }
+            finally
+            {
+                m_SaveInProgress = false;
+                rootVisualElement.SetEnabled(true);
+                UpdateUI();
+            }
         }
 
         void Revert()
@@ -585,7 +608,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnSceneGUI(SceneView scene)
         {
-            if (m_TraceInProgress || m_MeshMutationInProgress) return;
+            if (m_TraceInProgress || m_MeshMutationInProgress || m_SaveInProgress) return;
             if (BlockReason() != null) return;
             var evt = Event.current;
             if (m_TraceActive && evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Escape)
@@ -627,7 +650,11 @@ namespace UnityEditor.U2D.Animation
                     }
             }
             var matrix = SceneMeshSession.PixelToWorld(m_Renderer, m_Session.mesh.frame);
-            if (evt.type == EventType.Repaint) DrawImage(matrix);
+            if (evt.type == EventType.Repaint)
+            {
+                DrawImage(matrix);
+                DrawImageBounds(matrix, scene);
+            }
             if (evt.button == 1 || evt.button == 2) return;
             var temporaryAltMode = !m_TraceActive && SkinningEditorInput.altKeyDown &&
                 (m_Session.mode == 0 || m_Session.mode == 1);
@@ -669,7 +696,11 @@ namespace UnityEditor.U2D.Animation
                         evt.Use();
                     }
                     if (!m_TraceActive) HandleDelete(effectiveMode);
-                    m_Controller.OnGUI();
+                    // Controller edits also triangulate and may pump nested Scene GUI events.
+                    // Keep partial vertices/indices private until the controller returns.
+                    m_MeshMutationInProgress = true;
+                    try { m_Controller.OnGUI(); }
+                    finally { m_MeshMutationInProgress = false; }
                     if (m_View.isCreateEdgeDragActive && evt.type == EventType.MouseDown && evt.button == 0) evt.Use();
                     if (!m_TraceActive) HandleBoxSelection();
                 }
@@ -677,8 +708,19 @@ namespace UnityEditor.U2D.Animation
                 finally { EditorGUI.EndDisabledGroup(); EditorGUI.EndChangeCheck(); }
             }
             if (evt.rawType == EventType.MouseUp || GUIUtility.hotControl == 0) m_Session.EndUndoOperation();
-            if (temporaryAltMode && evt.button == 0 &&
+            // AddDefaultControl is only a fallback: another Scene handle can win
+            // nearestControl. Consume unhandled primary input after mesh tools run,
+            // including clicks outside the source frame and clicks in New mode.
+            if (evt.button == 0 &&
                 (evt.type == EventType.MouseDown || evt.type == EventType.MouseDrag || evt.type == EventType.MouseUp)) evt.Use();
+            if (!m_TraceActive)
+            {
+                var cursor = effectiveMode == 2 ? MouseCursor.ArrowMinus :
+                    effectiveMode == 1 || effectiveMode == 3 ? MouseCursor.ArrowPlus : MouseCursor.MoveArrow;
+                // Register after mesh handles so the effective mode also wins over
+                // slider cursors. Navigation exits above retain their native cursors.
+                EditorGUIUtility.AddCursorRect(new Rect(Vector2.zero, scene.position.size), cursor);
+            }
             hasUnsavedChanges = m_Session.dirty;
             if (evt.type != EventType.Repaint && evt.type != EventType.Layout) { scene.Repaint(); UpdateUI(); }
         }
@@ -763,14 +805,90 @@ namespace UnityEditor.U2D.Animation
         void DrawTriangles()
         {
             var mesh = m_Session.mesh;
+            var vertices = mesh.vertices;
+            var indices = mesh.indices;
             Handles.color = new Color(0.7f, 0.7f, 0.7f, 0.6f);
-            for (var i = 0; i + 2 < mesh.indices.Length; i += 3)
+            for (var i = 0; i + 2 < indices.Length; i += 3)
             {
-                var a = mesh.vertices[mesh.indices[i]];
-                var b = mesh.vertices[mesh.indices[i + 1]];
-                var c = mesh.vertices[mesh.indices[i + 2]];
+                var ia = indices[i];
+                var ib = indices[i + 1];
+                var ic = indices[i + 2];
+                if (ia < 0 || ib < 0 || ic < 0 ||
+                    ia >= vertices.Length || ib >= vertices.Length || ic >= vertices.Length) continue;
+                var a = vertices[ia];
+                var b = vertices[ib];
+                var c = vertices[ic];
                 Handles.DrawDottedLine(a, b, 4f); Handles.DrawDottedLine(b, c, 4f); Handles.DrawDottedLine(c, a, 4f);
             }
+        }
+
+        void DrawImageBounds(Matrix4x4 matrix, SceneView scene)
+        {
+            var size = m_Session.mesh.frame.size;
+            m_ImageBoundsPoints[0] = Vector3.zero;
+            m_ImageBoundsPoints[1] = new Vector3(size.x, 0f);
+            m_ImageBoundsPoints[2] = new Vector3(size.x, size.y);
+            m_ImageBoundsPoints[3] = new Vector3(0f, size.y);
+            using (new Handles.DrawingScope(Color.white, Matrix4x4.identity))
+            {
+                for (var i = 0; i < m_ImageBoundsPoints.Length; ++i)
+                {
+                    var point = HandleUtility.WorldToGUIPointWithDepth(matrix.MultiplyPoint3x4(m_ImageBoundsPoints[i]));
+                    if (point.z <= 0f || float.IsNaN(point.x) || float.IsNaN(point.y) ||
+                        float.IsInfinity(point.x) || float.IsInfinity(point.y)) return;
+                    m_ImageBoundsPoints[i] = new Vector3(point.x, point.y, 0f);
+                }
+                var pixelsPerPoint = EditorGUIUtility.pixelsPerPoint;
+                var dashLength = 6f / pixelsPerPoint;
+                var dashStep = 9f / pixelsPerPoint;
+                var distance = 0f;
+                var viewport = new Rect(Vector2.zero, scene.position.size);
+                Handles.BeginGUI();
+                try
+                {
+                    for (var i = 0; i < m_ImageBoundsPoints.Length; ++i)
+                    {
+                        var start = m_ImageBoundsPoints[i];
+                        var end = m_ImageBoundsPoints[(i + 1) % m_ImageBoundsPoints.Length];
+                        var length = Vector3.Distance(start, end);
+                        if (length <= Mathf.Epsilon) continue;
+                        var direction = (end - start) / length;
+                        var visibleStart = 0f;
+                        var visibleEnd = length;
+                        // Clip before generating dashes so a zoomed-in, mostly offscreen
+                        // image costs only as much drawing as the visible part of its frame.
+                        if (ClipBoundsAxis(start.x, direction.x, viewport.xMin, viewport.xMax, ref visibleStart, ref visibleEnd) &&
+                            ClipBoundsAxis(start.y, direction.y, viewport.yMin, viewport.yMax, ref visibleStart, ref visibleEnd))
+                        {
+                            var firstDash = Mathf.FloorToInt((distance + visibleStart) / dashStep);
+                            var lastDash = Mathf.FloorToInt((distance + visibleEnd) / dashStep);
+                            for (var dash = firstDash; dash <= lastDash; ++dash)
+                            {
+                                var from = Mathf.Max(visibleStart, dash * dashStep - distance);
+                                var to = Mathf.Min(visibleEnd, dash * dashStep - distance + dashLength);
+                                if (to <= from) continue;
+                                Handles.color = (dash & 1) == 0 ? new Color(0.65f, 0.65f, 0.65f) : new Color(0.3f, 0.3f, 0.3f);
+                                m_ImageBoundsDash[0] = start + direction * from;
+                                m_ImageBoundsDash[1] = start + direction * to;
+                                Handles.DrawAAPolyLine(1.5f / pixelsPerPoint, m_ImageBoundsDash);
+                            }
+                        }
+                        // Preserve both dash phase and color when turning a corner.
+                        distance = Mathf.Repeat(distance + length, dashStep * 2f);
+                    }
+                }
+                finally { Handles.EndGUI(); }
+            }
+        }
+
+        static bool ClipBoundsAxis(float start, float direction, float min, float max, ref float from, ref float to)
+        {
+            if (Mathf.Abs(direction) < 0.000001f) return start >= min && start <= max;
+            var a = (min - start) / direction;
+            var b = (max - start) / direction;
+            from = Mathf.Max(from, Mathf.Min(a, b));
+            to = Mathf.Min(to, Mathf.Max(a, b));
+            return from <= to;
         }
 
         void DrawImage(Matrix4x4 matrix)

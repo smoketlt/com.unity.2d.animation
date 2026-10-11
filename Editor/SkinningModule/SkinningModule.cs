@@ -668,6 +668,121 @@ namespace UnityEditor.U2D.Animation
                 dataProvider.SetSpriteRects(spriteRects);
         }
 
+        internal static void ApplySceneWeightChanges(SkinningCache cache, ISpriteEditorDataProvider provider, int[] drawIndices = null)
+        {
+            var sprite = cache.selectedSprite;
+            var id = new GUID(sprite.id);
+            var mesh = sprite.GetMesh();
+            var meshProvider = provider.GetDataProvider<ISpriteMeshDataProvider>();
+            var boneProvider = provider.GetDataProvider<ISpriteBoneDataProvider>();
+            var vertices = meshProvider.GetVertices(id);
+            if (vertices == null || vertices.Length != mesh.vertexCount)
+                throw new InvalidOperationException("Sprite geometry changed. Reopen Edit Weights.");
+            var savedBones = boneProvider.GetBones(id).ToArray();
+            if (cache.hasCharacter)
+            {
+                var ordered = GetBoneSaveOrder(mesh.bones);
+                savedBones = ordered.ToSpriteBone(sprite.GetCharacterPart().localToWorldMatrix);
+                var characterProvider = provider.GetDataProvider<ICharacterDataProvider>();
+                var data = characterProvider.GetCharacterData();
+                for (var i = 0; i < data.parts.Length; ++i)
+                {
+                    if (data.parts[i].spriteId != sprite.id) continue;
+                    var part = data.parts[i];
+                    part.bones = savedBones.Select(bone => Array.FindIndex(data.bones, item => item.guid == bone.guid)).ToArray();
+                    if (part.bones.Any(index => index < 0))
+                        throw new InvalidOperationException("A bound bone is missing from the source character.");
+                    data.parts[i] = part;
+                }
+                boneProvider.SetBones(id, savedBones.ToList());
+                characterProvider.SetCharacterData(data);
+            }
+            for (var i = 0; i < vertices.Length; ++i)
+            {
+                var weight = mesh.vertexWeights[i].ToBoneWeight(false);
+                for (var channel = 0; channel < 4; ++channel)
+                {
+                    if (weight.GetWeight(channel) <= 0) continue;
+                    var index = weight.GetBoneIndex(channel);
+                    var guid = mesh.bones[index].guid;
+                    var savedIndex = Array.FindIndex(savedBones, bone => bone.guid == guid);
+                    if (savedIndex < 0) throw new InvalidOperationException("A weighted bone is missing from the source Sprite.");
+                    BoneWeightExtensions.SetBoneIndex(ref weight, channel, savedIndex);
+                }
+                vertices[i].boneWeight = weight;
+            }
+            meshProvider.SetVertices(id, vertices);
+            meshProvider.SetIndices(id, drawIndices ?? meshProvider.GetIndices(id));
+            meshProvider.SetEdges(id, meshProvider.GetEdges(id));
+        }
+
+        internal static void ApplySceneBoneChanges(SkinningCache cache, ISpriteEditorDataProvider provider, bool initializeMissingWeights = true)
+        {
+            var boneProvider = provider.GetDataProvider<ISpriteBoneDataProvider>();
+            var meshProvider = provider.GetDataProvider<ISpriteMeshDataProvider>();
+            var sprites = cache.hasCharacter ? cache.GetSprites() : new[] { cache.selectedSprite };
+            foreach (var sprite in sprites)
+            {
+                var id = new GUID(sprite.id);
+                var bones = GetBoneSaveOrder(sprite.GetSkeleton().bones);
+                var previousBones = boneProvider.GetBones(id).ToArray();
+                boneProvider.SetBones(id, bones.ToSpriteBone(sprite.localToWorldMatrix).ToList());
+                // Preserve authored geometry, including an absent mesh on ordinary Sprites.
+                // Only weights need reindexing when the parent-first bone order changes.
+                var vertices = meshProvider.GetVertices(id);
+                if (vertices == null || vertices.Length == 0) continue;
+                var mesh = sprite.GetMesh();
+                if (vertices.Length != mesh.vertexCount)
+                    throw new InvalidOperationException("Sprite geometry changed while editing bones. Reopen Edit Bone.");
+                // Assigning the first bones makes PSB Importer enable SpriteSkin.
+                // Zero-weight vertices would then collapse to the origin. Fill only
+                // missing weights; retain every existing authored positive weight.
+                if (initializeMissingWeights && bones.Length > 0 && mesh.vertexWeights.Any(weight => weight.Sum() == 0f))
+                    sprite.CalculateMissingWeights();
+                for (var i = 0; i < vertices.Length; ++i)
+                {
+                    var weight = vertices[i].boneWeight;
+                    var preserve = weight.weight0 + weight.weight1 + weight.weight2 + weight.weight3 > 0f || bones.Length == 0;
+                    for (var channel = 0; channel < 4; ++channel)
+                    {
+                        if (weight.GetWeight(channel) <= 0) continue;
+                        var previousIndex = weight.GetBoneIndex(channel);
+                        var guid = previousIndex >= 0 && previousIndex < previousBones.Length ? previousBones[previousIndex].guid : null;
+                        var index = string.IsNullOrEmpty(guid) ? -1 : Array.FindIndex(bones, bone => bone.guid == guid);
+                        if (index < 0) { preserve = false; break; }
+                        BoneWeightExtensions.SetBoneIndex(ref weight, channel, index);
+                    }
+                    // Cache normalization is required only when a weighted bone was
+                    // removed (or old data had no stable identity). Other edits keep
+                    // the exact saved floating-point values, avoiding cumulative drift.
+                    vertices[i].boneWeight = preserve ? weight : ToSpriteBoneWeight(mesh.vertexWeights[i], mesh.bones, bones);
+                }
+                meshProvider.SetVertices(id, vertices);
+                // TextureImporter's transfer requires the complete mesh payload after
+                // SetVertices, even when only weights changed.
+                meshProvider.SetIndices(id, meshProvider.GetIndices(id));
+                meshProvider.SetEdges(id, meshProvider.GetEdges(id));
+            }
+            if (cache.hasCharacter)
+            {
+                // Keep PSB dimensions, groups, ordering and importer-specific metadata.
+                var characterProvider = provider.GetDataProvider<ICharacterDataProvider>();
+                var data = characterProvider.GetCharacterData();
+                var bones = GetBoneSaveOrder(cache.character.skeleton.bones);
+                data.bones = bones.ToSpriteBone(Matrix4x4.identity);
+                for (var i = 0; i < data.parts.Length; ++i)
+                {
+                    var part = data.parts[i];
+                    var sprite = cache.GetSprite(part.spriteId);
+                    if (sprite == null) continue;
+                    part.bones = GetBoneSaveOrder(sprite.GetSkeleton().bones)
+                        .Select(bone => FindBoneIndexByGuid(bones, bone)).Where(index => index >= 0).ToArray();
+                    data.parts[i] = part;
+                }
+                characterProvider.SetCharacterData(data);
+            }
+        }
+
         private void DoApplyAnalytics()
         {
             SpriteCache[] sprites = skinningCache.GetSprites();

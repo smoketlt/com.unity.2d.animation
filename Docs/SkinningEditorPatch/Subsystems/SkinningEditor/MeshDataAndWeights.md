@@ -86,6 +86,16 @@ Resetting geometry clears all vertices and creates new vertices with empty weigh
 
 When weights exist, the user must confirm the operation.
 
+## Rendering Fully Cleared Weights
+
+Trace, Reset, New and Generate can leave an authored mesh with no weights while preserving its saved bones. `SpritePostProcess.PostProcessSpriteMeshData` detects a mesh whose four serialized weight channels are all exactly zero at every vertex. For that mesh only, imported runtime vertices receive the same rigid first-bone fallback (`weight0 = 1`) used for automatic geometry. This prevents an active SpriteSkin from collapsing the new mesh to a point after Save.
+
+The provider retains the empty authoring weights and the complete bone list. Skinning Editor and Edit Weights therefore still show an unweighted mesh; no authoring binding is recreated. Until explicit weights are assigned, the rendered Sprite moves rigidly with its first saved bone. Explicit weights replace the fallback on the next import. Partially weighted meshes and malformed nonzero weights keep the existing validation warning rather than silently changing their bindings. Full imports and cached Uniskin PSB imports share this conversion.
+
+Regression routes: `Tests/Editor/SceneMeshEditingTests.cs` exercises actual alpha Trace, Save, reopening empty weights, unchanged Save and explicit rebinding; `Tests/PsbImporter/AlternativePsbImporterTests.cs` compares cleared-weight cached and full imports. Importer implementation: `Editor/SpritePostProcess.cs`.
+
+On 2026-10-12, read-only diagnostics in the connected Unity 6000.0.81f1 project confirmed DressBack had 28 vertices with zero runtime weights, five saved bones and an enabled SpriteSkin. After the fix refreshed from the local `file:` dependency, the user confirmed the Sprite worked again. The complete editor assembly and both regression source files compiled against that project's resolved assemblies; `git diff --check` passed. A complete EditMode runner result was not obtained, and the disposable test assembly and temporary friend declaration were removed. Unity 6000.5+ and GPU visual behavior were not separately verified for this revision; no new version-dependent API was introduced.
+
 ## Change Risks
 
 - Directly replacing vertices without matching `vertexWeights` breaks data invariants.

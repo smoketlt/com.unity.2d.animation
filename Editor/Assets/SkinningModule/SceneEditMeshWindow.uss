@@ -14,8 +14,8 @@
 .uniskin-mesh-window #closeWindow { height: 19px; padding: 0; margin-top: 6px; margin-bottom: 6px; margin-right: 5px; background-color: #BF4D50; color: #EEEEEE; }
 .uniskin-mesh-window #closeWindow:hover { background-color: #D65A5D; }
 .uniskin-mesh-window #commandIcon { width: 16px; height: 16px; margin-right: 4px; flex-shrink: 0; }
-.mesh-options { margin-top: 4px; }
-.mesh-options > Toggle { flex-grow: 1; flex-shrink: 0; margin: 0; }
+.mesh-options { margin-top: 4px; justify-content: center; }
+.mesh-options > Toggle { flex-grow: 0; flex-shrink: 0; margin: 0 10px; }
 .mesh-options > Toggle > .unity-base-field__label { display: none; }
 .mesh-options > Toggle > .unity-toggle__input { flex-grow: 0; flex-shrink: 0; justify-content: flex-start; }
 .mesh-options .unity-toggle__text { margin-left: 4px; margin-right: 0; }

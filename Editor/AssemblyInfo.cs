@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Unity.2D.Animation.Tests.EditorTests")]
+[assembly: InternalsVisibleTo("Fedorov.Uniskin.PsbImporter.Editor")]
 [assembly: InternalsVisibleTo("Unity.2D.PsdImporter.Editor")]
 [assembly: InternalsVisibleTo("Unity.2D.Psdimporter.Tests.EditorTests")]
 [assembly: InternalsVisibleTo("Unity.2D.IK.Editor")]

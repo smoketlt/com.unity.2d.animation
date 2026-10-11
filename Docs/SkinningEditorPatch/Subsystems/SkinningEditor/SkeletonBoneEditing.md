@@ -4,6 +4,8 @@
 
 This page documents Skinning Editor bone creation and dynamic bone drawing.
 
+For the floating **Edit Bone** popup launched from a SpriteRenderer Inspector, see [Scene Bone Editing](SceneBoneEditing.md). It reuses these bone gestures and drawing while staging source Sprite/PSB skeleton changes in a private cache.
+
 ## Source
 
 - `Editor/SkinningModule/IMGUI/SkeletonView.cs`
@@ -87,6 +89,8 @@ Unchained parent links are not drawn as ghost bones. `SkeletonController` draws 
 Scene view Sprite Skin bone gizmos use `SpriteBone.color` for the normal bone body. Selected scene bones use the configurable `Selected Bone Color` while preserving their gizmo alpha, and their selection outline remains visible. If a serialized sprite bone color has zero alpha, the gizmo falls back to the configured default bone color so older data does not become invisible.
 
 ## Bone Colors
+
+Scene bone gizmos additionally collect uniquely resolved unbound bones from the selected character's full source skeleton, including characters whose meshes do not yet have SpriteSkin bindings. Their local lengths are source pixels divided by the source data provider's PPU, matching generated bone Transforms. Do not use runtime Sprite PPU: texture downscaling can reduce it without changing the character hierarchy. Existing bound SpriteSkin gizmos keep their runtime lengths and take precedence, so bones are not drawn twice. The unbound cache refreshes on selection/source reimport, reads live Transforms and respects the Scene View Gizmos toggle. Scene Edit Bone/Weights hosts continue to suppress these native gizmos while their own drawing is active. This display support does not bind bones or modify saved weights.
 
 `Preferences > 2D > Animation` exposes two user-specific color preferences stored in `EditorPrefs`:
 

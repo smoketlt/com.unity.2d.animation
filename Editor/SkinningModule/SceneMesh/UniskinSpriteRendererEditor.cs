@@ -66,6 +66,26 @@ namespace Fedorov.Uniskin
                 catch (Exception ex) { EditorUtility.DisplayDialog("Edit Mesh", ex.Message, "OK"); }
             };
             root.Add(button);
+            var boneButton = new Button(() =>
+            {
+                var renderer = target as SpriteRenderer;
+                EditorApplication.delayCall += () => { if (renderer != null) SceneEditBoneWindow.OpenForRenderer(renderer); };
+            }) { name = "uniskinEditBone" };
+            var boneIcon = new Image { image = ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/EditBone.png"), pickingMode = PickingMode.Ignore };
+            boneIcon.AddToClassList("uniskin-inspector-icon");
+            boneButton.Insert(0, boneIcon);
+            boneButton.Add(new Label("Edit Bone") { pickingMode = PickingMode.Ignore });
+            root.Add(boneButton);
+            var weightsButton = new Button(() =>
+            {
+                var renderer = target as SpriteRenderer;
+                EditorApplication.delayCall += () => { if (renderer != null) SceneEditWeightsWindow.OpenForRenderer(renderer); };
+            }) { name = "uniskinEditWeights" };
+            var weightsIcon = new Image { image = ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/Weights.png"), pickingMode = PickingMode.Ignore };
+            weightsIcon.AddToClassList("uniskin-inspector-icon");
+            weightsButton.Add(weightsIcon);
+            weightsButton.Add(new Label("Edit Weights") { pickingMode = PickingMode.Ignore });
+            root.Add(weightsButton);
             void Refresh()
             {
                 var renderer = target as SpriteRenderer;
@@ -84,6 +104,8 @@ namespace Fedorov.Uniskin
                 var edit = m_HasMesh || SceneEditMeshWindow.IsEditingRenderer(renderer);
                 label.text = edit ? "Edit Mesh" : "Create Mesh";
                 button.SetEnabled(targets.Length == 1 && m_Supported && !EditorApplication.isPlayingOrWillChangePlaymode);
+                boneButton.SetEnabled(targets.Length == 1 && m_Supported && !EditorApplication.isPlayingOrWillChangePlaymode);
+                weightsButton.SetEnabled(targets.Length == 1 && m_Supported && m_HasMesh && !EditorApplication.isPlayingOrWillChangePlaymode);
                 icon.image = ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/" + (edit ? "EditMesh" : "CreateMesh") + ".png");
             }
             root.schedule.Execute(Refresh).Every(200);
@@ -93,7 +115,7 @@ namespace Fedorov.Uniskin
 
         void OnSceneGUI()
         {
-            if (m_NativeEditor != null && !SceneEditMeshWindow.IsEditingRenderer(target as SpriteRenderer))
+            if (m_NativeEditor != null && !SceneEditMeshWindow.IsEditingRenderer(target as SpriteRenderer) && !SceneEditBoneWindow.IsEditingRenderer(target as SpriteRenderer) && !SceneEditWeightsWindow.IsEditingRenderer(target as SpriteRenderer))
                 m_NativeSceneGUI?.Invoke(m_NativeEditor, null);
         }
 

@@ -37,6 +37,8 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 ## Entity Pages
 
 - [SceneMeshEditing](SceneMeshEditing.md): Scene View authoring of the same shared Sprite asset mesh.
+- [SceneBoneEditing](SceneBoneEditing.md): Scene View authoring of the shared Sprite/PSB skeleton with Create, Split, Set Parent and bone properties.
+- [SceneWeightEditing](SceneWeightEditing.md): floating Scene weight authoring with brush, pieces, colored overlay, bindings and selected Auto/Smooth/Swap/Remove.
 - [SkinningModule](SkinningModule.md)
 - [SkinningCache](SkinningCache.md)
 - [MeshToolbar](MeshToolbar.md)

@@ -7,7 +7,7 @@ namespace UnityEditor.U2D.Animation
     // Unimator's physical-pixel design tokens, independent of its assemblies.
     internal static class SceneMeshWindowStyle
     {
-        internal static void Configure(VisualElement root, EditorWindow window, Action close)
+        internal static void Configure(VisualElement root, EditorWindow window, Action close, bool resizeHeight = false)
         {
             var scale = Mathf.Max(1f, EditorGUIUtility.pixelsPerPoint);
             float Px(float pixels) => pixels / scale;
@@ -61,19 +61,49 @@ namespace UnityEditor.U2D.Animation
                 rect.height = height;
                 window.position = rect;
             }
-            content.RegisterCallback<GeometryChangedEvent>(_ => root.schedule.Execute(FitHeight));
-            root.schedule.Execute(FitHeight);
+            if (!resizeHeight)
+            {
+                content.RegisterCallback<GeometryChangedEvent>(_ => root.schedule.Execute(FitHeight));
+                root.schedule.Execute(FitHeight);
+            }
+            else
+            {
+                var grip = new VisualElement { name = "heightResizeGrip" };
+                root.Q(className: "uniskin-mesh-window").Add(grip);
+                bool resizing = false;
+                float startHeight = 0, startY = 0;
+                grip.RegisterCallback<PointerDownEvent>(evt =>
+                {
+                    if (evt.button != 0) return;
+                    resizing = true; startHeight = window.position.height;
+                    startY = window.position.y + evt.position.y;
+                    grip.CapturePointer(evt.pointerId); evt.StopPropagation();
+                });
+                grip.RegisterCallback<PointerMoveEvent>(evt =>
+                {
+                    if (!resizing || !grip.HasPointerCapture(evt.pointerId) || (evt.pressedButtons & 1) == 0 ||
+                        evt.imguiEvent == null || evt.imguiEvent.rawType != EventType.MouseDrag) return;
+                    var rect = window.position;
+                    rect.height = Mathf.Max(window.minSize.y, startHeight + rect.y + evt.position.y - startY);
+                    window.position = rect; evt.StopPropagation();
+                });
+                grip.RegisterCallback<PointerUpEvent>(evt => { resizing = false; grip.ReleasePointer(evt.pointerId); });
+                grip.RegisterCallback<PointerCaptureOutEvent>(_ => resizing = false);
+            }
             var detail = root.Q<Slider>("detail");
             var alpha = root.Q<SliderInt>("alpha");
-            var detailFill = Fill(detail);
-            var alphaFill = Fill(alpha);
-            detail.RegisterValueChangedCallback(evt => detailFill.style.width = Length.Percent(evt.newValue * 100));
-            alpha.RegisterValueChangedCallback(evt => alphaFill.style.width = Length.Percent(evt.newValue * 100f / 254));
-            root.schedule.Execute(() =>
+            if (detail != null && alpha != null)
             {
-                detailFill.style.width = Length.Percent(detail.value * 100);
-                alphaFill.style.width = Length.Percent(alpha.value * 100f / 254);
-            });
+                var detailFill = Fill(detail);
+                var alphaFill = Fill(alpha);
+                detail.RegisterValueChangedCallback(evt => detailFill.style.width = Length.Percent(evt.newValue * 100));
+                alpha.RegisterValueChangedCallback(evt => alphaFill.style.width = Length.Percent(evt.newValue * 100f / 254));
+                root.schedule.Execute(() =>
+                {
+                    detailFill.style.width = Length.Percent(detail.value * 100);
+                    alphaFill.style.width = Length.Percent(alpha.value * 100f / 254);
+                });
+            }
             if (scale == 1f) return;
             var panel = root.Q(className: "uniskin-mesh-window");
             panel.style.fontSize = Px(11);
@@ -107,13 +137,25 @@ namespace UnityEditor.U2D.Animation
             block.style.paddingTop = Px(6);
             block.style.paddingLeft = Px(4);
             block.style.paddingRight = block.style.paddingBottom = Px(3);
-            root.Q(className: "mesh-options").style.marginTop = Px(4);
-            root.Q("vertexCount").style.marginTop = Px(4);
+            var options = root.Q(className: "mesh-options");
+            if (options != null) options.style.marginTop = Px(4);
+            var count = root.Q("vertexCount");
+            if (count != null) count.style.marginTop = Px(4);
+            var boneProperties = root.Q(className: "bone-properties");
+            if (boneProperties != null)
+                foreach (var field in boneProperties.Children())
+                {
+                    field.style.height = Px(20);
+                    field.style.marginBottom = Px(4);
+                    var label = field.Q(className: "unity-base-field__label");
+                    if (label != null) label.style.minWidth = Px(52);
+                }
             root.Query(className: "mesh-tick").ForEach(tick => tick.style.fontSize = Px(11));
-            root.Q(className: "mesh-options").Query(className: "unity-toggle__checkmark").ForEach(check => check.style.width = check.style.height = Px(14));
-            root.Q(className: "mesh-options").Query(className: "unity-toggle__text").ForEach(label => label.style.marginLeft = Px(4));
+            options?.Query(className: "unity-toggle__checkmark").ForEach(check => check.style.width = check.style.height = Px(14));
+            options?.Query(className: "unity-toggle__text").ForEach(label => label.style.marginLeft = Px(4));
             foreach (var slider in new VisualElement[] { detail, alpha })
             {
+                if (slider == null) continue;
                 slider.style.height = Px(20);
                 slider.style.marginBottom = Px(4);
                 slider.Q(className: "unity-base-field__label").style.minWidth = Px(100);

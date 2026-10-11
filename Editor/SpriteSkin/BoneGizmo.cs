@@ -4,11 +4,14 @@ using ObjectId = UnityEngine.EntityId;
 using ObjectId = System.Int32;
 #endif
 
+using System;
 using System.Collections.Generic;
+using UnityEditor.U2D.Sprites;
 using UnityEngine;
 using UnityEngine.U2D;
 using UnityEngine.U2D.Animation;
 using UnityEngine.U2D.Common;
+using Object = UnityEngine.Object;
 
 namespace UnityEditor.U2D.Animation
 {
@@ -49,6 +52,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnSceneGUI(SceneView sceneView)
         {
+            if (SceneEditBoneWindow.HasActiveSceneHost || SceneEditWeightsWindow.HasActiveSceneHost) return;
             boneGizmoController.OnGUI();
         }
 
@@ -78,6 +82,8 @@ namespace UnityEditor.U2D.Animation
         HashSet<SpriteSkin> m_SkinComponents = new HashSet<SpriteSkin>();
         HashSet<Transform> m_CachedBones = new HashSet<Transform>();
         HashSet<Transform> m_SelectionRoots = new HashSet<Transform>();
+        readonly Dictionary<Transform, (float length, Color color)> m_UnboundCharacterBones = new Dictionary<Transform, (float, Color)>();
+        bool m_CharacterBonesDirty = true;
         ISkeletonView m_View;
         IUndo m_Undo;
         Tool m_PreviousTool = Tool.None;
@@ -143,7 +149,9 @@ namespace UnityEditor.U2D.Animation
         {
             boneGizmoToggle.OnGUI();
 
-            if (!boneGizmoToggle.enableGizmos)
+            if (m_CharacterBonesDirty) FindUnboundCharacterBones();
+
+            if (!boneGizmoToggle.enableGizmos && !ShowUnboundCharacterBones())
                 return;
 
             PrepareBones();
@@ -153,6 +161,7 @@ namespace UnityEditor.U2D.Animation
         internal void FindSkinComponents()
         {
             m_SkinComponents.Clear();
+            m_CharacterBonesDirty = true;
 
             foreach (Transform root in m_SelectionRoots)
             {
@@ -168,6 +177,51 @@ namespace UnityEditor.U2D.Animation
         internal void ClearSpriteBoneCache()
         {
             m_SpriteBones.Clear();
+            m_CharacterBonesDirty = true;
+        }
+
+        bool ShowUnboundCharacterBones() => m_UnboundCharacterBones.Count > 0 &&
+            SceneView.currentDrawingSceneView != null && SceneView.currentDrawingSceneView.drawGizmos;
+
+        void FindUnboundCharacterBones()
+        {
+            // Reimport can add/remove SpriteSkin components without changing Selection.
+            FindSkinComponents();
+            m_CharacterBonesDirty = false;
+            m_UnboundCharacterBones.Clear();
+            var bound = new HashSet<Transform>();
+            foreach (var skin in m_SkinComponents)
+                if (skin != null && skin.boneTransforms != null)
+                    foreach (var transform in skin.boneTransforms)
+                        if (transform != null) bound.Add(transform);
+            var visited = new HashSet<(Transform, string)>();
+            foreach (var root in m_SelectionRoots)
+            {
+                if (root == null) continue;
+                foreach (var renderer in root.GetComponentsInChildren<SpriteRenderer>(false))
+                {
+                    if (renderer.sprite == null) continue;
+                    var prefab = PrefabUtility.GetNearestPrefabInstanceRoot(renderer.gameObject);
+                    var host = prefab != null ? prefab.transform : root;
+                    var path = AssetDatabase.GetAssetPath(renderer.sprite);
+                    if (string.IsNullOrEmpty(path) || !visited.Add((host, path))) continue;
+                    try
+                    {
+                        var source = new SceneMeshSource(renderer.sprite);
+                        var provider = source.provider.GetDataProvider<ICharacterDataProvider>();
+                        var bones = provider != null ? provider.GetCharacterData().bones : null;
+                        if (bones == null) continue;
+                        for (var i = 0; i < bones.Length; ++i)
+                        {
+                            var transform = SceneBoneInspector.FindCharacterTransform(host, bones, i);
+                            if (transform == null || bound.Contains(transform)) continue;
+                            Color color = bones[i].color.a > 0 ? bones[i].color : BoneColorUtility.DefaultCreatedBoneColor;
+                            m_UnboundCharacterBones[transform] = (SceneBoneInspector.CharacterBoneLocalLength(source.provider, bones[i].length), color);
+                        }
+                    }
+                    catch (Exception) { /* Other renderer sources may not expose character data. */ }
+                }
+            }
         }
 
         void PrepareBones()
@@ -186,8 +240,17 @@ namespace UnityEditor.U2D.Animation
                 if (skinComponent == null)
                     continue;
 
-                PrepareBones(skinComponent);
+                if (boneGizmoToggle.enableGizmos) PrepareBones(skinComponent);
             }
+            if (ShowUnboundCharacterBones())
+                foreach (var entry in m_UnboundCharacterBones)
+                {
+                    var bone = entry.Key;
+                    if (bone == null || !bone.gameObject.activeInHierarchy || m_BoneData.ContainsKey(bone)) continue;
+                    m_BoneData[bone] = new Vector2(entry.Value.length, entry.Value.color.a);
+                    m_BoneColors[bone] = entry.Value.color;
+                    if (m_View.IsActionHot(SkeletonAction.None)) m_CachedBones.Add(bone);
+                }
         }
 
         SpriteBone[] GetSpriteBones(SpriteSkin spriteSkin)

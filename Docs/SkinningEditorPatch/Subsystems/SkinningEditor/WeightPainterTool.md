@@ -46,6 +46,8 @@ Weight Slider has custom vertex-drag behavior in addition to the panel slider:
 
 ## Weight Slider Smooth Button
 
+The neighborhood builder and per-vertex pass live in `SpriteMeshData/WeightSmoothing.cs`, shared with [Scene Edit Weights](SceneWeightEditing.md). The Sprite Editor command's selection, Undo and event wiring remain in `WeightPainterTool`.
+
 Weight Slider also exposes a `Smooth` button under the `Amount` slider. Each click applies one conservative neighborhood smoothing pass modeled after Spine's Weights view:
 
 - If vertices are selected, only those vertices are rewritten. If no vertices are selected, all mesh vertices are smoothed.

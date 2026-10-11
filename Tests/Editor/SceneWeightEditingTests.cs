@@ -1,0 +1,362 @@
+using System;
+using System.IO;
+using System.Linq;
+using NUnit.Framework;
+using UnityEditor.U2D.Sprites;
+using UnityEngine;
+using UnityEngine.U2D;
+using UnityEngine.UIElements;
+using Object = UnityEngine.Object;
+
+namespace UnityEditor.U2D.Animation.Tests
+{
+    internal class SceneWeightEditingTests
+    {
+        string m_Path;
+        Texture2D m_Texture;
+        SceneWeightSession m_Session;
+        SceneMeshSource Source() => new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path));
+
+        [SetUp]
+        public void Setup()
+        {
+            m_Path = AssetDatabase.GenerateUniqueAssetPath("Assets/UniskinWeightRoundTrip.png");
+            m_Texture = new Texture2D(32, 32);
+            m_Texture.SetPixels(Enumerable.Repeat(Color.white, 1024).ToArray()); m_Texture.Apply();
+            File.WriteAllBytes(m_Path, m_Texture.EncodeToPNG());
+            AssetDatabase.ImportAsset(m_Path, ImportAssetOptions.ForceSynchronousImport);
+            var importer = (TextureImporter)AssetImporter.GetAtPath(m_Path);
+            importer.textureType = TextureImporterType.Sprite; importer.spriteImportMode = SpriteImportMode.Single; importer.SaveAndReimport();
+            var source = Source();
+            source.provider.GetDataProvider<ISpriteBoneDataProvider>().SetBones(source.rect.spriteID, Enumerable.Range(0, 5).Select(i => new SpriteBone
+            { name = "Bone" + i, guid = GUID.Generate().ToString(), parentId = -1, position = new Vector3(4 + i * 4, 4), rotation = Quaternion.identity, length = 20, color = Color.HSVToRGB(i / 5f, 1, 1) }).ToList());
+            source.provider.Apply(); source.importer.SaveAndReimport();
+            source = Source();
+            var mesh = source.ReadMesh(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path));
+            foreach (var weight in mesh.vertexWeights)
+            {
+                weight.Clear(); weight.AddChannel(0, .4f, true); weight.AddChannel(1, .3f, true); weight.AddChannel(2, .2f, true); weight.AddChannel(3, .1f, true);
+            }
+            source.WriteMesh(mesh);
+            m_Session = ScriptableObject.CreateInstance<SceneWeightSession>();
+            m_Session.Load(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path), Source());
+        }
+
+        [TearDown]
+        public void Cleanup()
+        {
+            if (m_Session != null) Object.DestroyImmediate(m_Session);
+            if (!string.IsNullOrEmpty(m_Path)) AssetDatabase.DeleteAsset(m_Path);
+            if (m_Texture != null) Object.DestroyImmediate(m_Texture);
+        }
+
+        [Test]
+        public void SwapIsStagedSelectedAndUndoable()
+        {
+            var original = Source().Fingerprint();
+            m_Session.vertices.elements = new[] { 0 };
+            m_Session.SelectBone(m_Session.mesh.bones[0], false); m_Session.SelectBone(m_Session.mesh.bones[1], true);
+            m_Session.Swap(); Undo.FlushUndoRecordObjects();
+            Assert.AreEqual(.3f, m_Session.Values(0)[0]); Assert.AreEqual(.4f, m_Session.Values(0)[1]);
+            Assert.AreEqual(.4f, m_Session.Values(1)[0]); Assert.AreEqual(original, Source().Fingerprint());
+            Assert.IsTrue(m_Session.dirty);
+            Undo.PerformUndo(); m_Session.context.RestoreAfterUndo();
+            Assert.AreEqual(.4f, m_Session.Values(0)[0]); Assert.IsFalse(m_Session.dirty);
+        }
+
+        [Test]
+        public void RowEditingPreservesLocksAndFourInfluences()
+        {
+            m_Session.vertices.elements = new[] { 0 };
+            m_Session.ToggleLock(m_Session.mesh.bones[0]);
+            m_Session.SetRow(4, .5f);
+            Assert.AreEqual(.4f, m_Session.Values(0)[0]); Assert.That(m_Session.Values(0)[4], Is.GreaterThan(0));
+            Assert.That(m_Session.mesh.vertexWeights[0].Count(channel => channel.enabled && channel.weight > 0), Is.LessThanOrEqualTo(4));
+            Assert.That(m_Session.Values(0).Sum(), Is.EqualTo(1).Within(.00001f));
+            Assert.AreEqual(0, m_Session.Values(1)[4]);
+        }
+
+        [Test]
+        public void AutoUsesSelectedBonesAndVertices()
+        {
+            m_Session.vertices.elements = new[] { 0 };
+            m_Session.SelectBone(m_Session.mesh.bones[4], false);
+            m_Session.Auto();
+            Assert.That(m_Session.Values(0)[4], Is.EqualTo(1).Within(.00001f));
+            Assert.AreEqual(.4f, m_Session.Values(1)[0]); Assert.AreEqual(0, m_Session.Values(1)[4]);
+        }
+
+        [Test]
+        public void RemovePreservesSkeletonAndGeometryAndPersistsBindings()
+        {
+            var source = Source();
+            var beforeBones = JsonUtility.ToJson(new Bones { bones = source.provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(source.rect.spriteID).ToArray() });
+            var beforeVertices = source.meshProvider.GetVertices(source.rect.spriteID).Select(vertex => vertex.position).ToArray();
+            var indices = source.meshProvider.GetIndices(source.rect.spriteID).ToArray(); var edges = source.meshProvider.GetEdges(source.rect.spriteID).ToArray();
+            source.importer.userData = "OtherTool:preserve";
+            Object.DestroyImmediate(m_Session); m_Session = ScriptableObject.CreateInstance<SceneWeightSession>(); m_Session.Load(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path), Source());
+            var removed = m_Session.mesh.bones[0].guid;
+            m_Session.SelectBone(m_Session.mesh.bones[0], false); m_Session.Remove();
+            Assert.AreEqual(5, m_Session.context.skeleton.boneCount); Assert.AreEqual(4, m_Session.mesh.boneCount);
+            foreach (var weight in m_Session.mesh.vertexWeights) Assert.That(weight.Sum(), Is.EqualTo(1).Within(.00001f));
+            m_Session.Save(Source()); source = Source();
+            Assert.IsTrue(source.importer.userData.StartsWith("OtherTool:preserve"));
+            Assert.AreEqual(beforeBones, JsonUtility.ToJson(new Bones { bones = source.provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(source.rect.spriteID).ToArray() }));
+            CollectionAssert.AreEqual(beforeVertices, source.meshProvider.GetVertices(source.rect.spriteID).Select(vertex => vertex.position));
+            CollectionAssert.AreEqual(indices, source.meshProvider.GetIndices(source.rect.spriteID)); CollectionAssert.AreEqual(edges, source.meshProvider.GetEdges(source.rect.spriteID));
+            Object.DestroyImmediate(m_Session); m_Session = ScriptableObject.CreateInstance<SceneWeightSession>(); m_Session.Load(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path), source);
+            Assert.IsFalse(m_Session.mesh.bones.Any(bone => bone.guid == removed));
+            m_Session.Bind(m_Session.context.skeleton.bones.First(bone => bone.guid == removed));
+            Assert.AreEqual(5, m_Session.mesh.boneCount);
+        }
+
+        [Serializable] sealed class Bones { public SpriteBone[] bones; }
+
+        [Test]
+        public void SmoothUsesSharedSnapshotAlgorithmAndSelection()
+        {
+            m_Session.vertices.elements = new[] { 0 };
+            m_Session.SetRow(0, 1);
+            var mesh = m_Session.mesh;
+            var neighbors = WeightSmoothing.BuildNeighbors(mesh);
+            var source = mesh.vertexWeights.Select(weight => weight.ToBoneWeight(false)).ToArray();
+            var expected = EditableBoneWeightUtility.CreateFromBoneWeight(source[0]);
+            WeightSmoothing.SmoothVertex(expected, source[0], source, neighbors[0], Enumerable.Range(0, mesh.boneCount).ToList(), m_Session.lockedBones);
+            var untouched = JsonUtility.ToJson(mesh.vertexWeights[1]);
+            m_Session.Smooth();
+            Assert.AreEqual(JsonUtility.ToJson(expected), JsonUtility.ToJson(mesh.vertexWeights[0]));
+            Assert.AreEqual(untouched, JsonUtility.ToJson(mesh.vertexWeights[1]));
+        }
+
+        [Test]
+        public void PsbBindingsAndWeightsPreserveOtherLayersAndCharacterSkeleton()
+        {
+            var original = AssetDatabase.GetAllAssetPaths().FirstOrDefault(path => path.StartsWith("Assets/") && path.EndsWith(".psb", StringComparison.OrdinalIgnoreCase) &&
+                AssetDatabase.LoadAllAssetsAtPath(path).OfType<Sprite>().Any(sprite => sprite.GetBones().Length > 1));
+            if (original == null) Assert.Ignore("No rigged PSB fixture is available.");
+            var bytes = File.ReadAllBytes(original); var meta = File.ReadAllBytes(original + ".meta");
+            var copy = AssetDatabase.GenerateUniqueAssetPath("Assets/UniskinWeightPsbRoundTrip.psb");
+            Assert.IsTrue(AssetDatabase.CopyAsset(original, copy));
+            try
+            {
+                var sprite = AssetDatabase.LoadAllAssetsAtPath(copy).OfType<Sprite>().First(item => item.GetBones().Length > 1 && new SceneMeshSource(item).hasAuthoredMesh);
+                var source = new SceneMeshSource(sprite); var id = source.rect.spriteID;
+                var character = source.provider.GetDataProvider<ICharacterDataProvider>().GetCharacterData();
+                var originalCharacterBones = JsonUtility.ToJson(new Bones { bones = character.bones });
+                var geometry = source.provider.GetSpriteRects().ToDictionary(rect => rect.spriteID, rect => JsonUtility.ToJson(new Geometry
+                    { positions = source.meshProvider.GetVertices(rect.spriteID).Select(vertex => vertex.position).ToArray(), indices = source.meshProvider.GetIndices(rect.spriteID), edges = source.meshProvider.GetEdges(rect.spriteID) }));
+                var otherWeights = source.provider.GetSpriteRects().Where(rect => rect.spriteID != id).ToDictionary(rect => rect.spriteID, rect => JsonUtility.ToJson(new Weights
+                    { vertices = source.meshProvider.GetVertices(rect.spriteID), bones = source.provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(rect.spriteID).ToArray() }));
+                Object.DestroyImmediate(m_Session); m_Session = ScriptableObject.CreateInstance<SceneWeightSession>(); m_Session.Load(sprite, source);
+                var removed = m_Session.mesh.bones[0].guid;
+                m_Session.SelectBone(m_Session.mesh.bones[0], false); m_Session.Remove();
+                m_Session.Save(new SceneMeshSource(sprite));
+                sprite = AssetDatabase.LoadAllAssetsAtPath(copy).OfType<Sprite>().First(item => item.GetSpriteID() == id);
+                source = new SceneMeshSource(sprite);
+                Assert.AreEqual(originalCharacterBones, JsonUtility.ToJson(new Bones { bones = source.provider.GetDataProvider<ICharacterDataProvider>().GetCharacterData().bones }));
+                foreach (var rect in source.provider.GetSpriteRects())
+                {
+                    Assert.AreEqual(geometry[rect.spriteID], JsonUtility.ToJson(new Geometry
+                        { positions = source.meshProvider.GetVertices(rect.spriteID).Select(vertex => vertex.position).ToArray(), indices = source.meshProvider.GetIndices(rect.spriteID), edges = source.meshProvider.GetEdges(rect.spriteID) }), rect.name);
+                    if (rect.spriteID != id) Assert.AreEqual(otherWeights[rect.spriteID], JsonUtility.ToJson(new Weights
+                        { vertices = source.meshProvider.GetVertices(rect.spriteID), bones = source.provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(rect.spriteID).ToArray() }), rect.name);
+                }
+                Object.DestroyImmediate(m_Session); m_Session = ScriptableObject.CreateInstance<SceneWeightSession>(); m_Session.Load(sprite, source);
+                Assert.IsFalse(m_Session.mesh.bones.Any(bone => bone.guid == removed));
+                m_Session.Bind(m_Session.context.skeleton.bones.First(bone => bone.guid == removed));
+                m_Session.vertices.elements = new[] { 0 }; m_Session.SetRow(Array.FindIndex(m_Session.mesh.bones, bone => bone.guid == removed), .8f);
+                m_Session.Save(new SceneMeshSource(sprite));
+                sprite = AssetDatabase.LoadAllAssetsAtPath(copy).OfType<Sprite>().First(item => item.GetSpriteID() == id);
+                Object.DestroyImmediate(m_Session); m_Session = ScriptableObject.CreateInstance<SceneWeightSession>(); m_Session.Load(sprite, new SceneMeshSource(sprite));
+                Assert.That(m_Session.Values(0)[Array.FindIndex(m_Session.mesh.bones, bone => bone.guid == removed)], Is.EqualTo(.8f).Within(.00001f));
+                CollectionAssert.AreEqual(bytes, File.ReadAllBytes(original)); CollectionAssert.AreEqual(meta, File.ReadAllBytes(original + ".meta"));
+            }
+            finally { AssetDatabase.DeleteAsset(copy); }
+        }
+
+        [Serializable] sealed class Geometry { public Vector2[] positions; public int[] indices; public Vector2Int[] edges; }
+        [Serializable] sealed class Weights { public Vertex2DMetaData[] vertices; public SpriteBone[] bones; }
+
+        [Test]
+        public void LocalDrawOrderSortsTrianglesWithoutChangingBoneDepthsAndSupportsUndo()
+        {
+            var mesh = m_Session.mesh;
+            Assert.That(mesh.vertexCount, Is.GreaterThanOrEqualTo(4));
+            for (var vertex = 0; vertex < mesh.vertexCount; ++vertex)
+            {
+                mesh.vertexWeights[vertex].Clear();
+                mesh.vertexWeights[vertex].AddChannel(vertex == 2 || vertex == 3 ? 1 : 0, 1, true);
+            }
+            var topology = new[] { 0, 1, 2, 1, 3, 2 }; mesh.SetIndices(topology);
+            var depths = mesh.bones.Select(bone => bone.depth).ToArray();
+            var weights = mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)).ToArray();
+            var source = Source().Fingerprint();
+            m_Session.MoveBone(mesh.bones[0], 2); Undo.FlushUndoRecordObjects();
+            CollectionAssert.AreEqual(new[] { 1, 3, 2, 0, 1, 2 }, m_Session.DrawIndices());
+            CollectionAssert.AreEqual(depths, mesh.bones.Select(bone => bone.depth));
+            CollectionAssert.AreEqual(weights, mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)));
+            CollectionAssert.AreEqual(topology, mesh.indices);
+            Assert.AreEqual(source, Source().Fingerprint());
+            Undo.PerformUndo(); m_Session.InvalidateDrawOrder(); m_Session.context.RestoreAfterUndo();
+            CollectionAssert.AreEqual(Enumerable.Range(0, mesh.boneCount), m_Session.orderedBoneIndices);
+            CollectionAssert.AreEqual(topology, m_Session.DrawIndices());
+        }
+
+        [Test]
+        public void LocalDrawOrderSurvivesSaveReloadWithoutChangingSkeleton()
+        {
+            var source = Source();
+            var skeleton = JsonUtility.ToJson(new Bones { bones = source.provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(source.rect.spriteID).ToArray() });
+            var positions = source.meshProvider.GetVertices(source.rect.spriteID).Select(vertex => vertex.position).ToArray();
+            var edges = source.meshProvider.GetEdges(source.rect.spriteID);
+            m_Session.MoveBone(m_Session.mesh.bones[0], m_Session.mesh.boneCount);
+            var order = m_Session.orderedBoneIndices.Select(i => m_Session.mesh.bones[i].guid).ToArray();
+            var triangles = m_Session.DrawIndices();
+            m_Session.Save(Source());
+            source = Source();
+            Assert.AreEqual(skeleton, JsonUtility.ToJson(new Bones { bones = source.provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(source.rect.spriteID).ToArray() }));
+            CollectionAssert.AreEqual(positions, source.meshProvider.GetVertices(source.rect.spriteID).Select(vertex => vertex.position));
+            CollectionAssert.AreEqual(edges, source.meshProvider.GetEdges(source.rect.spriteID));
+            CollectionAssert.AreEqual(triangles, source.meshProvider.GetIndices(source.rect.spriteID));
+            Object.DestroyImmediate(m_Session); m_Session = ScriptableObject.CreateInstance<SceneWeightSession>();
+            m_Session.Load(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path), source);
+            CollectionAssert.AreEqual(order, m_Session.orderedBoneIndices.Select(i => m_Session.mesh.bones[i].guid));
+            Assert.IsFalse(m_Session.dirty);
+        }
+
+        [Test]
+        public void SaveRejectsExternalChanges()
+        {
+            m_Session.SetRow(0, .8f);
+            var source = Source(); source.importer.userData = "External";
+            Assert.Throws<InvalidOperationException>(() => m_Session.Save(Source()));
+        }
+
+        static EditableBoneWeight WeldWeight(params float[] values)
+        {
+            var weight = new EditableBoneWeight();
+            for (var bone = 0; bone < values.Length; ++bone)
+                if (values[bone] > 0) weight.AddChannel(bone, values[bone], true);
+            return weight;
+        }
+
+        [Test]
+        public void WeldCharacterPreservesSourceSelectionLocksAndSupportsUndoAndSave()
+        {
+            var original = AssetDatabase.GetAllAssetPaths().FirstOrDefault(path => path.StartsWith("Assets/") &&
+                path.EndsWith(".psb", StringComparison.OrdinalIgnoreCase) && AssetDatabase.LoadAllAssetsAtPath(path).OfType<Sprite>().Count() > 1);
+            if (original == null) Assert.Ignore("No multilayer PSB fixture is available.");
+            var copy = AssetDatabase.GenerateUniqueAssetPath("Assets/UniskinWeldRoundTrip.psb");
+            Assert.IsTrue(AssetDatabase.CopyAsset(original, copy));
+            try
+            {
+                SpriteCache sourceSprite = null;
+                foreach (var sprite in AssetDatabase.LoadAllAssetsAtPath(copy).OfType<Sprite>())
+                {
+                    var source = new SceneMeshSource(sprite);
+                    if (!source.hasAuthoredMesh) continue;
+                    Object.DestroyImmediate(m_Session); m_Session = ScriptableObject.CreateInstance<SceneWeightSession>();
+                    m_Session.Load(sprite, source);
+                    sourceSprite = m_Session.mesh.boneCount >= 3 ? m_Session.weldSources.FirstOrDefault() : null;
+                    if (sourceSprite != null) break;
+                }
+                if (sourceSprite == null) Assert.Ignore("The PSB fixture has no pair with two common bound bones.");
+                var mesh = m_Session.mesh; var sourceMesh = sourceSprite.GetMesh();
+                var sourceBones = sourceMesh.bones;
+                var common = mesh.bones.Select((bone, index) => (index, source: Array.FindIndex(sourceBones, item => item.guid == bone.guid)))
+                    .Where(pair => pair.source >= 0).Take(2).ToArray();
+                foreach (var weight in sourceMesh.vertexWeights)
+                { weight.Clear(); weight.AddChannel(common[0].source, 1, true); }
+                mesh.vertexWeights[0].Clear();
+                mesh.vertexWeights[0].AddChannel(common[0].index, .5f, true);
+                mesh.vertexWeights[0].AddChannel(common[1].index, .25f, true);
+                mesh.vertexWeights[0].AddChannel(Enumerable.Range(0, mesh.boneCount)
+                    .First(bone => bone != common[0].index && bone != common[1].index), .25f, true);
+                m_Session.ToggleLock(mesh.bones[common[1].index]);
+                m_Session.vertices.elements = new[] { 0 };
+                var untouched = mesh.vertexWeights.Skip(1).Select(JsonUtility.ToJson).ToArray();
+                var sourceWeights = sourceMesh.vertexWeights.Select(JsonUtility.ToJson).ToArray();
+                var positions = (Vector2[])mesh.vertices.Clone(); var indices = (int[])mesh.indices.Clone();
+                var savedSource = new SceneMeshSource(AssetDatabase.LoadAllAssetsAtPath(copy).OfType<Sprite>()
+                    .First(sprite => sprite.GetSpriteID().ToString() == sourceSprite.id)).Fingerprint();
+                var id = m_Session.context.spriteId;
+                m_Session.Weld(sourceSprite, false); Undo.FlushUndoRecordObjects();
+                Assert.That(m_Session.Values(0)[common[0].index], Is.EqualTo(.75f).Within(.00001f));
+                Assert.That(m_Session.Values(0)[common[1].index], Is.EqualTo(.25f).Within(.00001f));
+                CollectionAssert.AreEqual(untouched, mesh.vertexWeights.Skip(1).Select(JsonUtility.ToJson));
+                CollectionAssert.AreEqual(sourceWeights, sourceMesh.vertexWeights.Select(JsonUtility.ToJson));
+                CollectionAssert.AreEqual(positions, mesh.vertices); CollectionAssert.AreEqual(indices, mesh.indices);
+                CollectionAssert.AreEqual(new[] { 0 }, m_Session.vertices.elements);
+                Undo.PerformUndo(); m_Session.context.RestoreAfterUndo();
+                Assert.That(m_Session.Values(0)[common[0].index], Is.EqualTo(.5f).Within(.00001f));
+                Undo.PerformRedo(); m_Session.context.RestoreAfterUndo();
+                Assert.That(m_Session.Values(0)[common[0].index], Is.EqualTo(.75f).Within(.00001f));
+                var target = AssetDatabase.LoadAllAssetsAtPath(copy).OfType<Sprite>().First(sprite => sprite.GetSpriteID().ToString() == id);
+                var expected = m_Session.Values(0);
+                m_Session.Save(new SceneMeshSource(target));
+                Assert.AreEqual(savedSource, new SceneMeshSource(AssetDatabase.LoadAllAssetsAtPath(copy).OfType<Sprite>()
+                    .First(sprite => sprite.GetSpriteID().ToString() == sourceSprite.id)).Fingerprint());
+                Object.DestroyImmediate(m_Session); m_Session = ScriptableObject.CreateInstance<SceneWeightSession>();
+                target = AssetDatabase.LoadAllAssetsAtPath(copy).OfType<Sprite>().First(sprite => sprite.GetSpriteID().ToString() == id);
+                m_Session.Load(target, new SceneMeshSource(target));
+                CollectionAssert.AreEqual(expected, m_Session.Values(0));
+            }
+            finally { AssetDatabase.DeleteAsset(copy); }
+        }
+
+        [Test]
+        public void WeldInterpolatesAndRemapsBoneOrder()
+        {
+            var values = new float[2];
+            var positions = new[] { Vector2.zero, new Vector2(2, 0), new Vector2(0, 2) };
+            var weights = new[] { WeldWeight(1, 0), WeldWeight(0, 1), WeldWeight(0, 1) };
+            Assert.IsTrue(WeightWelding.Sample(new Vector2(.5f, .5f), positions, new[] { 0, 1, 2 }, weights,
+                new[] { 1, 0 }, true, values));
+            Assert.That(values[0], Is.EqualTo(.5f).Within(.00001f));
+            Assert.That(values[1], Is.EqualTo(.5f).Within(.00001f));
+            Assert.AreEqual(1, weights[0].Sum());
+        }
+
+        [Test]
+        public void WeldAllProjectsOutsideVerticesWhileOverlappingSkipsThem()
+        {
+            var positions = new[] { Vector2.zero, new Vector2(2, 0), new Vector2(0, 2) };
+            var weights = new[] { WeldWeight(1, 0), WeldWeight(0, 1), WeldWeight(1, 0) };
+            var values = new float[2];
+            Assert.IsFalse(WeightWelding.Sample(new Vector2(1, -1), positions, new[] { 0, 1, 2 }, weights, new[] { 0, 1 }, true, values));
+            CollectionAssert.AreEqual(new[] { 0f, 0f }, values);
+            Assert.IsTrue(WeightWelding.Sample(new Vector2(1, -1), positions, new[] { 0, 1, 2 }, weights, new[] { 0, 1 }, false, values));
+            CollectionAssert.AreEqual(new[] { .5f, .5f }, values);
+        }
+
+        [Test]
+        public void WeldSkipsDegenerateTrianglesAndUnmappedWeights()
+        {
+            var positions = new[] { Vector2.zero, Vector2.right, Vector2.up };
+            var weights = new[] { WeldWeight(1), WeldWeight(1), WeldWeight(1) };
+            Assert.IsFalse(WeightWelding.Sample(Vector2.zero, positions, new[] { 0, 0, 0 }, weights, new[] { 0 }, false, new float[1]));
+            Assert.IsFalse(WeightWelding.Sample(Vector2.zero, positions, new[] { 0, 1, 2 }, weights, new[] { -1 }, false, new float[1]));
+        }
+
+        [Test]
+        public void WeldRejectsNonCharacterSourceWithoutMutations()
+        {
+            var weights = m_Session.mesh.vertexWeights.Select(JsonUtility.ToJson).ToArray();
+            Assert.IsEmpty(m_Session.weldSources);
+            Assert.Throws<InvalidOperationException>(() => m_Session.Weld(m_Session.cache.selectedSprite, false));
+            CollectionAssert.AreEqual(weights, m_Session.mesh.vertexWeights.Select(JsonUtility.ToJson));
+            Assert.IsFalse(m_Session.dirty);
+        }
+
+        [Test]
+        public void WindowResourcesMatchRequestedControls()
+        {
+            var tree = ResourceLoader.Load<VisualTreeAsset>("SkinningModule/SceneEditWeightsWindow.uxml").CloneTree();
+            foreach (var name in new[] { "strength", "size", "feather", "pieces", "overlay", "selected", "bind", "swap", "remove", "smooth", "auto", "weld", "bones" }) Assert.IsNotNull(tree.Q(name), name);
+            foreach (var name in new[] { "strength", "size", "feather" }) Assert.IsInstanceOf<Slider>(tree.Q(name), name);
+            Assert.IsNull(tree.Q("influence")); Assert.IsNull(tree.Q("update"));
+            foreach (var icon in new[] { "Weights", "Bind", "Smooth" }) Assert.IsNotNull(ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/" + icon + ".png"));
+            var shader = ResourceLoader.Load<Shader>("SkinningModule/SceneWeightsPreview.shader"); Assert.IsNotNull(shader); Assert.IsFalse(ShaderUtil.ShaderHasError(shader));
+        }
+    }
+}

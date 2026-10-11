@@ -12,6 +12,16 @@ namespace UnityEditor.U2D.Animation
 {
     internal class SpritePostProcess : AssetPostprocessor
     {
+        // Cached PSB imports bypass TextureGenerator and its Sprite callback. Use the
+        // same authoring-to-runtime conversion as a full native import.
+        internal static void ApplyCachedMeshData(ISpriteEditorDataProvider provider, Sprite[] sprites, AssetImporter importer)
+        {
+            if (sprites.Length == 0) return;
+            PostProcessSpriteMeshData(provider, sprites[0].pixelsPerUnit / provider.pixelsPerUnit, sprites, importer);
+            BoneGizmo.instance.ClearSpriteBoneCache();
+            RefreshSpriteSkinCache();
+        }
+
         void OnPreprocessAsset()
         {
             ISpriteEditorDataProvider dataProvider = GetSpriteEditorDataProvider(assetPath);
@@ -201,13 +211,21 @@ namespace UnityEditor.U2D.Animation
                 {
                     SpriteRect spriteRect = spriteRects.First(s => { return s.spriteID == guid; });
                     bool hasInvalidWeights = false;
+                    // Geometry replacement intentionally leaves authoring weights empty.
+                    // Match the automatic-geometry fallback below without writing a fake
+                    // binding back into the provider: zero runtime weights collapse the mesh.
+                    bool hasEmptyWeights = hasBones && vertices.All(v =>
+                        v.boneWeight.weight0 == 0f && v.boneWeight.weight1 == 0f &&
+                        v.boneWeight.weight2 == 0f && v.boneWeight.weight3 == 0f);
 
                     NativeArray<Vector3> vertexArray = new NativeArray<Vector3>(vertices.Length, Allocator.Temp);
                     NativeArray<BoneWeight> boneWeightArray = new NativeArray<BoneWeight>(vertices.Length, Allocator.Temp);
 
                     for (int i = 0; i < vertices.Length; ++i)
                     {
-                        BoneWeight boneWeight = vertices[i].boneWeight;
+                        BoneWeight boneWeight = hasEmptyWeights
+                            ? new BoneWeight { weight0 = 1f }
+                            : vertices[i].boneWeight;
 
                         vertexArray[i] = (Vector3)(vertices[i].position - Vector2.Scale(spriteRect.rect.size, spriteRect.pivot)) * definitionScale / sprite.pixelsPerUnit;
                         boneWeightArray[i] = boneWeight;

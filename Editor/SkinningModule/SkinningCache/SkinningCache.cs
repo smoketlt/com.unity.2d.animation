@@ -154,6 +154,9 @@ namespace UnityEditor.U2D.Animation
 
         public bool applyingChanges { get; set; }
 
+        // Standalone Scene hosts restore their own serialized state after domain reload.
+        internal void AttachPersistentState(ISkinningCachePersistentState state) => m_State = state;
+
         SkinningMode CheckModeConsistency(SkinningMode skinningMode)
         {
             if (skinningMode == SkinningMode.Character && hasCharacter == false)

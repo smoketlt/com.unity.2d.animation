@@ -6,6 +6,7 @@ using NUnit.Framework;
 using UnityEditor.U2D.Animation.ClipperLib;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
+using UnityEngine.U2D;
 using UnityEngine.UIElements;
 using Object = UnityEngine.Object;
 
@@ -140,6 +141,49 @@ namespace UnityEditor.U2D.Animation.Tests
             controller.Triangulate(new Triangulator());
             session.savedMesh = JsonUtility.ToJson(session.mesh);
             return session;
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ScenePickingRestoresEntrySelectionWithoutExitingMeshEditing(bool pickAnotherObject)
+        {
+            var previousSelection = Selection.objects;
+            var entry = new GameObject("Mesh entry selection");
+            var other = new GameObject("Scene pick target");
+            var window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
+            EditorApplication.CallbackFunction restore = null;
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            try
+            {
+                // Exercise only this host's callback, without live Scene GUI/selection subscriptions.
+                typeof(SceneEditMeshWindow).GetMethod("OnDisable", flags).Invoke(window, null);
+                var renderer = entry.AddComponent<SpriteRenderer>();
+                typeof(SceneEditMeshWindow).GetField("m_Renderer", flags).SetValue(window, renderer);
+                typeof(SceneEditMeshWindow).GetField("m_SelectionObjects", flags).SetValue(window, new Object[] { entry });
+                var session = (SceneMeshSession)typeof(SceneEditMeshWindow).GetField("m_Session", flags).GetValue(window);
+                session.pendingCreation = true;
+                var before = EditorJsonUtility.ToJson(session);
+                Selection.objects = pickAnotherObject ? new Object[] { other } : Array.Empty<Object>();
+                var queuedBefore = EditorApplication.delayCall;
+                typeof(SceneEditMeshWindow).GetMethod("OnSelectionChanged", flags).Invoke(window, null);
+                var added = EditorApplication.delayCall.GetInvocationList().Except(queuedBefore?.GetInvocationList() ?? Array.Empty<Delegate>()).ToArray();
+                Assert.AreEqual(1, added.Length);
+                restore = (EditorApplication.CallbackFunction)added[0];
+                EditorApplication.delayCall -= restore;
+                restore();
+                CollectionAssert.AreEqual(new Object[] { entry }, Selection.objects);
+                Assert.IsTrue(window != null, "Scene picking must keep the mesh editor alive.");
+                Assert.AreEqual(before, EditorJsonUtility.ToJson(session), "Picking must preserve staged edits.");
+                Assert.IsFalse((bool)typeof(SceneEditMeshWindow).GetField("m_SelectionRestoreQueued", flags).GetValue(window));
+            }
+            finally
+            {
+                if (restore != null) EditorApplication.delayCall -= restore;
+                if (window != null) Object.DestroyImmediate(window);
+                Selection.objects = previousSelection;
+                Object.DestroyImmediate(other);
+                Object.DestroyImmediate(entry);
+            }
         }
 
         [Test]
@@ -327,6 +371,62 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void TracedWeightedSpriteKeepsEmptyAuthoringWeightsAndRenderableRuntimeWeights()
+        {
+            var path = AssetDatabase.GenerateUniqueAssetPath("Assets/UniskinTraceWeightsTest.png");
+            var texture = new Texture2D(32, 32);
+            try
+            {
+                texture.SetPixels(Enumerable.Repeat(Color.white, 32 * 32).ToArray());
+                texture.Apply();
+                File.WriteAllBytes(path, texture.EncodeToPNG());
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spriteImportMode = SpriteImportMode.Single;
+                importer.SaveAndReimport();
+                var source = new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(path));
+                source.provider.GetDataProvider<ISpriteBoneDataProvider>().SetBones(source.rect.spriteID, new[]
+                {
+                    new UnityEngine.U2D.SpriteBone { name = "Root", parentId = -1, rotation = Quaternion.identity, length = 8 },
+                    new UnityEngine.U2D.SpriteBone { name = "Child", parentId = 0, rotation = Quaternion.identity, length = 8 }
+                }.ToList());
+                source.provider.Apply(); importer.SaveAndReimport();
+                source = new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(path));
+                var mesh = source.ReadMesh(AssetDatabase.LoadAssetAtPath<Sprite>(path));
+                foreach (var weight in mesh.vertexWeights)
+                    weight.SetFromBoneWeight(new BoneWeight { boneIndex0 = 1, weight0 = 1f });
+                source.WriteMesh(mesh);
+                source = new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(path));
+                var controller = new SpriteMeshDataController { spriteMeshData = mesh };
+                controller.OutlineFromAlpha(new SceneMeshOutlineGenerator(), source.textureProvider, 1f, 1);
+                controller.Triangulate(new Triangulator());
+                Assert.IsTrue(mesh.vertexWeights.All(weight => weight.Sum() == 0f));
+                Assert.IsTrue(source.WriteMesh(mesh));
+
+                var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+                source = new SceneMeshSource(sprite);
+                var loaded = source.ReadMesh(sprite);
+                Assert.IsTrue(loaded.vertexWeights.All(weight => weight.Sum() == 0f), "Runtime fallback must not rebind authoring data.");
+                Assert.AreEqual(2, sprite.GetBones().Length);
+                foreach (var weight in sprite.GetVertexAttribute<BoneWeight>(UnityEngine.Rendering.VertexAttribute.BlendWeight))
+                {
+                    Assert.AreEqual(1f, weight.weight0);
+                    Assert.AreEqual(0, weight.boneIndex0);
+                    Assert.AreEqual(0f, weight.weight1 + weight.weight2 + weight.weight3);
+                }
+                Assert.IsFalse(source.WriteMesh(loaded), "The runtime fallback must not cause repeated saves.");
+                foreach (var weight in loaded.vertexWeights)
+                    weight.SetFromBoneWeight(new BoneWeight { boneIndex0 = 1, weight0 = 1f });
+                Assert.IsTrue(source.WriteMesh(loaded));
+                sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+                Assert.IsTrue(sprite.GetVertexAttribute<BoneWeight>(UnityEngine.Rendering.VertexAttribute.BlendWeight)
+                    .All(weight => weight.boneIndex0 == 1 && weight.weight0 == 1f), "Explicit weights must replace the runtime fallback.");
+            }
+            finally { AssetDatabase.DeleteAsset(path); Object.DestroyImmediate(texture); }
+        }
+
+        [Test]
         public void ImportedSpriteMeshRoundTripsThroughSkinningProvider()
         {
             var path = AssetDatabase.GenerateUniqueAssetPath("Assets/UniskinMeshRoundTripTest.png");
@@ -345,6 +445,11 @@ namespace UnityEditor.U2D.Animation.Tests
                 var source = new SceneMeshSource(sprite);
                 Assert.IsFalse(source.hasAuthoredMesh, "Runtime sprite geometry must not count as an authored mesh.");
                 var mesh = source.ReadMesh(sprite);
+                Assert.IsTrue(source.WriteMesh(mesh), "First authoring must save even when it matches the runtime quad.");
+                sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+                source = new SceneMeshSource(sprite);
+                Assert.IsTrue(source.hasAuthoredMesh);
+                Assert.IsFalse(source.WriteMesh(source.ReadMesh(sprite)));
                 var factory = new SpriteDataProviderFactories(); factory.Init();
                 var provider = factory.GetSpriteEditorDataProviderFromObject(importer);
                 provider.InitSpriteEditorDataProvider();
@@ -362,7 +467,7 @@ namespace UnityEditor.U2D.Animation.Tests
                 var vertices = mesh.vertices.ToArray();
                 var indices = mesh.indices.ToArray();
                 var edges = mesh.edges.ToArray();
-                source.WriteMesh(mesh);
+                Assert.IsTrue(source.WriteMesh(mesh), "A real geometry/weight edit must be imported.");
                 var reopened = new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(path));
                 Assert.IsTrue(reopened.hasAuthoredMesh, "Saved provider geometry must be recognized by the Inspector.");
                 var loaded = reopened.ReadMesh(AssetDatabase.LoadAssetAtPath<Sprite>(path));
@@ -373,6 +478,34 @@ namespace UnityEditor.U2D.Animation.Tests
                 Assert.AreEqual(1f, loaded.vertexWeights[0].Sum());
                 Assert.AreEqual(2, reopened.provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(reopened.rect.spriteID).Count);
                 Assert.That(AssetDatabase.LoadAssetAtPath<Sprite>(path).vertices.Length, Is.EqualTo(loaded.vertexCount));
+                var savedMeta = File.ReadAllBytes(path + ".meta");
+                var savedFingerprint = reopened.Fingerprint();
+                Assert.IsFalse(reopened.WriteMesh(loaded), "An identical provider payload must skip Apply and reimport.");
+                CollectionAssert.AreEqual(savedMeta, File.ReadAllBytes(path + ".meta"));
+                Assert.AreEqual(savedFingerprint, reopened.Fingerprint());
+
+                // Unity's approximate Vector2 == would lose this legitimate small edit.
+                loaded.vertices[0] += new Vector2(0.000002f, 0);
+                Assert.IsTrue(reopened.WriteMesh(loaded));
+                reopened = new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(path));
+                CollectionAssert.AreEqual(loaded.vertices, reopened.ReadMesh(AssetDatabase.LoadAssetAtPath<Sprite>(path)).vertices);
+                Assert.IsFalse(reopened.WriteMesh(loaded));
+
+                loaded.vertexWeights[0].SetFromBoneWeight(new BoneWeight { boneIndex0 = 0, weight0 = 1f });
+                Assert.IsTrue(reopened.WriteMesh(loaded), "Weight-only changes must be saved.");
+                reopened = new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(path));
+                Assert.AreEqual(0, reopened.ReadMesh(AssetDatabase.LoadAssetAtPath<Sprite>(path)).vertexWeights[0].ToBoneWeight(false).boneIndex0);
+
+                Array.Reverse(loaded.indices);
+                Assert.IsTrue(reopened.WriteMesh(loaded), "Triangle order must be saved even with unchanged vertices.");
+                reopened = new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(path));
+                CollectionAssert.AreEqual(loaded.indices, reopened.ReadMesh(AssetDatabase.LoadAssetAtPath<Sprite>(path)).indices);
+
+                loaded.SetEdges(Array.Empty<Unity.Mathematics.int2>());
+                Assert.IsTrue(reopened.WriteMesh(loaded), "Explicit edge changes must be saved.");
+                reopened = new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(path));
+                Assert.IsEmpty(reopened.ReadMesh(AssetDatabase.LoadAssetAtPath<Sprite>(path)).edges);
+                Assert.IsFalse(reopened.WriteMesh(loaded));
             }
             finally { AssetDatabase.DeleteAsset(path); Object.DestroyImmediate(texture); }
         }

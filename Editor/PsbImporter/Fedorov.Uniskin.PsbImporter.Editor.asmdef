@@ -1,0 +1,15 @@
+{
+    "name": "Fedorov.Uniskin.PsbImporter.Editor",
+    "references": [
+        "Unity.2D.Psdimporter.Editor",
+        "Unity.2D.Animation.Editor",
+        "Unity.2D.Animation.Runtime",
+        "Unity.2D.Sprite.Editor"
+    ],
+    "includePlatforms": ["Editor"],
+    "autoReferenced": true,
+    "defineConstraints": ["UNISKIN_PSD_IMPORTER"],
+    "versionDefines": [
+        { "name": "com.unity.2d.psdimporter", "expression": "9.1.0", "define": "UNISKIN_PSD_IMPORTER" }
+    ]
+}

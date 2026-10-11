@@ -36,6 +36,8 @@ Do not rename the UXML element unless all C# lookups, USS selectors, and metadat
 - `WeightPainterPanel.uxml` / `.uss`
 - `AnimationPreviewPanel.uss` styles the persistent bottom timeline created by `AnimationPreviewPanel.cs`.
 - `VisibilityToolWindow.uxml`
+- `SceneEditBoneWindow.uxml` / `.uss`: floating Scene skeleton popup; shares the Edit Mesh stylesheet and header/height helper. `SceneMeshIcons/Bone_Create.png`, `Bone_Split.png`, and `Bone_SetParent.png` are the user's supplied command icons.
+- `SceneMeshIcons/EditBone.png`: user's supplied 16x16 icon for Edit Bone in both the SpriteRenderer Inspector and the bound bone's GameObject Inspector header.
 - `InfluenceWindow.uxml`
 - Constraint settings are built in `Editor/SkinningModule/ConstraintsTool.cs` and hosted in the bottom overlay.
 
@@ -53,6 +55,12 @@ The persistent Animation Preview timeline is hosted in `LayoutOverlay.timelineOv
 The Visibility window stays in `LayoutOverlay.rightOverlay` because it is a tall resizable list window. Shared popup sizing and form styles in `Editor/Assets/LayoutOverlay/LayoutOverlayStyle.uss` must cover both right and bottom overlay selectors when a panel can live in either area.
 
 ## Weight Painter Panel Notes
+
+The floating Scene Edit Weights host uses `SceneEditWeightsWindow.uxml` / `.uss`, shares the Edit Mesh base style, and uses `SceneWeightsPreview.shader` for alpha-aware textured weight preview. Its supplied Weights/Smooth/Bind/Auto/Prune/Swap/Weld/Delete icons live under `SceneMeshIcons`; Remove uses Delete. Existing icon GUIDs are retained when replacing image bytes. See [Scene Weight Editing](../Subsystems/SkinningEditor/SceneWeightEditing.md).
+
+The Scene weight list flexes with its popup's height resize grip. Bone fills use the shared fixed weight palette, and swatches use `WeightInspector.LockTexture`. Scene Prune builds its UI with the same `SceneEditMeshWindow.uss`; the existing Sprite Editor Prune caller retains its utility window.
+
+Scene Strength/Size/Feather are float `Slider` elements. The weights stylesheet fixes row heights and resets tracker offsets to keep fills inside their selected rows during resize. Slider drag containers use `align-self: stretch` and explicit 20 px tracker/container heights so absolutely positioned tracks/fills cannot collapse their intrinsic width. This applies to brush controls and dynamically created bone rows. Window layout and control values are saved by `SceneEditWeightsWindow` in per-project EditorPrefs.
 
 `WeightPainterPanel.uxml` contains placeholder containers for the Mode and Bone popups. `WeightPainterPanel.GenerateFromUXML()` creates both popup controls in C#.
 
