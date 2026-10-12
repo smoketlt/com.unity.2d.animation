@@ -33,12 +33,13 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 15. [AnimationPreview](AnimationPreview.md) when changing AnimationClip binding, frame scrubbing, playback, looping, or timeline UI
 16. [PSBHierarchyBoneNames](PSBHierarchyBoneNames.md) when changing automatic normalization of PSD Importer numeric bone-name suffixes in scene instances
 17. [PanelLayout](PanelLayout.md) when changing tool panel dragging, resizing, persistence, or per-mode layout keys
+18. [SceneBoneEditing](SceneBoneEditing.md) when changing Edit Bones entry, live Scene animation editing, pose conversion, source-skeleton saves or popup title/icon
 
 ## Entity Pages
 
 - [UniskinRig](UniskinRig.md): independent mesh/bone/weight storage, Scene/runtime bindings and explicit/automatic baking into the source PSB.
 - [SceneMeshEditing](SceneMeshEditing.md): Scene View authoring of the same shared Sprite asset mesh.
-- [SceneBoneEditing](SceneBoneEditing.md): Scene View authoring of the shared Sprite/PSB skeleton with Create, Split, Set Parent and bone properties.
+- [SceneBoneEditing](SceneBoneEditing.md): Edit Bones Scene View authoring of the shared Sprite/PSB skeleton with live animated poses, Create, Split, Set Parent and bone properties.
 - [SceneWeightEditing](SceneWeightEditing.md): floating Scene weight authoring with brush, pieces, colored overlay, bindings and selected Auto/Smooth/Swap/Remove.
 - [SkinningModule](SkinningModule.md)
 - [SkinningCache](SkinningCache.md)

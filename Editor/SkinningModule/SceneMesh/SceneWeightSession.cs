@@ -14,11 +14,13 @@ namespace UnityEditor.U2D.Animation
         [SerializeField] string m_Fingerprint;
         [SerializeField] List<string> m_Locked = new List<string>();
         [SerializeField] List<string> m_DrawOrder = new List<string>();
+        [SerializeField] DonorHistory[] m_DonorHistory;
         int[] m_DrawIndices;
         const string kBindingPrefix = "Uniskin.WeightBindings.v1:";
         [Serializable] sealed class Bindings { public List<Binding> sprites = new List<Binding>(); }
         [Serializable] sealed class Binding { public string id; public string[] bones; public string[] drawOrder; }
         [Serializable] sealed class State { public string[] bones; public EditableBoneWeight[] weights; public string[] drawOrder; }
+        [Serializable] sealed class DonorHistory { public int[] edited; public float[] values; }
 
         internal SceneBoneSession context => m_Context;
         internal SkinningCache cache => m_Context.cache;
@@ -79,6 +81,7 @@ namespace UnityEditor.U2D.Animation
         internal void Load(Sprite sprite, SceneMeshSource source)
         {
             if (!source.hasAuthoredMesh) throw new InvalidOperationException("Create Mesh before opening Edit Weights.");
+            m_DonorHistory = null;
             m_Context = CreateInstance<SceneBoneSession>();
             m_Context.hideFlags = HideFlags.HideAndDontSave;
             m_Context.Load(sprite, source);
@@ -121,6 +124,19 @@ namespace UnityEditor.U2D.Animation
 
         internal void Changed() { InvalidateDrawOrder(); cache.events.meshChanged.Invoke(mesh); }
 
+        internal void BeginWeightUndo(string name)
+        {
+            if (!cache.isUndoOperationSet) Undo.RegisterCompleteObjectUndo(this, name);
+            cache.BeginUndoOperation(name);
+        }
+
+        void ForgetDonors()
+        {
+            if (m_DonorHistory == null) return;
+            Undo.RegisterCompleteObjectUndo(this, "Edit Mesh Weights");
+            m_DonorHistory = null;
+        }
+
         internal void Bind(BoneCache bone)
         {
             if (bone == null || bone.IsConstraintParent() || mesh.ContainsBone(bone)) return;
@@ -135,6 +151,7 @@ namespace UnityEditor.U2D.Animation
 
         void SetBones(BoneCache[] bones)
         {
+            ForgetDonors();
             if (cache.hasCharacter)
             {
                 var part = cache.selectedSprite.GetCharacterPart();
@@ -173,6 +190,7 @@ namespace UnityEditor.U2D.Animation
             if (bones.Length != 2 || bones.Any(i => lockedBones.Contains(i))) return;
             using (cache.UndoScope("Swap Bone Weights"))
             {
+                ForgetDonors();
                 foreach (var vertex in targets)
                     foreach (var channel in mesh.vertexWeights[vertex])
                         if (channel.boneIndex == bones[0]) channel.boneIndex = bones[1];
@@ -219,6 +237,7 @@ namespace UnityEditor.U2D.Animation
             if (updates.Count == 0) return;
             using (cache.UndoScope("Weld Mesh Weights"))
             {
+                ForgetDonors();
                 foreach (var update in updates) SetDistribution(update.vertex, update.values);
                 Changed();
             }
@@ -235,6 +254,7 @@ namespace UnityEditor.U2D.Animation
             var neighbors = WeightSmoothing.BuildNeighbors(mesh);
             using (cache.UndoScope("Smooth Mesh Weights"))
             {
+                ForgetDonors();
                 foreach (var vertex in targets)
                     if (neighbors[vertex].Count > 0)
                     {
@@ -257,6 +277,7 @@ namespace UnityEditor.U2D.Animation
             if (bones.Length == 0) return;
             using (cache.UndoScope("Auto Mesh Weights"))
             {
+                ForgetDonors();
                 m_Context.WithSourcePose(() =>
                 {
                     var generated = new SpriteMeshData();
@@ -316,6 +337,7 @@ namespace UnityEditor.U2D.Animation
             if (!float.IsFinite(value) || lockedBones.Contains(bone)) return;
             using (cache.UndoScope("Set Bone Weight"))
             {
+                Undo.RegisterCompleteObjectUndo(this, "Set Bone Weight");
                 foreach (var vertex in targets) Adjust(vertex, new[] { bone }, Mathf.Clamp01(value), true);
                 Changed();
             }
@@ -323,8 +345,9 @@ namespace UnityEditor.U2D.Animation
 
         internal void Adjust(int vertex, int[] bones, float amount, bool absolute = false)
         {
+            if (!float.IsFinite(amount) || (!absolute && amount == 0)) return;
             var locked = lockedBones;
-            var edited = bones.Where(i => i >= 0 && i < mesh.boneCount && !locked.Contains(i)).ToArray();
+            var edited = bones.Where(i => i >= 0 && i < mesh.boneCount && !locked.Contains(i)).Distinct().OrderBy(i => i).ToArray();
             if (edited.Length == 0) return;
             var values = Values(vertex);
             var available = Mathf.Max(0, 1 - locked.Sum(i => values[i]));
@@ -335,8 +358,27 @@ namespace UnityEditor.U2D.Animation
                 foreach (var i in edited) values[i] *= available / editedSum;
                 editedSum = available;
             }
-            var others = Enumerable.Range(0, mesh.boneCount).Where(i => !edited.Contains(i) && !locked.Contains(i)).ToArray();
+            // Reserve slots for the explicitly edited bones before choosing donors.
+            // Otherwise each small drag/stamp on a zero-weight fifth bone is dropped
+            // by SetDistribution and can never accumulate into a positive influence.
+            var slots = Mathf.Max(0, 4 - locked.Count(i => values[i] > 0));
+            var retained = edited.Where(i => values[i] > 0).OrderByDescending(i => values[i]).Take(slots).ToArray();
+            foreach (var i in edited.Except(retained)) values[i] = 0;
+            editedSum = retained.Sum(i => values[i]);
+            var candidates = Enumerable.Range(0, mesh.boneCount).Where(i => !edited.Contains(i) && !locked.Contains(i)).ToArray();
+            if (m_DonorHistory == null || m_DonorHistory.Length != mesh.vertexCount)
+                m_DonorHistory = new DonorHistory[mesh.vertexCount];
+            var history = m_DonorHistory[vertex];
+            // At 100% the donor channels vanish. Retain their last proportions so
+            // reversing this edit restores those bones instead of arbitrary list rows.
+            if (!candidates.Any(i => values[i] > 0) && history?.edited != null && history.values != null &&
+                history.edited.SequenceEqual(edited) && history.values.Length == values.Length)
+                foreach (var i in candidates) values[i] = history.values[i];
+            var others = candidates.OrderByDescending(i => values[i]).Take(slots - retained.Length).ToArray();
+            foreach (var i in candidates.Except(others)) values[i] = 0;
             var otherSum = others.Sum(i => values[i]);
+            m_DonorHistory[vertex] = otherSum > 0
+                ? new DonorHistory { edited = edited, values = (float[])values.Clone() } : null;
             foreach (var i in others) values[i] = otherSum > 0 ? values[i] / otherSum * (available - editedSum) : (available - editedSum) / others.Length;
             SetDistribution(vertex, values);
         }
@@ -345,6 +387,7 @@ namespace UnityEditor.U2D.Animation
         {
             using (cache.UndoScope("Prune Mesh Weights"))
             {
+                ForgetDonors();
                 foreach (var vertex in targets)
                 {
                     var values = Values(vertex);

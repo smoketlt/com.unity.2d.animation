@@ -3,8 +3,9 @@
   <ui:Style src="SceneEditBoneWindow.uss" />
   <ui:VisualElement class="uniskin-mesh-window uniskin-bone-window">
     <ui:VisualElement name="windowHeader" class="mesh-header">
-      <ui:Label text="Edit Bone" name="windowTitle" class="mesh-window-title" picking-mode="Ignore" />
-      <ui:Button name="closeWindow" text="×" tooltip="Close Edit Bone" />
+      <ui:Image name="windowIcon" picking-mode="Ignore" />
+      <ui:Label text="Edit Bones" name="windowTitle" class="mesh-window-title" picking-mode="Ignore" />
+      <ui:Button name="closeWindow" text="×" tooltip="Close Edit Bones" />
     </ui:VisualElement>
     <ui:VisualElement name="commands" class="mesh-body">
       <ui:VisualElement class="mesh-block">

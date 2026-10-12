@@ -460,6 +460,91 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void AnimatedScenePosePreservesStagedEditsUndoAndSourceSave()
+        {
+            var source = Source();
+            source.provider.GetDataProvider<ISpriteBoneDataProvider>().SetBones(source.rect.spriteID, new[]
+            {
+                new SpriteBone { name = "Root", guid = "animated-root", parentId = -1, position = new Vector3(4, 8), rotation = Quaternion.identity, length = 12 },
+                new SpriteBone { name = "Child", guid = "animated-child", parentId = 0, position = new Vector3(12, 0), rotation = Quaternion.identity, length = 8 }
+            }.ToList());
+            source.provider.Apply(); source.importer.SaveAndReimport();
+            Load();
+            var sourcePose = m_Session.skeleton.GetWorldPose();
+            var host = new GameObject("Animated bone editing fixture");
+            var clip = new AnimationClip();
+            try
+            {
+                var renderer = host.AddComponent<SpriteRenderer>(); renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                var root = new GameObject("Root").transform; root.SetParent(host.transform, false);
+                var child = new GameObject("Child").transform; child.SetParent(root, false);
+                root.localPosition = new Vector3(.04f, .08f); child.localPosition = new Vector3(.12f, 0);
+                var skin = host.AddComponent<UnityEngine.U2D.Animation.SpriteSkin>();
+                skin.SetRootBone(host.transform); skin.SetBoneTransforms(new[] { root, child });
+                clip.SetCurve("Root", typeof(Transform), "localEulerAnglesRaw.z", AnimationCurve.Linear(0, 0, 1, 95));
+                clip.SetCurve("Root", typeof(Transform), "m_LocalPosition.x", AnimationCurve.Linear(0, .04f, 1, .2f));
+                clip.SetCurve("Root/Child", typeof(Transform), "localEulerAnglesRaw.z", AnimationCurve.Linear(0, 0, 1, -40));
+                m_Session.CaptureScenePose(renderer, source.rect.rect);
+                var cachedChild = m_Session.skeleton.bones.Single(bone => bone.guid == "animated-child");
+                void Sample(float time)
+                {
+                    clip.SampleAnimation(host, time);
+                    m_Session.RefreshScenePose(renderer, source.rect.rect);
+                }
+                void AssertAligned(BoneCache bone, Transform transform)
+                {
+                    var matrix = m_Session.SkeletonToWorld(renderer, source.rect.rect);
+                    Assert.Less(Vector3.Distance(matrix.MultiplyPoint3x4(bone.position), transform.position), .0001f);
+                    Assert.Less(Vector3.Distance(matrix.MultiplyVector(bone.right).normalized, transform.right.normalized), .00001f);
+                }
+                for (var frame = 0; frame <= 20; ++frame)
+                {
+                    Sample(frame / 20f);
+                    AssertAligned(cachedChild, child);
+                    Assert.IsFalse(m_Session.dirty, "Animation alone must not dirty the source skeleton.");
+                    m_Session.WithSourcePose(() => CollectionAssert.AreEqual(sourcePose, m_Session.skeleton.GetWorldPose()));
+                }
+                Undo.IncrementCurrentGroup();
+                var editGroup = Undo.GetCurrentGroup();
+                using (m_Session.cache.UndoScope("Edit animated bone"))
+                { cachedChild.position += cachedChild.right * 3; m_Session.Changed(); }
+                for (var frame = 0; frame <= 20; ++frame)
+                {
+                    Sample(frame / 20f);
+                    Assert.IsTrue(m_Session.dirty);
+                    m_Session.WithSourcePose(() => Assert.Less(Vector3.Distance(cachedChild.position,
+                        sourcePose[1].pose.position + Vector3.right * 3), .0001f));
+                }
+                Undo.RevertAllDownToGroup(editGroup);
+                m_Session.RestoreAfterUndo();
+                Sample(.7f);
+                AssertAligned(cachedChild, child);
+                Assert.IsFalse(m_Session.dirty, "Undo must restore the source pose even after the animation advances.");
+                using (m_Session.cache.UndoScope("Split animated bone"))
+                { m_Session.skeleton.SplitBone(cachedChild, cachedChild.length / 2, "Tip"); m_Session.Changed(true); }
+                var tip = m_Session.skeleton.bones.Single(bone => bone.name == "Tip");
+                for (var frame = 0; frame <= 20; ++frame)
+                {
+                    Sample(frame / 20f);
+                    var matrix = m_Session.SkeletonToWorld(renderer, source.rect.rect);
+                    Assert.Less(Vector3.Distance(matrix.MultiplyPoint3x4(tip.position), child.TransformPoint(Vector3.right * .04f)), .0001f,
+                        "New split bones must follow their animated parent's deformation.");
+                    m_Session.WithSourcePose(() => Assert.Less(Vector3.Distance(tip.position,
+                        sourcePose[1].pose.position + Vector3.right * 4), .0001f));
+                }
+                var sceneRotation = child.localRotation;
+                m_Session.Save(Source());
+                Assert.AreEqual(sceneRotation, child.localRotation);
+                Assert.IsFalse(m_Session.dirty);
+                var saved = Source().provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(Source().rect.spriteID);
+                foreach (var bone in saved) Assert.Less(Quaternion.Angle(bone.rotation, Quaternion.identity), .001f);
+                Sample(.1f);
+                Assert.IsFalse(m_Session.dirty, "Playback after saving must also remain clean.");
+            }
+            finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(host); }
+        }
+
+        [Test]
         public void CharacterMappingIgnoresLayerPlacementOverrides()
         {
             var path = AssetDatabase.GetAllAssetPaths().FirstOrDefault(item => item.StartsWith("Assets/") &&
@@ -501,6 +586,9 @@ namespace UnityEditor.U2D.Animation.Tests
             var template = ResourceLoader.Load<VisualTreeAsset>("SkinningModule/SceneEditBoneWindow.uxml");
             Assert.IsNotNull(template);
             var root = template.CloneTree();
+            Assert.AreEqual("Edit Bones", root.Q<Label>("windowTitle").text);
+            Assert.IsNotNull(root.Q<Image>("windowIcon"));
+            Assert.IsNotNull(ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/EditBone.png"));
             foreach (var name in new[] { "create", "split", "setParent" }) Assert.IsNotNull(root.Q<Button>(name));
             Assert.IsNotNull(root.Q<TextField>("boneName"));
             Assert.IsNotNull(root.Q<ColorField>("boneColor"));
@@ -689,6 +777,12 @@ namespace UnityEditor.U2D.Animation.Tests
                     Assert.Less(Vector3.Distance(bone.TransformPoint(Vector3.right * localLength), matrix.MultiplyPoint3x4(cachedBone.endPosition)), .0001f,
                         "Unbound source-pixel length must not be treated as a Unity-unit length when capturing the pose.");
                     Assert.IsFalse(m_Session.dirty);
+                    bone.localRotation = Quaternion.Euler(0, 0, 61);
+                    bone.localPosition += new Vector3(.15f, -.08f);
+                    m_Session.RefreshScenePose(renderer, source.rect.rect);
+                    Assert.Less(Vector3.Distance(bone.position, matrix.MultiplyPoint3x4(cachedBone.position)), .0001f);
+                    Assert.Less(Vector3.Distance(bone.TransformPoint(Vector3.right * localLength), matrix.MultiplyPoint3x4(cachedBone.endPosition)), .0001f);
+                    Assert.IsFalse(m_Session.dirty, "Animation of an unbound character bone must remain clean.");
                 }
             }
             finally

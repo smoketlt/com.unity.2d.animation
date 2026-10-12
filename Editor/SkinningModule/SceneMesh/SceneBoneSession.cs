@@ -25,8 +25,15 @@ namespace UnityEditor.U2D.Animation
             public float scale = 1f;
             public BonePose sourcePose;
             public BonePose scenePose;
+            public BonePose authoredPose;
+            public BonePose displayedPose;
+            public bool hasAuthoredPose;
+            public bool inherited;
+            public bool hasSceneBinding;
+            public float sceneLocalLength;
         }
         [SerializeField] List<ScenePoseOffset> m_ScenePoseOffsets = new List<ScenePoseOffset>();
+        Dictionary<string, (Transform transform, float length)> m_SceneBindings;
         [SerializeField] internal bool scenePoseCaptured;
         [SerializeField] internal bool skeletonOnly;
 
@@ -65,13 +72,14 @@ namespace UnityEditor.U2D.Animation
         }
 
         internal SkeletonCache skeleton => cache.GetEffectiveSkeleton(cache.selectedSprite);
-        internal bool dirty => cache != null && m_Saved != Snapshot();
+        internal bool dirty => cache != null && m_Saved != SourceSnapshot();
 
         internal void Load(Sprite sprite, SceneMeshSource source, bool skeletonOnly = false)
         {
             this.skeletonOnly = skeletonOnly;
             scenePoseCaptured = false;
             m_ScenePoseOffsets.Clear();
+            m_SceneBindings = null;
             assetPath = source.assetPath;
             spriteId = source.rect.spriteID.ToString();
             cache = Cache.Create<SkinningCache>();
@@ -112,9 +120,34 @@ namespace UnityEditor.U2D.Animation
             if (scenePoseCaptured) return;
             m_ScenePoseOffsets.Clear();
             var toWorld = SkeletonToWorld(renderer, frame);
+            var poses = skeleton.GetWorldPose();
+            m_SceneBindings = FindSceneBindings(renderer);
+            for (var i = 0; i < skeleton.boneCount; ++i)
+            {
+                var bone = skeleton.GetBone(i);
+                var offset = new ScenePoseOffset { guid = bone.guid, sourcePose = poses[i] };
+                UpdateSceneOffset(offset, toWorld);
+                poses[i] = offset.scenePose;
+                m_ScenePoseOffsets.Add(offset);
+            }
+            skeleton.SetWorldPose(poses);
+            for (var i = 0; i < skeleton.boneCount; ++i)
+            {
+                var offset = m_ScenePoseOffsets[i];
+                offset.scenePose = offset.displayedPose = skeleton.GetBone(i).worldPose;
+                offset.authoredPose = offset.sourcePose;
+                offset.hasAuthoredPose = true;
+            }
+            skeleton.SetDefaultPose();
+            if (cache.hasCharacter) cache.SyncSpriteSheetSkeletons();
+            scenePoseCaptured = true;
+            m_Saved = SourceSnapshot();
+        }
+
+        Dictionary<string, (Transform transform, float length)> FindSceneBindings(SpriteRenderer renderer)
+        {
             var root = PrefabUtility.GetNearestPrefabInstanceRoot(renderer.gameObject);
             var host = root != null ? root.transform : renderer.transform.root;
-            var poses = skeleton.GetWorldPose();
             var bindings = new Dictionary<string, (Transform transform, float length)>();
             foreach (var skin in host.GetComponentsInChildren<SpriteSkin>(true))
             {
@@ -140,32 +173,80 @@ namespace UnityEditor.U2D.Animation
                         if (transform != null) bindings[bones[i].guid] = (transform, SceneBoneInspector.CharacterBoneLocalLength(source.provider, bones[i].length));
                     }
             }
-            for (var i = 0; i < skeleton.boneCount; ++i)
+            return bindings;
+        }
+
+        void UpdateSceneOffset(ScenePoseOffset offset, Matrix4x4 toWorld)
+        {
+            if (m_SceneBindings.TryGetValue(offset.guid, out var binding) && binding.transform != null)
             {
-                var bone = skeleton.GetBone(i);
-                var offset = new ScenePoseOffset { guid = bone.guid, sourcePose = poses[i] };
-                if (bindings.TryGetValue(bone.guid, out var binding))
+                if (!offset.hasSceneBinding)
                 {
-                    var position = toWorld.inverse.MultiplyPoint3x4(binding.transform.position);
-                    var direction = toWorld.inverse.MultiplyVector(binding.transform.TransformVector(Vector3.right));
-                    var rotation = Quaternion.Euler(0, 0, Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg);
-                    var length = direction.magnitude * binding.length;
-                    offset.rotation = rotation * Quaternion.Inverse(poses[i].pose.rotation);
-                    offset.scale = poses[i].length > .00001f && length > .00001f ? length / poses[i].length : 1f;
-                    offset.matrix = Matrix4x4.TRS(position, offset.rotation, Vector3.one * offset.scale) *
-                        Matrix4x4.Translate(-poses[i].pose.position);
-                    poses[i] = BonePose.Create(Pose.Create(position, rotation), length);
+                    offset.sceneLocalLength = binding.length;
+                    offset.hasSceneBinding = true;
                 }
-                offset.scenePose = poses[i];
-                m_ScenePoseOffsets.Add(offset);
+                var position = toWorld.inverse.MultiplyPoint3x4(binding.transform.position);
+                var direction = toWorld.inverse.MultiplyVector(binding.transform.TransformVector(Vector3.right));
+                var rotation = Quaternion.Euler(0, 0, Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg);
+                var length = direction.magnitude * offset.sceneLocalLength;
+                offset.rotation = rotation * Quaternion.Inverse(offset.sourcePose.pose.rotation);
+                offset.scale = offset.sourcePose.length > .00001f && length > .00001f ? length / offset.sourcePose.length : 1f;
+                offset.matrix = Matrix4x4.TRS(position, offset.rotation, Vector3.one * offset.scale) *
+                    Matrix4x4.Translate(-offset.sourcePose.pose.position);
+                offset.scenePose = BonePose.Create(Pose.Create(position, rotation), length);
+            }
+            else if (!offset.hasSceneBinding) offset.scenePose = offset.sourcePose;
+        }
+
+        BonePose SourcePose(BoneCache bone)
+        {
+            var pose = bone.worldPose;
+            var offset = PoseOffset(bone);
+            if (offset.hasAuthoredPose && pose == offset.displayedPose) return offset.authoredPose;
+            if (!offset.inherited && pose == offset.scenePose) return offset.sourcePose;
+            return BonePose.Create(Pose.Create(offset.matrix.inverse.MultiplyPoint3x4(pose.pose.position),
+                Quaternion.Inverse(offset.rotation) * pose.pose.rotation), pose.length / offset.scale);
+        }
+
+        // Refresh only the private cache. Source poses and their exact projected pairs
+        // survive animation, staged edits and Undo without accumulating round-trip drift.
+        internal bool RefreshScenePose(SpriteRenderer renderer, Rect frame)
+        {
+            if (!scenePoseCaptured) { CaptureScenePose(renderer, frame); return true; }
+            if (m_SceneBindings == null || m_SceneBindings.Values.Any(binding => binding.transform == null))
+                m_SceneBindings = FindSceneBindings(renderer);
+            var bones = skeleton.bones;
+            var source = bones.Select(SourcePose).ToArray();
+            var before = skeleton.GetWorldPose();
+            var toWorld = SkeletonToWorld(renderer, frame);
+            foreach (var offset in m_ScenePoseOffsets)
+                if (!offset.inherited) UpdateSceneOffset(offset, toWorld);
+            var refreshed = new HashSet<string>();
+            ScenePoseOffset RefreshInherited(BoneCache bone)
+            {
+                var offset = PoseOffset(bone);
+                if (!offset.inherited || !refreshed.Add(bone.guid)) return offset;
+                var parent = bone.parentBone != null ? RefreshInherited(bone.parentBone) : new ScenePoseOffset();
+                offset.matrix = parent.matrix;
+                offset.rotation = parent.rotation;
+                offset.scale = parent.scale;
+                return offset;
+            }
+            var poses = new BonePose[bones.Length];
+            for (var i = 0; i < bones.Length; ++i)
+            {
+                var offset = RefreshInherited(bones[i]);
+                offset.authoredPose = source[i];
+                offset.hasAuthoredPose = true;
+                poses[i] = !offset.inherited && source[i] == offset.sourcePose ? offset.scenePose :
+                    BonePose.Create(Pose.Create(offset.matrix.MultiplyPoint3x4(source[i].pose.position),
+                        offset.rotation * source[i].pose.rotation), source[i].length * offset.scale);
             }
             skeleton.SetWorldPose(poses);
-            for (var i = 0; i < skeleton.boneCount; ++i)
-                m_ScenePoseOffsets[i].scenePose = skeleton.GetBone(i).worldPose;
+            for (var i = 0; i < bones.Length; ++i) PoseOffset(bones[i]).displayedPose = bones[i].worldPose;
             skeleton.SetDefaultPose();
             if (cache.hasCharacter) cache.SyncSpriteSheetSkeletons();
-            m_Saved = Snapshot();
-            scenePoseCaptured = true;
+            return !before.SequenceEqual(skeleton.GetWorldPose());
         }
 
         ScenePoseOffset PoseOffset(BoneCache bone)
@@ -173,7 +254,7 @@ namespace UnityEditor.U2D.Animation
             var offset = m_ScenePoseOffsets.Find(item => item.guid == bone.guid);
             if (offset != null) return offset;
             var parent = bone.parentBone != null ? PoseOffset(bone.parentBone) : new ScenePoseOffset();
-            offset = new ScenePoseOffset { guid = bone.guid, matrix = parent.matrix, rotation = parent.rotation, scale = parent.scale };
+            offset = new ScenePoseOffset { guid = bone.guid, matrix = parent.matrix, rotation = parent.rotation, scale = parent.scale, inherited = true };
             m_ScenePoseOffsets.Add(offset);
             return offset;
         }
@@ -187,9 +268,7 @@ namespace UnityEditor.U2D.Animation
             var source = new BonePose[displayed.Length];
             for (var i = 0; i < source.Length; ++i)
             {
-                var offset = PoseOffset(skeleton.GetBone(i));
-                source[i] = displayed[i] == offset.scenePose ? offset.sourcePose : BonePose.Create(Pose.Create(offset.matrix.inverse.MultiplyPoint3x4(displayed[i].pose.position),
-                    Quaternion.Inverse(offset.rotation) * displayed[i].pose.rotation), displayed[i].length / offset.scale);
+                source[i] = SourcePose(skeleton.GetBone(i));
             }
             try
             {
@@ -204,6 +283,14 @@ namespace UnityEditor.U2D.Animation
                 skeleton.SetDefaultPose();
                 if (cache.hasCharacter) cache.SyncSpriteSheetSkeletons();
             }
+        }
+
+        string SourceSnapshot()
+        {
+            if (!scenePoseCaptured) return Snapshot();
+            string snapshot = null;
+            WithSourcePose(() => snapshot = Snapshot());
+            return snapshot;
         }
 
         internal static string Fingerprint(SceneMeshSource source)
@@ -338,7 +425,7 @@ namespace UnityEditor.U2D.Animation
         internal void Save(SceneMeshSource source)
         {
             if (Fingerprint(source) != sourceFingerprint)
-                throw new InvalidOperationException("The source asset changed while Edit Bone was open. Revert and reopen it to load the latest data.");
+                throw new InvalidOperationException("The source asset changed while Edit Bones was open. Revert and reopen it to load the latest data.");
             if (!dirty) return;
             var renames = SceneBoneRenamePlan.Create(source, skeleton);
             Undo.RegisterCompleteObjectUndo(source.saveTarget, "Save Sprite Bones");
@@ -360,14 +447,14 @@ namespace UnityEditor.U2D.Animation
                     Undo.RevertAllDownToGroup(undoGroup);
                     throw;
                 }
-                m_Saved = Snapshot();
+                m_Saved = SourceSnapshot();
                 return;
             }
             // Set instance overrides before prefab regeneration so renamed objects retain
             // the exact names used by the rewritten animation paths.
             renames.Apply();
             source.ApplyAndSave();
-            m_Saved = Snapshot();
+            m_Saved = SourceSnapshot();
         }
 
         internal void RestoreAfterUndo() { cache.EndUndoOperation(); RememberBones(); }

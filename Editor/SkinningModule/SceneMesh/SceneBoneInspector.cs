@@ -21,11 +21,19 @@ namespace UnityEditor.U2D.Animation
         static void DrawHeader(Editor editor)
         {
             if (editor.targets.Length != 1 || !(editor.target is GameObject gameObject) ||
-                gameObject.GetComponent<SpriteRenderer>() != null ||
-                !TryGetSource(gameObject.transform, out var renderer, out var boneGuid)) return;
+                gameObject.GetComponent<SpriteRenderer>() != null) return;
+
+            var hasBoneSource = TryGetSource(gameObject.transform, out var renderer, out var boneGuid);
+            if (hasBoneSource) DrawBoneButton(gameObject);
+            if (UniskinRigInspectorControls.TryGetRootSource(gameObject, out var rigRenderer))
+                UniskinRigInspectorControls.DrawRoot(gameObject, rigRenderer.sprite);
+        }
+
+        static void DrawBoneButton(GameObject gameObject)
+        {
 
             if (s_EditBone == null)
-                s_EditBone = new GUIContent("Edit Bone",
+                s_EditBone = new GUIContent("Edit Bones",
                     ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/EditBone.png"),
                     "Edit this bone in the source Sprite/PSB skeleton.");
             using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
@@ -34,7 +42,7 @@ namespace UnityEditor.U2D.Animation
                 EditorApplication.delayCall += () =>
                 {
                     // Re-resolve after the GUI event in case bindings or selection changed.
-                    if (gameObject != null && TryGetSource(gameObject.transform, out renderer, out boneGuid))
+                    if (gameObject != null && TryGetSource(gameObject.transform, out var renderer, out var boneGuid))
                         SceneEditBoneWindow.OpenForBone(renderer, boneGuid);
                 };
             }

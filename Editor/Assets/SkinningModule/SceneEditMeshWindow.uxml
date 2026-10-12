@@ -2,6 +2,7 @@
   <ui:Style src="SceneEditMeshWindow.uss" />
   <ui:VisualElement class="uniskin-mesh-window">
     <ui:VisualElement name="windowHeader" class="mesh-header">
+      <ui:Image name="windowIcon" picking-mode="Ignore" />
       <ui:Label text="Edit Mesh" name="windowTitle" class="mesh-window-title" picking-mode="Ignore" />
       <ui:Button name="closeWindow" text="×" tooltip="Close Edit Mesh" />
     </ui:VisualElement>
@@ -20,6 +21,7 @@
             <ui:Button name="trace" text="Trace" />
           </ui:VisualElement>
           <ui:VisualElement class="mesh-row mesh-options">
+            <ui:Toggle name="deformed" text="Deformed" tooltip="Follow the current scene bone pose while keeping edits in source coordinates." class="mesh-option-toggle" />
             <ui:Toggle name="triangles" text="Triangles" value="true" class="mesh-option-toggle" />
             <ui:Toggle name="dim" text="Dim" class="mesh-option-toggle" />
             <ui:Toggle name="isolate" text="Isolate" class="mesh-option-toggle" />

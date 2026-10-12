@@ -18,14 +18,25 @@ Changes, including initial mesh creation, are staged until Save. A pending-creat
 
 The popup is pinned to its entry renderer. Changing Unity selection restores the opening selection without closing or prompting, including empty Scene clicks and picks intercepted by other Scene GUI handlers. Close the popup explicitly before selecting another object. Closing automatically saves pending changes to the shared source without a confirmation dialog. A failed controlled save keeps the window open. External window teardown also attempts to save; explicit discard suppresses it. Closing restores Scene visibility and Unity tools and exits mesh mode.
 
-The first implementation edits source geometry in the SpriteRenderer's local plane, independently of a SpriteSkin's current bone deformation. It does not provide a Deformed toggle or scene weight-painting window.
+By default, geometry is edited in the SpriteRenderer's source plane. **Deformed** projects the staged mesh through the current SpriteSkin bone pose, including Edit Mode animation playback and scrubbing. Weight authoring has its own [Scene Edit Weights](SceneWeightEditing.md) window.
+
+## Editing during Scene animation
+
+Enable **Deformed** in Edit Mesh to make the image, vertex handles, explicit edges, dotted triangles and box-selection targets follow the current scene bone Transforms. The toggle defaults to off and survives window domain reload. The window requests Scene repaints at 30 Hz and samples bones before drawing/handling each Scene event, following the live-pose scheduling used by Edit Bones. It never resets bones or samples/modifies animation clips itself.
+
+`SceneMeshDeformation` builds a transient working mesh using the Sprite's runtime bind poses, current SpriteSkin bone Transforms and the staged provider weights. Original source pixels are converted through runtime Sprite size, PPU and pivot; renderer flips are applied after skinning. The deformed image uses staged mesh triangles and source-coordinate UVs. The dashed source-image rectangle remains in its source plane.
+
+Modify, Create, edge creation and selection operate on the displayed working mesh. Edits are mapped back through each vertex's blended bone matrix, and triangulated in source space before entering the session. Newly created vertices inherit the shared controller's interpolated weights. Unmoved surviving vertices retain their exact source coordinates, including after vertex deletion. Animation refresh creates no Undo record or pending change; Undo and Save use the source mesh, so the sampled animation pose is never baked into saved geometry. A collapsed XY deformation rejects edits with an error instead of corrupting the source; change the frame or disable Deformed to edit such a vertex.
+
+Missing/disabled SpriteSkin, incomplete bone bindings or a mismatched bind-pose count fall back to the source-plane preview. Vertices with cleared/zero weights stay in that plane. New hull authoring and Trace also use the source plane; those commands replace geometry and clear its weights. Reweight the result in Edit Weights to animate it again. Play Mode keeps the existing save/close workflow; this feature supports Scene animation preview in Edit Mode.
 
 ## Source routes
 
-The Inspector also offers **Edit Bone** for shared source-skeleton editing; see [Scene Bone Editing](SceneBoneEditing.md). Opening either popup automatically saves and closes the other before starting the new session.
+The Inspector also offers **Edit Bones** for shared source-skeleton editing, including editing while Scene animation plays or is scrubbed in Edit Mode; see [Scene Bone Editing](SceneBoneEditing.md). Opening either popup automatically saves and closes the other before starting the new session.
 
 - `Editor/SkinningModule/SceneMesh/SceneEditMeshWindow.cs`: window, Scene GUI host, input, preview, selection, save/discard, visibility cleanup.
 - `Editor/SkinningModule/SceneMesh/SceneMeshSession.cs`: undoable mesh state, New snapshot, hull validation, interior generation, importer adapter, source-pixel mapping.
+- `Editor/SkinningModule/SceneMesh/SceneMeshDeformation.cs`: transient live bone deformation, exact source-coordinate retention and inverse mapping of edits.
 - `Editor/SkinningModule/SceneMesh/SceneMeshOutlineGenerator.cs`: Scene Trace outline generation and conservative low-detail simplification.
 - `Editor/SkinningModule/SceneMesh/UniskinSpriteRendererEditor.cs`: retained Inspector extension in the `Fedorov.Uniskin` namespace; delegates Unity's existing SpriteRenderer inspector, Scene handles and previews, then adds the explicit mesh button. Multi-selection and unsupported sprites disable the mesh action.
 - `Editor/SkinningModule/SceneMesh/SceneMeshWindowStyle.cs`: popup dragging, close tile, filled sliders, checkbox ticks and physical-pixel conversion.
@@ -48,7 +59,7 @@ The selection ordering is documented in Unity's [6000.0 custom-editor source](ht
 
 The visual baseline is Unimator's `Docs/Unimator/WindowDesignCode.md` (v0.3). This package implements it independently: opaque dark palette, square corners, one-pixel outline and button bottom stripes, 24-pixel action rows, teal active buttons, blue filled sliders, dark checkbox backgrounds, and a red close tile. The helper converts physical dimensions through `EditorGUIUtility.pixelsPerPoint`. The draggable 31-pixel header displays **Edit Mesh**, following the user's clarification; the Sprite name and duplicate content heading remain absent. There is no docked tab or second native title bar. Introductory text and shortcut/help paragraphs beneath the buttons are removed. Command failures use dialogs; temporary unavailability is exposed through the command area's tooltip.
 
-Modify, Create, Delete, New, Reset, Generate and Trace use the user's supplied icons. The Inspector uses CreateMesh/EditMesh icons. The footer action row is removed. Window height follows the actual content block as the main controls and Trace screen replace each other; it no longer reserves 265 pixels. Option toggles use inline text with their checkbox immediately before it. Checkmark visuals are scoped to these three controls and updated from their value, including after serialized state restoration. Explicit last-button classes avoid unsupported `:last-child` selectors in Unity 6000.0.
+Modify, Create, Delete, New, Reset, Generate and Trace use the user's supplied icons. The Inspector uses CreateMesh/EditMesh icons. The popup's native title and visible header use `CreateMesh.png`, scaled for editor DPI. The footer action row is removed. Window height follows the actual content block as the main controls and Trace screen replace each other; it no longer reserves 265 pixels. Deformed, Triangles, Dim and Isolate use inline text with their checkbox immediately before it. Checkmark visuals are scoped to these controls and updated from their value, including after serialized state restoration. Explicit last-button classes avoid unsupported `:last-child` selectors in Unity 6000.0.
 
 Trace settings are a separate screen inside the same popup, not a main-screen foldout. The `mainControls` container includes command rows and display toggles; `traceSettings` includes Detail, Alpha threshold, Cancel and OK. The `mesh-hidden` class switches their visibility. The shared vertex/triangle count remains visible. The header reads **Edit Mesh: Trace** on that screen and returns to **Edit Mesh** afterward. Both screens retain the same theme and automatic height fitting.
 
@@ -67,14 +78,13 @@ After these refinements, source compilation passed on Unity 6000.0.81f1. Read-on
 | Reset | Replace geometry with a four-corner rectangle. |
 | Generate | Add a vertex at the center of each existing triangle, preserving existing positions. Repeated use increases density; capped at 10000 vertices. This deterministic Unity implementation does not reproduce Spine's adaptive placement algorithm. |
 | Trace | Replace the main UI with the Trace screen and rebuild the alpha contour. Warn once on entry if the mesh has weights bound to existing bones. Detail and Alpha threshold retrace immediately, including numeric input. |
-| Trace: OK | Accept the current staged contour and return to the main UI. The importer is still saved only through the exit Save prompt. |
+| Trace: OK | Accept the current staged contour and return to the main UI. The source is saved on close. |
 | Trace: Cancel / Esc | Restore the complete entry session, including mesh, weights, selection, mode, pending creation and open New hull state; restore the entry slider values and return to the main UI. |
 | Triangles | Show or hide dotted triangulation lines; explicit edges remain visible. |
+| Deformed | Follow the live SpriteSkin bone pose while retaining source-space edits and Undo. |
 | Dim | Darken the source image in the authoring preview. |
 | Isolate | Temporarily hide other visible SpriteRenderer objects from Scene View; restore only objects hidden by this window. |
-| Close: Save | Save shared Sprite asset geometry, reimport, then exit editing. |
-| Close: Revert | Discard staged geometry and exit editing. |
-| Close: Cancel | Keep editing. |
+| Close | Automatically save valid staged geometry, then exit. A failed controlled save keeps the window open. Use Undo before closing to discard edits. |
 | Unity object selection change | Restore the opening selection without prompting or discarding staged edits. |
 
 Drag empty space to box-select vertices; Ctrl/Cmd or Shift preserves the initial selection. Empty click and Esc clear selection outside New mode. Delete/Backspace removes selection; selecting an explicit edge's two endpoints removes that edge. Vertex deletion uses the existing boundary-stitching controller. Deletion that would leave fewer than three vertices is rejected; use New or Reset instead.
@@ -117,6 +127,10 @@ The window restores temporary renderer suppression, Scene visibility and the pre
 
 ## Verification
 
+On 2026-10-12, Deformed and the CreateMesh header icon passed full editor-assembly and Scene Mesh test-fixture compilation against Unity 6000.0.81f1. A temporary editor runner directly executed five regression methods: **5 passing / 0 failing**, including runtime SpriteSkin mapping with a downscaled source frame, noncentral pivot, renderer rotation/scale and both flips; clean playback over twenty frames; source-space edits and Undo after advancing a frame; mixed weights, vertex creation/deletion; collapsed-pose rejection and zero weights; and imported UI controls/header icon. This was not a full Test Runner suite. The temporary source runner was removed. Mouse dragging during continuous playback, domain reload with pending edits and visual appearance remain manual checks. With a local `file:` dependency, Unity recompiles directly from this checkout; reopen an existing popup to load the new UI.
+
+The exact `SceneMeshDeformation` source also compiled against Unity 6000.5.7f1 engine/editor references with `UNITY_6000_5_OR_NEWER` defined. No API replacement/version branch is needed for this feature. This isolated reference check does not verify the full package or interactive rendering on that editor; exact Unity 6000.0.7 and 6000.5+ execution remain untested.
+
 On 2026-10-12, the dashed source-image frame passed a full editor-assembly source compile against Unity 6000.0.81f1. The exact new drawing and clipping methods also compiled in isolation against Unity 6000.5.7f1 engine/editor references; this verifies the APIs used by this change, not the entire package on that editor. No version-specific API branch was needed. Interactive appearance, zoom, display scaling and corner continuity remain manual checks; no Scene input or package test suite was run for this visual change.
 
 On 2026-10-12, the Scene mesh selection lock and remaining primary-input consumption passed a full editor-assembly compile against Unity 6000.0.81f1 references. The Scene mesh test fixture also compiled with two regression cases for empty selection and another picked object, checking entry-selection restoration, an open host and unchanged staged session data. These tests were not executed; interactive Create/New/outside-frame clicks and explicit-close Save/Revert/Cancel remain manual checks. No new version-dependent API was introduced, and Unity 6000.5+ execution was not performed for this revision.
@@ -149,4 +163,4 @@ Manual checks:
 
 For automated checks, enable this package under project `testables` and run `UnityEditor.U2D.Animation.Tests.SceneMeshEditingTests`, alongside the existing geometry deletion and compatibility suites. Exact Unity 6000.0.7 and interactive Unity 6000.5+ have not been verified for this feature.
 
-The Triangles/Dim/Isolate toggles form a centered group with content-sized toggles and symmetric spacing, using the shared mesh-options style.
+The Deformed/Triangles/Dim/Isolate toggles form a centered group with content-sized toggles and symmetric spacing. Edit Mesh uses tighter spacing for its four controls; other windows retain the shared mesh-options spacing.

@@ -240,7 +240,7 @@ namespace UnityEditor.U2D.Animation
                 }
                 else if (m_Gesture == Gesture.Piece && m_Session.selectedBones.Length > 0)
                 {
-                    m_Session.cache.BeginUndoOperation("Drag Vertex Weights");
+                    m_Session.BeginWeightUndo("Drag Vertex Weights");
                     foreach (var vertex in m_Session.targets) m_Session.Adjust(vertex, m_Session.selectedBones, -evt.delta.y * .0025f * m_Strength / 100f);
                     m_Session.Changed();
                 }
@@ -310,7 +310,7 @@ namespace UnityEditor.U2D.Animation
                 if (distance > radius) continue;
                 var falloff = distance <= inner || radius <= inner ? 1 : (radius - distance) / (radius - inner);
                 if (falloff <= 0 || m_Strength == 0) continue;
-                m_Session.cache.BeginUndoOperation("Paint Mesh Weights");
+                m_Session.BeginWeightUndo("Paint Mesh Weights");
                 m_Session.Adjust(vertex, selected, m_Strength / 100f * falloff * (m_RemoveMode || Event.current.alt ? -1 : 1));
             }
             m_Session.Changed();
@@ -359,7 +359,6 @@ namespace UnityEditor.U2D.Animation
 
         void DrawPieces(Vector2[] positions)
         {
-            if (!m_Pieces) return;
             var selected = m_Session.selectedBones;
             var boneOrder = m_Session.orderedBoneIndices;
             var bones = m_Session.mesh.bones;
@@ -371,17 +370,26 @@ namespace UnityEditor.U2D.Animation
                     var values = m_Session.Values(vertex);
                     var active = m_Session.vertices.Contains(vertex);
                     if (m_Selected && !active && !selected.Any(i => values[i] > 0)) continue;
-                    var radius = (active ? 6f : 5f) / EditorGUIUtility.pixelsPerPoint;
+                    var radius = (m_Pieces ? (active ? 6f : 5f) : (active ? 3f : 2f)) / EditorGUIUtility.pixelsPerPoint;
                     var start = 0f;
-                    foreach (var bone in boneOrder)
+                    if (!m_Pieces)
                     {
-                        if (values[bone] <= 0) continue;
-                        var color = WeightColor(bones[bone]);
-                        Handles.color = color;
-                        Handles.DrawSolidArc(positions[vertex], Vector3.forward, Quaternion.Euler(0, 0, start) * Vector3.up, values[bone] * 360, radius);
-                        start += values[bone] * 360;
+                        // Pieces changes only the visual; dots use the same selection and weight gestures.
+                        Handles.color = Color.cyan;
+                        Handles.DrawSolidDisc(positions[vertex], Vector3.forward, radius);
                     }
-                    if (start == 0) { Handles.color = Color.gray; Handles.DrawSolidDisc(positions[vertex], Vector3.forward, radius); }
+                    else
+                    {
+                        foreach (var bone in boneOrder)
+                        {
+                            if (values[bone] <= 0) continue;
+                            var color = WeightColor(bones[bone]);
+                            Handles.color = color;
+                            Handles.DrawSolidArc(positions[vertex], Vector3.forward, Quaternion.Euler(0, 0, start) * Vector3.up, values[bone] * 360, radius);
+                            start += values[bone] * 360;
+                        }
+                        if (start == 0) { Handles.color = Color.gray; Handles.DrawSolidDisc(positions[vertex], Vector3.forward, radius); }
+                    }
                     if (active) { Handles.color = Color.white; Handles.DrawWireDisc(positions[vertex], Vector3.forward, radius + 1); }
                 }
             }

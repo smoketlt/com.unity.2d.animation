@@ -4,7 +4,7 @@
 
 | If you need... | Read first | Then |
 | --- | --- | --- |
-| Independent rig assets, fast Scene saves, generated Sprite/bone bindings and explicit/automatic PSB baking | [Subsystems/SkinningEditor/UniskinRig](Subsystems/SkinningEditor/UniskinRig.md) | `Runtime/UniskinRig*.cs`, `SceneMesh/UniskinRig*.cs`, `Tests/Editor/UniskinRigTests.cs` |
+| Independent rig assets, renderer/root Inspector mode buttons, fast Scene saves, generated Sprite/bone bindings and explicit/automatic PSB baking | [Subsystems/SkinningEditor/UniskinRig](Subsystems/SkinningEditor/UniskinRig.md) | `Runtime/UniskinRig*.cs`, `SceneMesh/UniskinRig*.cs` (including `UniskinRigInspectorControls`), `Tests/Editor/UniskinRigTests.cs` |
 | Overall package/fork workflow | [Architecture/PackageForkWorkflow](Architecture/PackageForkWorkflow.md) | `package.json`, Unity project `Packages/manifest.json` |
 | Per-PSB Unity/Uniskin importer switching, preserving migration and cached mesh saves | [Subsystems/SkinningEditor/AlternativePsbImporter](Subsystems/SkinningEditor/AlternativePsbImporter.md) | `Editor/PsbImporter/**`, `Editor/SpritePostProcess.cs`, `SceneSpriteIdentity.cs`, `Tests/PsbImporter/**` |
 | Unity 6000.0–6000.6 compatibility, EntityId, GPU bridge, regression tests | [Architecture/UnityVersionCompatibility](Architecture/UnityVersionCompatibility.md) | `Runtime/UnityObjectCompatibility.cs`, `Editor/UnityEditorObjectCompatibility.cs`, `Editor/AnimationUICompatibility.cs`, `Tests/Editor/UnityCompatibilityTests.cs` |
@@ -13,10 +13,10 @@
 | Skinning Editor shortcuts, copy/paste, bone transform copy/paste, F2 rename, Ctrl+D bone duplicate | [Subsystems/SkinningEditor/SkinningModule](Subsystems/SkinningEditor/SkinningModule.md) | `Editor/SkinningModule/SkinningModuleView.cs`, `Editor/SkinningModule/RenameSelectionWindow.cs` |
 | Geometry toolbar behavior | [Subsystems/SkinningEditor/MeshToolbar](Subsystems/SkinningEditor/MeshToolbar.md) | `Editor/SkinningModule/UI/MeshToolbar.cs`, `Editor/Assets/SkinningModule/MeshToolbar.uxml` |
 | Modify/Create/New/Reset/Generate workflow | [Subsystems/SkinningEditor/GeometryEditing](Subsystems/SkinningEditor/GeometryEditing.md) | `Editor/SkinningModule/MeshTool/**`, `Editor/SkinningModule/IMGUI/SpriteMesh*.cs` |
-| SpriteRenderer Inspector Create/Edit Mesh, floating Scene mesh editor, shared asset Apply/Revert, Unimator styling | [Subsystems/SkinningEditor/SceneMeshEditing](Subsystems/SkinningEditor/SceneMeshEditing.md) | `Editor/SkinningModule/SceneMesh/**`, `Editor/Assets/SkinningModule/SceneEditMeshWindow.*`, `SceneMeshInspector.uss`, `SceneMeshIcons/**` |
+| SpriteRenderer Inspector Create/Edit Mesh, Deformed live animation editing, floating Scene mesh editor, shared asset saves, Unimator styling | [Subsystems/SkinningEditor/SceneMeshEditing](Subsystems/SkinningEditor/SceneMeshEditing.md) | `Editor/SkinningModule/SceneMesh/**`, `SceneMeshDeformation.cs`, `Editor/Assets/SkinningModule/SceneEditMeshWindow.*`, `SceneMeshInspector.uss`, `SceneMeshIcons/**` |
 | Scene mesh save latency, PSB import measurements and unchanged-save guard | [Subsystems/SkinningEditor/SceneMeshSavePerformance](Subsystems/SkinningEditor/SceneMeshSavePerformance.md) | `SceneMeshSource.WriteMesh`, `SceneEditMeshWindow.Apply`, `Tests/Editor/SceneMeshEditingTests.cs` |
 | Skeleton bone drawing and Create Bone behavior | [Subsystems/SkinningEditor/SkeletonBoneEditing](Subsystems/SkinningEditor/SkeletonBoneEditing.md) | `Editor/SkinningModule/IMGUI/SkeletonView.cs`, `Editor/SkinningModule/IMGUI/SkeletonController.cs`, `Editor/SkinningModule/BoneDrawingUtility.cs` |
-| SpriteRenderer, character root and bone Inspector Edit Bone, Name and animation binding rename, mesh versus skeleton-only entry, Create/Split/Set Parent and shared Sprite/PSB saves | [Subsystems/SkinningEditor/SceneBoneEditing](Subsystems/SkinningEditor/SceneBoneEditing.md) | `Editor/SkinningModule/SceneMesh/SceneBoneInspector.cs`, `SceneEditBoneWindow.cs`, `SceneBoneSession.cs`, `SceneBoneRenamePlan.cs`, `SkinningModule.ApplySceneBoneChanges`, `Tests/Editor/SceneBoneEditingTests.cs` |
+| SpriteRenderer, character root and bone Inspector Edit Bones, live animated scene-pose editing, Name and animation binding rename, mesh versus skeleton-only entry, Create/Split/Set Parent and shared Sprite/PSB saves | [Subsystems/SkinningEditor/SceneBoneEditing](Subsystems/SkinningEditor/SceneBoneEditing.md) | `Editor/SkinningModule/SceneMesh/SceneBoneInspector.cs`, `SceneEditBoneWindow.cs`, `SceneBoneSession.cs`, `SceneBoneRenamePlan.cs`, `SkinningModule.ApplySceneBoneChanges`, `Tests/Editor/SceneBoneEditingTests.cs` |
 | Bone display size and color preferences | [Subsystems/SkinningEditor/SkeletonBoneEditing](Subsystems/SkinningEditor/SkeletonBoneEditing.md) | `Editor/SkinningModule/UserSettings.cs`, `Editor/SkinningModule/BoneColorUtility.cs`, `Editor/SpriteSkin/BoneGizmo.cs` |
 | Alt temporary mode switching | [Subsystems/SkinningEditor/AltInputModeSwitching](Subsystems/SkinningEditor/AltInputModeSwitching.md) | `SkinningEditorInput.cs`, `MeshToolWrapper.cs`, `MeshToolbar.cs` |
 | Reset geometry command | [Subsystems/SkinningEditor/ResetGeometry](Subsystems/SkinningEditor/ResetGeometry.md) | `SkinningModuleView.cs`, `SpriteMeshDataController.cs`, `MeshCache.cs` |
@@ -52,6 +52,7 @@
 | `SpriteMeshDataController` | Geometry data mutation and triangulation helper | `Editor/SkinningModule/SpriteMeshData/SpriteMeshDataController.cs` |
 | `SkeletonView` | Low-level IMGUI hit testing, action activation, and bone drawing bridge | `Editor/SkinningModule/IMGUI/SkeletonView.cs` |
 | `SkeletonController` | Bone selection, transform, creation, split, remove, and skeleton event handling | `Editor/SkinningModule/IMGUI/SkeletonController.cs` |
+| `SceneEditBoneWindow` / `SceneBoneSession` | Edit Bones popup, live Scene pose projection, staged source-skeleton edits and saving | `Editor/SkinningModule/SceneMesh/SceneEditBoneWindow.cs`, `Editor/SkinningModule/SceneMesh/SceneBoneSession.cs` |
 | `MeshCache` | Per-sprite mesh data and bone compatibility adapter | `Editor/SkinningModule/SkinningCache/MeshCache.cs` |
 | `BaseSpriteMeshData` | Serialized vertices, weights, edges, indices, outline edges | `Editor/SkinningModule/SpriteMeshData/SpriteMeshData.cs` |
 | `CopyTool` | Copy/paste data workflows including mirrored geometry paste | `Editor/SkinningModule/CopyTool.cs` |
@@ -73,6 +74,7 @@
 - A shared compatibility layer targets Unity 6000.0–6000.6; the exact tested versions and remaining verification limits are listed in [Unity Version Compatibility](Architecture/UnityVersionCompatibility.md).
 - The expected development branch is `codex/skinning-editor-fork`.
 - The local Unity test project can consume the package through a `file:` dependency pointed at this repository.
+- The Scene **Edit Bones** popup uses `EditBone.png` in its header and follows live scene bone Transforms during Edit Mode animation playback/scrubbing. Source-skeleton edits survive frame changes; playback alone stays clean. See [Scene Bone Editing](Subsystems/SkinningEditor/SceneBoneEditing.md#editing-during-scene-animation).
 - The Geometry toolbar labels are customized as `Modify`, `Create`, `New`, `Reset`, `Generate`.
 - `New` deletes the current mesh and enters an open hull-authoring mode modeled after Spine 2D.
 - In `New`, the selected sprite remains fully visible, unselected sprites are dimmed, and border clicks are allowed slightly outside the sprite frame and clamped to the frame.

@@ -86,6 +86,143 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.AreEqual(.4f, m_Session.Values(1)[0]); Assert.AreEqual(0, m_Session.Values(1)[4]);
         }
 
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(3)]
+        [TestCase(4)]
+        public void DirectCanIntroduceZeroWeightBoneWithFourExistingInfluences(int lockCount)
+        {
+            const float amount = .0003625f; // One pixel at the reported 14.5% strength.
+            var before = m_Session.Values(0);
+            var untouched = JsonUtility.ToJson(m_Session.mesh.vertexWeights[1]);
+            m_Session.vertices.elements = new[] { 0 };
+            m_Session.SelectBone(m_Session.mesh.bones[4], false);
+            for (var i = 0; i < lockCount; ++i) m_Session.ToggleLock(m_Session.mesh.bones[i]);
+            using (m_Session.cache.UndoScope("Drag Vertex Weights"))
+            {
+                foreach (var vertex in m_Session.targets) m_Session.Adjust(vertex, m_Session.selectedBones, amount);
+                m_Session.Changed();
+            }
+            Undo.FlushUndoRecordObjects();
+            var after = m_Session.Values(0);
+            var expected = lockCount == 4 ? 0 : lockCount == 3 ? 1 - before.Take(3).Sum() : amount;
+            Assert.That(after[4], Is.EqualTo(expected).Within(.000001f));
+            for (var i = 0; i < lockCount; ++i) Assert.AreEqual(before[i], after[i]);
+            Assert.That(after.Sum(), Is.EqualTo(1).Within(.00001f));
+            Assert.That(after.Count(value => value > 0), Is.LessThanOrEqualTo(4));
+            Assert.AreEqual(untouched, JsonUtility.ToJson(m_Session.mesh.vertexWeights[1]));
+            if (lockCount == 4) { Assert.IsFalse(m_Session.dirty); return; }
+            Assert.IsTrue(m_Session.dirty);
+            Undo.PerformUndo(); m_Session.context.RestoreAfterUndo();
+            CollectionAssert.AreEqual(before, m_Session.Values(0));
+            Assert.IsFalse(m_Session.dirty);
+        }
+
+        [Test]
+        public void DirectSmallStepsAccumulateAndReverseWithoutSliderInitialization()
+        {
+            m_Session.SelectBone(m_Session.mesh.bones[4], false);
+            for (var i = 0; i < 10; ++i) m_Session.Adjust(0, m_Session.selectedBones, .001f);
+            Assert.That(m_Session.Values(0)[4], Is.EqualTo(.01f).Within(.000001f));
+            m_Session.Adjust(0, m_Session.selectedBones, -.004f);
+            Assert.That(m_Session.Values(0)[4], Is.EqualTo(.006f).Within(.000001f));
+            Assert.That(m_Session.Values(0).Sum(), Is.EqualTo(1).Within(.00001f));
+        }
+
+        [Test]
+        public void RowCanSetSmallWeightOnFifthBoneExactly()
+        {
+            m_Session.vertices.elements = new[] { 0 };
+            m_Session.SetRow(4, .001f);
+            Assert.That(m_Session.Values(0)[4], Is.EqualTo(.001f).Within(.000001f));
+            Assert.That(m_Session.Values(0)[3], Is.Zero);
+            Assert.That(m_Session.Values(0)[0] / m_Session.Values(0)[1], Is.EqualTo(4f / 3f).Within(.00001f));
+            Assert.That(m_Session.Values(0).Sum(), Is.EqualTo(1).Within(.00001f));
+        }
+
+        [Test]
+        public void DirectReservesSlotsForMultipleSelectedBones()
+        {
+            m_Session.Adjust(0, new[] { 0, 4 }, .001f);
+            Assert.That(m_Session.Values(0)[0], Is.EqualTo(.401f).Within(.000001f));
+            Assert.That(m_Session.Values(0)[4], Is.EqualTo(.001f).Within(.000001f));
+            Assert.That(m_Session.Values(0)[3], Is.Zero);
+            Assert.That(m_Session.Values(0).Sum(), Is.EqualTo(1).Within(.00001f));
+            Assert.That(m_Session.Values(0).Count(value => value > 0), Is.EqualTo(4));
+        }
+
+        [Test]
+        public void RowReversingFullTransferRestoresPreviousDonor()
+        {
+            m_Session.vertices.elements = new[] { 0 };
+            m_Session.SetRow(3, 1);
+            m_Session.SetRow(4, 1);
+            Assert.That(m_Session.Values(0)[4], Is.EqualTo(1));
+            m_Session.SetRow(4, 0);
+            Assert.That(m_Session.Values(0)[3], Is.EqualTo(1));
+            Assert.That(m_Session.Values(0).Count(value => value > 0), Is.EqualTo(1));
+            Assert.That(m_Session.Values(1)[3], Is.EqualTo(.1f));
+        }
+
+        [Test]
+        public void DirectReversingAtFullWeightRestoresDonorProportions()
+        {
+            var weight = m_Session.mesh.vertexWeights[0];
+            weight.Clear(); weight.AddChannel(2, .6f, true); weight.AddChannel(3, .4f, true);
+            m_Session.Adjust(0, new[] { 4 }, 1);
+            m_Session.Adjust(0, new[] { 4 }, .1f); // Continue upward at the clamp.
+            m_Session.Adjust(0, new[] { 4 }, -.001f);
+            Assert.That(m_Session.Values(0)[2], Is.EqualTo(.0006f).Within(.000001f));
+            Assert.That(m_Session.Values(0)[3], Is.EqualTo(.0004f).Within(.000001f));
+            m_Session.Adjust(0, new[] { 4 }, -1);
+            Assert.That(m_Session.Values(0)[2], Is.EqualTo(.6f).Within(.00001f));
+            Assert.That(m_Session.Values(0)[3], Is.EqualTo(.4f).Within(.00001f));
+            Assert.That(m_Session.Values(0)[0], Is.Zero);
+            Assert.That(m_Session.Values(0)[1], Is.Zero);
+        }
+
+        [Test]
+        public void FullTransferRemembersDonorsIndependentlyForEachVertex()
+        {
+            m_Session.vertices.elements = new[] { 0 }; m_Session.SetRow(3, 1);
+            m_Session.vertices.elements = new[] { 1 }; m_Session.SetRow(2, 1);
+            m_Session.vertices.elements = new[] { 0, 1 };
+            m_Session.SetRow(4, 1); m_Session.SetRow(4, 0);
+            Assert.That(m_Session.Values(0)[3], Is.EqualTo(1));
+            Assert.That(m_Session.Values(1)[2], Is.EqualTo(1));
+        }
+
+        [Test]
+        public void FullTransferDonorHistorySurvivesUndoAndRedo()
+        {
+            m_Session.vertices.elements = new[] { 0 }; m_Session.SetRow(3, 1);
+            Undo.FlushUndoRecordObjects(); Undo.IncrementCurrentGroup();
+            m_Session.SetRow(4, 1);
+            Undo.FlushUndoRecordObjects(); Undo.IncrementCurrentGroup();
+            m_Session.SetRow(4, .5f);
+            Undo.FlushUndoRecordObjects();
+            Undo.PerformUndo(); m_Session.context.RestoreAfterUndo();
+            Assert.That(m_Session.Values(0)[4], Is.EqualTo(1));
+            Undo.PerformRedo(); m_Session.context.RestoreAfterUndo();
+            Assert.That(m_Session.Values(0)[3], Is.EqualTo(.5f).Within(.00001f));
+            Undo.PerformUndo(); m_Session.context.RestoreAfterUndo();
+            m_Session.SetRow(4, 0);
+            Assert.That(m_Session.Values(0)[3], Is.EqualTo(1));
+        }
+
+        [Test]
+        public void SwapDiscardsPreviousManualDonorHistory()
+        {
+            m_Session.vertices.elements = new[] { 0 }; m_Session.SetRow(3, 1); m_Session.SetRow(4, 1);
+            m_Session.SelectBone(m_Session.mesh.bones[2], false);
+            m_Session.SelectBone(m_Session.mesh.bones[4], true);
+            m_Session.Swap();
+            m_Session.SetRow(4, .5f); m_Session.SetRow(4, 1); m_Session.SetRow(4, 0);
+            Assert.That(m_Session.Values(0)[2], Is.EqualTo(1));
+            Assert.That(m_Session.Values(0)[3], Is.Zero);
+        }
+
         [Test]
         public void RemovePreservesSkeletonAndGeometryAndPersistsBindings()
         {

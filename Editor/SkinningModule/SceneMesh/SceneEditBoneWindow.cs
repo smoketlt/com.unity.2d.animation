@@ -24,6 +24,7 @@ namespace UnityEditor.U2D.Animation
         string m_Error;
         string m_DisplayedNameGuid;
         string m_DisplayedNameValue;
+        double m_NextPoseRefresh;
 
         sealed class SceneBoneGUI : GUIWrapper
         {
@@ -51,7 +52,7 @@ namespace UnityEditor.U2D.Animation
                 var character = characterProvider != null && characterProvider.GetCharacterData().bones != null;
                 OpenForRenderer(renderer, boneGuid, skeletonOnly: character);
             }
-            catch (Exception ex) { EditorUtility.DisplayDialog("Edit Bone", ex.Message, "OK"); }
+            catch (Exception ex) { EditorUtility.DisplayDialog("Edit Bones", ex.Message, "OK"); }
         }
 
         internal static void OpenForRenderer(SpriteRenderer renderer, string boneGuid = null, bool skeletonOnly = false)
@@ -65,7 +66,7 @@ namespace UnityEditor.U2D.Animation
                     throw new InvalidOperationException("Bone editing is available in Edit Mode.");
                 var path = UniskinRigUtility.SourcePath(renderer.sprite);
                 if (SkinningModule.IsEditingAsset(path))
-                    throw new InvalidOperationException("Close Skinning Editor for this asset before opening Edit Bone.");
+                    throw new InvalidOperationException("Close Skinning Editor for this asset before opening Edit Bones.");
                 foreach (var meshWindow in Resources.FindObjectsOfTypeAll<SceneEditMeshWindow>())
                     if (!meshWindow.RequestClose()) return;
                 foreach (var weightWindow in Resources.FindObjectsOfTypeAll<SceneEditWeightsWindow>())
@@ -104,7 +105,7 @@ namespace UnityEditor.U2D.Animation
             catch (Exception ex)
             {
                 if (opening != null) DestroyImmediate(opening);
-                EditorUtility.DisplayDialog("Edit Bone", ex.Message, "OK");
+                EditorUtility.DisplayDialog("Edit Bones", ex.Message, "OK");
             }
         }
 
@@ -119,7 +120,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnEnable()
         {
-            titleContent = new GUIContent("Edit Bone");
+            titleContent = new GUIContent("Edit Bones", ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/EditBone.png"));
             minSize = new Vector2(340, 50) / Mathf.Max(1f, EditorGUIUtility.pixelsPerPoint);
             if (m_Session == null)
             {
@@ -137,6 +138,7 @@ namespace UnityEditor.U2D.Animation
             SceneView.duringSceneGui += OnSceneGUI;
             Undo.undoRedoPerformed += OnUndoRedo;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
+            EditorApplication.update += UpdateScenePose;
         }
 
         void SetupController()
@@ -158,12 +160,13 @@ namespace UnityEditor.U2D.Animation
                 m_Renderer != null && m_Renderer.sprite != null && m_Session != null && m_Session.cache != null && m_Session.dirty)
             {
                 try { m_Session.Save(new SceneMeshSource(m_Renderer.sprite)); }
-                catch (Exception exception) { Debug.LogError("Edit Bone auto-save failed: " + exception.Message); }
+                catch (Exception exception) { Debug.LogError("Edit Bones auto-save failed: " + exception.Message); }
             }
             Selection.selectionChanged -= OnSelectionChanged;
             SceneView.duringSceneGui -= OnSceneGUI;
             Undo.undoRedoPerformed -= OnUndoRedo;
             EditorApplication.playModeStateChanged -= OnPlayModeChanged;
+            EditorApplication.update -= UpdateScenePose;
             m_Controller?.Reset();
             RestoreTool();
         }
@@ -176,9 +179,12 @@ namespace UnityEditor.U2D.Animation
             m_DisplayedNameGuid = null;
             m_DisplayedNameValue = null;
             var template = ResourceLoader.Load<VisualTreeAsset>("SkinningModule/SceneEditBoneWindow.uxml");
-            if (template == null) { rootVisualElement.Add(new Label("Edit Bone UI could not be loaded.")); return; }
+            if (template == null) { rootVisualElement.Add(new Label("Edit Bones UI could not be loaded.")); return; }
             template.CloneTree(rootVisualElement);
-            rootVisualElement.Q<Label>("windowTitle").text = m_Session.skeletonOnly ? "Edit Bone — Skeleton" : "Edit Bone";
+            rootVisualElement.Q<Image>("windowIcon").image = titleContent.image;
+            rootVisualElement.Q<Label>("windowTitle").text = m_Session.skeletonOnly ? "Edit Bones — Skeleton" : "Edit Bones";
+            var iconSize = 16f / Mathf.Max(1f, EditorGUIUtility.pixelsPerPoint);
+            rootVisualElement.Q("windowIcon").style.width = rootVisualElement.Q("windowIcon").style.height = iconSize;
             SceneMeshWindowStyle.Configure(rootVisualElement, this, () => RequestClose());
             Bind("create", "Bone_Create", 1);
             Bind("split", "Bone_Split", 2);
@@ -226,9 +232,9 @@ namespace UnityEditor.U2D.Animation
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode) return "Bone editing is available in Edit Mode.";
             if (m_Renderer == null || m_Renderer.sprite == null || m_Session == null || m_Session.cache == null) return "The entry SpriteRenderer is unavailable.";
-            if (m_Source == null) return m_Error ?? "The Sprite importer is unavailable. Close and reopen Edit Bone.";
+            if (m_Source == null) return m_Error ?? "The Sprite importer is unavailable. Close and reopen Edit Bones.";
             if (UniskinRigUtility.SourcePath(m_Renderer.sprite) != m_Session.assetPath || m_Renderer.sprite.GetSpriteID().ToString() != m_Session.spriteId)
-                return "The renderer's Sprite changed. Close and reopen Edit Bone.";
+                return "The renderer's Sprite changed. Close and reopen Edit Bones.";
             if (m_Renderer.drawMode != SpriteDrawMode.Simple) return "Set SpriteRenderer Draw Mode to Simple.";
             if (Mathf.Abs(m_Renderer.transform.lossyScale.x) < 0.000001f || Mathf.Abs(m_Renderer.transform.lossyScale.y) < 0.000001f)
                 return "The SpriteRenderer needs non-zero X and Y scale.";
@@ -295,6 +301,7 @@ namespace UnityEditor.U2D.Animation
         void OnSceneGUI(SceneView scene)
         {
             if (m_Saving || BlockReason() != null || m_Controller == null) return;
+            if (Event.current.type == EventType.Layout) m_Session.RefreshScenePose(m_Renderer, m_Source.rect.rect);
             if (!m_OwnsTool) { m_PreviousTool = UnityEditor.Tools.current; UnityEditor.Tools.current = Tool.None; m_OwnsTool = true; }
             var evt = Event.current;
             if (evt.alt || evt.button == 1 || evt.button == 2) return;
@@ -325,6 +332,13 @@ namespace UnityEditor.U2D.Animation
             }
             if (evt.rawType == EventType.MouseUp || GUIUtility.hotControl == 0) m_Session.cache.EndUndoOperation();
             if (evt.type != EventType.Layout && evt.type != EventType.Repaint) { UpdateUI(); scene.Repaint(); }
+        }
+
+        void UpdateScenePose()
+        {
+            if (EditorApplication.timeSinceStartup < m_NextPoseRefresh || m_Saving || BlockReason() != null) return;
+            m_NextPoseRefresh = EditorApplication.timeSinceStartup + 1.0 / 30.0;
+            if (m_Session.RefreshScenePose(m_Renderer, m_Source.rect.rect)) SceneView.RepaintAll();
         }
 
         void DeleteSelection()
@@ -382,7 +396,7 @@ namespace UnityEditor.U2D.Animation
                 m_Session.sourceFingerprint = SceneBoneSession.Fingerprint(m_Source);
                 m_Error = null; return true;
             }
-            catch (Exception ex) { m_Error = ex.Message; EditorUtility.DisplayDialog("Edit Bone", ex.Message, "OK"); return false; }
+            catch (Exception ex) { m_Error = ex.Message; EditorUtility.DisplayDialog("Edit Bones", ex.Message, "OK"); return false; }
             finally { m_Saving = false; rootVisualElement.SetEnabled(true); UpdateUI(); SceneView.RepaintAll(); }
         }
 

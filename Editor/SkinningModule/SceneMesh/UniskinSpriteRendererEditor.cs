@@ -76,7 +76,7 @@ namespace Fedorov.Uniskin
             var boneIcon = new Image { image = ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/EditBone.png"), pickingMode = PickingMode.Ignore };
             boneIcon.AddToClassList("uniskin-inspector-icon");
             boneButton.Insert(0, boneIcon);
-            boneButton.Add(new Label("Edit Bone") { pickingMode = PickingMode.Ignore });
+            boneButton.Add(new Label("Edit Bones") { pickingMode = PickingMode.Ignore });
             root.Add(boneButton);
             var weightsButton = new Button(() =>
             {
@@ -88,19 +88,8 @@ namespace Fedorov.Uniskin
             weightsButton.Add(weightsIcon);
             weightsButton.Add(new Label("Edit Weights") { pickingMode = PickingMode.Ignore });
             root.Add(weightsButton);
-            var rigButton = new Button(() => RunRigAction(renderer =>
-            {
-                var rig = UniskinRigUtility.Find(renderer.sprite) ?? UniskinRigUtility.Create(renderer.sprite);
-                if (rig != null) { UniskinRigUtility.Enable(rig); EditorGUIUtility.PingObject(rig); }
-            })) { name = "uniskinUseRig", text = "Create UniskinRig" };
-            var bakeButton = new Button(() => RunRigAction(renderer => UniskinRigUtility.Bake(UniskinRigUtility.Find(renderer.sprite))))
-                { name = "uniskinBakeRig", text = "Bake to PSB" };
-            var psbButton = new Button(() => RunRigAction(renderer => UniskinRigUtility.UsePsb(UniskinRigUtility.Find(renderer.sprite))))
-                { name = "uniskinUsePsb", text = "Bake and Use PSB" };
-            var skinningButton = new Button(() => RunRigAction(renderer => UniskinRigUtility.OpenSkinningEditor(UniskinRigUtility.Find(renderer.sprite))))
-                { name = "uniskinOpenSkinning", text = "Skinning Editor (PSB)" };
-            root.Add(rigButton); root.Add(bakeButton); root.Add(psbButton); root.Add(skinningButton);
-            foreach (var action in new[] { rigButton, bakeButton, psbButton, skinningButton }) action.AddToClassList("uniskin-rig-action");
+            var rigControls = new UniskinRigInspectorControls(() => (target as SpriteRenderer)?.sprite);
+            root.Add(rigControls);
             void Refresh()
             {
                 var renderer = target as SpriteRenderer;
@@ -124,31 +113,12 @@ namespace Fedorov.Uniskin
                 button.SetEnabled(targets.Length == 1 && m_Supported && !EditorApplication.isPlayingOrWillChangePlaymode);
                 boneButton.SetEnabled(targets.Length == 1 && m_Supported && !EditorApplication.isPlayingOrWillChangePlaymode);
                 weightsButton.SetEnabled(targets.Length == 1 && m_Supported && m_HasMesh && !EditorApplication.isPlayingOrWillChangePlaymode);
-                var psb = sprite != null && UniskinRigUtility.SourcePath(sprite).EndsWith(".psb", StringComparison.OrdinalIgnoreCase);
-                rigButton.text = rig == null ? "Create UniskinRig" : "Use UniskinRig";
-                rigButton.style.display = psb && (rig == null || !rig.editingEnabled) ? DisplayStyle.Flex : DisplayStyle.None;
-                rigButton.SetEnabled(targets.Length == 1 && m_Supported && !EditorApplication.isPlayingOrWillChangePlaymode);
-                bakeButton.style.display = psb && rig != null ? DisplayStyle.Flex : DisplayStyle.None;
-                psbButton.style.display = skinningButton.style.display = psb && rig != null && rig.editingEnabled ? DisplayStyle.Flex : DisplayStyle.None;
-                bakeButton.SetEnabled(targets.Length == 1 && rig != null && rig.hasUnbakedChanges && !EditorApplication.isPlayingOrWillChangePlaymode);
-                psbButton.SetEnabled(targets.Length == 1 && !EditorApplication.isPlayingOrWillChangePlaymode);
-                skinningButton.SetEnabled(targets.Length == 1 && !EditorApplication.isPlayingOrWillChangePlaymode);
+                rigControls.Refresh(sprite, targets.Length == 1 && m_Supported);
                 icon.image = ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/" + (edit ? "EditMesh" : "CreateMesh") + ".png");
             }
             root.schedule.Execute(Refresh).Every(200);
             Refresh();
             return root;
-        }
-
-        void RunRigAction(Action<SpriteRenderer> action)
-        {
-            var renderer = target as SpriteRenderer;
-            EditorApplication.delayCall += () =>
-            {
-                if (renderer == null || renderer.sprite == null) return;
-                try { action(renderer); }
-                catch (Exception exception) { EditorUtility.DisplayDialog("UniskinRig", exception.Message, "OK"); }
-            };
         }
 
         void OnSceneGUI()

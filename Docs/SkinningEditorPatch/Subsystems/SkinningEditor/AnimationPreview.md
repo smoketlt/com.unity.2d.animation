@@ -55,6 +55,10 @@ AnimationClip positions are stored in Unity units, while Skinning Editor bone po
 
 Animation Preview intentionally ignores non-Transform AnimationClip bindings, including Sprite Swap, component properties, animation events, and root-motion processing. Constraints continue to use the existing Skinning Editor constraint preview pass after the sampled bone pose is applied.
 
+## Scene Edit Bones animation workflow
+
+For the floating **Edit Bones** popup, see [Editing during Scene animation](SceneBoneEditing.md#editing-during-scene-animation). That host follows the character's current scene bone Transforms while animation plays or is scrubbed in Edit Mode. It preserves staged source-skeleton edits across frames and keeps playback from creating pending source changes. It uses `SceneBoneSession.RefreshScenePose`; the Skinning Editor timeline described above uses `AnimationPreviewController` and its own temporary cache. Scene editing remains blocked while Skinning Editor is open for the same source asset.
+
 ## Change Risks
 
 - Bone names and hierarchy paths must remain compatible with the clip. Renamed or structurally different bones will be reported as unmatched.

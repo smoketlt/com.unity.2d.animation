@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using NUnit.Framework;
+using Unity.Collections;
 using UnityEditor.U2D.Animation.ClipperLib;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
 using UnityEngine.U2D;
+using UnityEngine.U2D.Animation;
 using UnityEngine.UIElements;
 using Object = UnityEngine.Object;
 
@@ -511,6 +513,146 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void DeformedSpriteSkinMappingMatchesRuntimeWithScaledSourceAndRendererFlips()
+        {
+            var session = Quad();
+            var texture = new Texture2D(16, 16);
+            var sprite = Sprite.Create(texture, new Rect(0, 0, 16, 16), new Vector2(0.3f, 0.6f), 10);
+            var root = new GameObject("Transient mesh deformation test") { hideFlags = HideFlags.HideAndDontSave };
+            try
+            {
+                root.SetActive(false);
+                var renderer = root.AddComponent<SpriteRenderer>();
+                renderer.sprite = sprite;
+                renderer.flipX = renderer.flipY = true;
+                root.transform.position = new Vector3(8, -4, 0);
+                root.transform.rotation = Quaternion.Euler(0, 0, 32);
+                root.transform.localScale = new Vector3(1.5f, 0.7f, 1);
+                var bone = new GameObject("Transient test bone") { hideFlags = HideFlags.HideAndDontSave };
+                bone.transform.SetParent(root.transform, false);
+                bone.transform.localPosition = new Vector3(0.2f, -0.3f, 0);
+                var bindPose = bone.transform.worldToLocalMatrix * root.transform.localToWorldMatrix;
+                using (var bindPoses = new NativeArray<Matrix4x4>(new[] { bindPose }, Allocator.Temp))
+                    sprite.SetBindPoses(bindPoses);
+                sprite.SetBones(new[] { new SpriteBone { name = "Transient test bone", parentId = -1, rotation = Quaternion.identity, length = 1 } });
+                var skin = root.AddComponent<SpriteSkin>();
+                skin.SetRootBone(bone.transform);
+                skin.SetBoneTransforms(new[] { bone.transform });
+                session.mesh.bones.Add(new SpriteBoneData());
+                foreach (var weight in session.mesh.vertexWeights)
+                    weight.SetFromBoneWeight(new BoneWeight { boneIndex0 = 0, weight0 = 1 });
+                session.savedMesh = JsonUtility.ToJson(session.mesh);
+                bone.transform.localPosition += new Vector3(0.4f, 0.6f, 0);
+                bone.transform.localRotation = Quaternion.Euler(0, 0, -43);
+                var before = bone.transform.localToWorldMatrix;
+                var displayed = SceneMeshDeformation.Create(renderer, session.mesh);
+                Assert.IsNotNull(displayed);
+                var draw = SceneMeshSession.PixelToWorld(renderer, session.mesh.frame);
+                for (var i = 0; i < session.mesh.vertexCount; ++i)
+                {
+                    var sourceLocal = ((Vector3)(session.mesh.vertices[i] * 0.5f - sprite.pivot)) / sprite.pixelsPerUnit;
+                    var expectedLocal = (root.transform.worldToLocalMatrix * before * bindPose).MultiplyPoint3x4(sourceLocal);
+                    expectedLocal.x = -expectedLocal.x;
+                    expectedLocal.y = -expectedLocal.y;
+                    var expected = root.transform.TransformPoint(expectedLocal);
+                    Assert.That(Vector3.Distance(expected, draw.MultiplyPoint3x4(displayed.mesh.vertices[i])), Is.LessThan(0.0001f));
+                }
+                Assert.IsFalse(displayed.Commit(session));
+                Assert.IsFalse(session.dirty);
+                Assert.AreEqual(before, bone.transform.localToWorldMatrix, "Preview must not reset scene bones.");
+                skin.enabled = false;
+                Assert.IsNull(SceneMeshDeformation.Create(renderer, session.mesh));
+            }
+            finally { Object.DestroyImmediate(root); Object.DestroyImmediate(sprite); Object.DestroyImmediate(texture); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void DeformedPlaybackStaysCleanAndEditsSurviveFrameChangesAndUndo()
+        {
+            var session = Quad();
+            try
+            {
+                foreach (var weight in session.mesh.vertexWeights)
+                    weight.SetFromBoneWeight(new BoneWeight { boneIndex0 = 0, weight0 = 1f });
+                session.savedMesh = JsonUtility.ToJson(session.mesh);
+                var original = session.savedMesh;
+                for (var frame = 0; frame < 20; ++frame)
+                {
+                    var pose = Matrix4x4.TRS(new Vector3(frame * 3, frame, 0), Quaternion.Euler(0, 0, frame * 7), Vector3.one);
+                    var displayed = new SceneMeshDeformation(session.mesh, new[] { pose });
+                    Assert.That(Vector2.Distance(displayed.mesh.vertices[2], pose.MultiplyPoint3x4(session.mesh.vertices[2])), Is.LessThan(0.0001f));
+                    Assert.IsFalse(displayed.Commit(session));
+                    Assert.IsFalse(session.dirty, "Sampling alone must not stage mesh changes.");
+                }
+                var editedPose = Matrix4x4.TRS(new Vector3(40, -12, 0), Quaternion.Euler(0, 0, 90), Vector3.one);
+                var editing = new SceneMeshDeformation(session.mesh, new[] { editedPose });
+                session.BeginUndoOperation("Edit Deformed Mesh");
+                editing.mesh.vertices[0] += new Vector2(0, 4);
+                Assert.IsTrue(editing.Commit(session));
+                session.EndUndoOperation();
+                Assert.That(Vector2.Distance(session.mesh.vertices[0], new Vector2(4, 0)), Is.LessThan(0.0001f));
+                Assert.IsTrue(session.dirty);
+                var nextPose = Matrix4x4.Translate(new Vector3(-50, 60, 0));
+                var next = new SceneMeshDeformation(session.mesh, new[] { nextPose });
+                Assert.That(Vector2.Distance(next.mesh.vertices[0], new Vector2(-46, 60)), Is.LessThan(0.0001f));
+                Assert.IsFalse(next.Commit(session));
+                Undo.FlushUndoRecordObjects();
+                Undo.PerformUndo();
+                Assert.AreEqual(original, JsonUtility.ToJson(session.mesh));
+                Assert.IsFalse(session.dirty);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void DeformedMixedWeightsCreationAndDeletionRetainSourceVertices()
+        {
+            var session = Quad();
+            try
+            {
+                foreach (var weight in session.mesh.vertexWeights)
+                    weight.SetFromBoneWeight(new BoneWeight { boneIndex0 = 0, weight0 = 0.25f, boneIndex1 = 1, weight1 = 0.75f });
+                var original = (Vector2[])session.mesh.vertices.Clone();
+                var poses = new[] { Matrix4x4.Translate(new Vector3(8, 0, 0)), Matrix4x4.Translate(new Vector3(0, 12, 0)) };
+                var displayed = new SceneMeshDeformation(session.mesh, poses);
+                Assert.AreEqual(original[0] + new Vector2(2, 9), displayed.mesh.vertices[0]);
+                displayed.mesh.vertices[1] += new Vector2(3, -2);
+                // The shared controller interpolates weights for new triangle/edge vertices.
+                displayed.mesh.AddVertex(new Vector2(18, 25), new BoneWeight { boneIndex0 = 0, weight0 = 0.25f, boneIndex1 = 1, weight1 = 0.75f });
+                var converted = displayed.ToSourceMesh();
+                Assert.AreEqual(new Vector2(16, 16), converted.vertices[4]);
+                Assert.AreEqual(original[1] + new Vector2(3, -2), converted.vertices[1]);
+                Assert.AreEqual(original[2], converted.vertices[2]);
+                Assert.AreEqual(session.mesh.vertexWeights[2].ToBoneWeight(false), converted.vertexWeights[2].ToBoneWeight(false));
+                displayed.mesh.RemoveVertex(0);
+                converted = displayed.ToSourceMesh();
+                Assert.AreEqual(original[2], converted.vertices[1], "Removal must preserve exact coordinates of surviving vertices.");
+                Assert.AreEqual(original[3], converted.vertices[2]);
+            }
+            finally { Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void DeformedCollapsedPoseRejectsEditsAndUnweightedVerticesStayInSourcePlane()
+        {
+            var session = Quad();
+            try
+            {
+                session.mesh.vertexWeights[0].SetFromBoneWeight(new BoneWeight { boneIndex0 = 0, weight0 = 1 });
+                session.savedMesh = JsonUtility.ToJson(session.mesh);
+                var before = JsonUtility.ToJson(session.mesh);
+                var displayed = new SceneMeshDeformation(session.mesh, new[] { Matrix4x4.Scale(new Vector3(0, 1, 1)) });
+                Assert.IsFalse(displayed.Commit(session), "Collapsed playback alone must remain clean.");
+                Assert.AreEqual(session.mesh.vertices[2], displayed.mesh.vertices[2]);
+                displayed.mesh.vertices[0] += Vector2.one;
+                Assert.Throws<InvalidOperationException>(() => displayed.Commit(session));
+                Assert.AreEqual(before, JsonUtility.ToJson(session.mesh));
+                Assert.IsFalse(session.dirty);
+            }
+            finally { Object.DestroyImmediate(session); }
+        }
+
+        [Test]
         public void WindowTemplateHasCommandsAndNativeControls()
         {
             var template = ResourceLoader.Load<VisualTreeAsset>("SkinningModule/SceneEditMeshWindow.uxml");
@@ -526,7 +668,20 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.IsNull(root.Q<Label>("spriteName"));
             Assert.IsNull(root.Q<Label>("status"));
             Assert.AreEqual("Edit Mesh", root.Q<Label>("windowTitle").text);
+            Assert.IsNotNull(root.Q<Image>("windowIcon"));
+            Assert.IsNotNull(ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/CreateMesh.png"));
+            Assert.IsNotNull(root.Q<Toggle>("deformed"));
+            Assert.IsFalse(root.Q<Toggle>("deformed").value);
             foreach (var name in new[] { "apply", "revert", "frame" }) Assert.IsNull(root.Q<Button>(name));
+            var window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
+            try
+            {
+                window.CreateGUI();
+                Assert.AreSame(ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/CreateMesh.png"), window.titleContent.image);
+                Assert.AreSame(window.titleContent.image, window.rootVisualElement.Q<Image>("windowIcon").image);
+                Assert.IsFalse(window.rootVisualElement.Q<Toggle>("deformed").value);
+            }
+            finally { Object.DestroyImmediate(window); }
         }
     }
 }

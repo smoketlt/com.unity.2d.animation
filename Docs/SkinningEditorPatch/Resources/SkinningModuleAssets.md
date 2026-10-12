@@ -30,16 +30,18 @@ Do not rename the UXML element unless all C# lookups, USS selectors, and metadat
 
 ## Panels
 
+- `SceneEditMeshWindow.uxml` / `.uss`: floating **Edit Mesh** popup with Deformed, Triangles, Dim and Isolate toggles. Preserve `windowIcon`, `windowTitle` and `deformed` for C# queries. The native title/header icon uses the existing `SceneMeshIcons/CreateMesh.png`; icon size accounts for editor DPI.
 - `GenerateGeometryPanel.uxml` / `.uss`
 - `GenerateWeightsPanel.uxml` / `.uss`
 - `PastePanel.uxml` / `.uss`
 - `WeightPainterPanel.uxml` / `.uss`
 - `AnimationPreviewPanel.uss` styles the persistent bottom timeline created by `AnimationPreviewPanel.cs`.
 - `VisibilityToolWindow.uxml`
-- `SceneEditBoneWindow.uxml` / `.uss`: floating Scene skeleton popup; shares the Edit Mesh stylesheet and header/height helper. `SceneMeshIcons/Bone_Create.png`, `Bone_Split.png`, and `Bone_SetParent.png` are the user's supplied command icons.
-- `SceneMeshIcons/EditBone.png`: user's supplied 16x16 icon for Edit Bone in both the SpriteRenderer Inspector and the bound bone's GameObject Inspector header.
+- `SceneEditBoneWindow.uxml` / `.uss`: floating **Edit Bones** skeleton popup; shares the Edit Mesh stylesheet and header/height helper. The header contains the `windowIcon` Image, `windowTitle` Label and `closeWindow` Button. Preserve these names for C# queries. `SceneMeshIcons/Bone_Create.png`, `Bone_Split.png`, and `Bone_SetParent.png` are the user's supplied command icons.
+- `SceneMeshIcons/EditBone.png`: user's supplied 16x16 icon for **Edit Bones** in the SpriteRenderer Inspector, the character root/bone GameObject Inspector header, the popup's native title content and its visible `windowIcon`. C# adjusts the header icon dimensions for editor DPI; skeleton-only entry displays **Edit Bones — Skeleton**.
 - `InfluenceWindow.uxml`
-- `SceneMeshInspector.uss` styles the renderer's Mesh/Bone/Weights buttons and the `.uniskin-rig-action` buttons created in C# by `UniskinSpriteRendererEditor` and `UniskinRigEditor`. Rig controls use UI Toolkit; no native UXML element names are replaced.
+- `SceneMeshInspector.uss` styles the renderer's Mesh/Bone/Weights buttons, the shared `UniskinRigInspectorControls` mode/bake block and `.uniskin-rig-action` buttons in `UniskinRigEditor`. These controls use UI Toolkit; no native UXML element names are replaced.
+- `SceneMeshIcons/UniskinLogo.png`, `PsbLogo.png`, `BakeToPsb.png`: supplied rig mode/bake icons. `UniskinRigInspectorControls` uses centered Image/Label buttons, a flexible two-button mode row and a full-width Bake row. The character root header uses the same images/labels through the existing native IMGUI header extension. Preserve `uniskinUseRig`, `uniskinUsePsb` and `uniskinBakeRig`; `uniskinOpenSkinning` is removed from the renderer's rig block.
 - Constraint settings are built in `Editor/SkinningModule/ConstraintsTool.cs` and hosted in the bottom overlay.
 
 ## Shaders

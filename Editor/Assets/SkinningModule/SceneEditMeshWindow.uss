@@ -1,6 +1,7 @@
 .uniskin-mesh-window { flex-grow: 1; color: #CFCFCF; background-color: #1D2228; font-size: 11px; border-width: 1px; border-color: #14171B; }
 .mesh-header { height: 31px; flex-shrink: 0; background-color: #14171B; flex-direction: row; justify-content: flex-end; }
 .mesh-window-title { flex-grow: 1; margin: 0; padding-left: 4px; padding-top: 10px; padding-bottom: 11px; font-size: 10px; }
+.mesh-header > #windowIcon { width: 16px; height: 16px; align-self: center; margin-left: 5px; flex-shrink: 0; }
 .mesh-header > Button { width: 19px; min-width: 19px; margin: 6px 5px 6px 0; font-size: 14px; }
 .mesh-body { flex-grow: 0; flex-shrink: 0; padding: 4px; }
 .mesh-block { flex-shrink: 0; background-color: #22272E; padding: 6px 3px 3px 4px; }
@@ -16,6 +17,7 @@
 .uniskin-mesh-window #commandIcon { width: 16px; height: 16px; margin-right: 4px; flex-shrink: 0; }
 .mesh-options { margin-top: 4px; justify-content: center; }
 .mesh-options > Toggle { flex-grow: 0; flex-shrink: 0; margin: 0 10px; }
+.uniskin-edit-mesh .mesh-options > Toggle { margin-left: 4px; margin-right: 4px; }
 .mesh-options > Toggle > .unity-base-field__label { display: none; }
 .mesh-options > Toggle > .unity-toggle__input { flex-grow: 0; flex-shrink: 0; justify-content: flex-start; }
 .mesh-options .unity-toggle__text { margin-left: 4px; margin-right: 0; }

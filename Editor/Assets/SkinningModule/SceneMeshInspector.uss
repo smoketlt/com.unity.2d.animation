@@ -2,4 +2,8 @@
 #uniskinEditBone { height: 24px; flex-direction: row; justify-content: center; align-items: center; margin-top: 4px; }
 #uniskinEditWeights { height: 24px; flex-direction: row; justify-content: center; align-items: center; margin-top: 4px; }
 .uniskin-inspector-icon { width: 16px; height: 16px; margin-right: 4px; flex-shrink: 0; }
-.uniskin-rig-action { height: 24px; margin-top: 4px; }
+.uniskin-rig-action { height: 24px; margin-top: 4px; flex-direction: row; justify-content: center; align-items: center; }
+.uniskin-rig-mode-row { flex-direction: row; }
+.uniskin-rig-mode-row > .uniskin-rig-action { flex-grow: 1; flex-basis: 0; }
+.uniskin-rig-current { border-color: rgb(60, 130, 190); }
+.uniskin-rig-hidden { display: none; }

@@ -15,6 +15,7 @@ namespace UnityEditor.U2D.Animation
         [SerializeField] bool m_Triangles = true;
         [SerializeField] bool m_Dim;
         [SerializeField] bool m_Isolate;
+        [SerializeField] bool m_Deformed;
         [SerializeField] float m_Detail = 0.5f;
         [SerializeField] int m_Alpha = 10;
         [SerializeField] bool m_TraceActive;
@@ -48,6 +49,7 @@ namespace UnityEditor.U2D.Animation
         bool m_MeshMutationInProgress;
         bool m_SaveInProgress;
         string m_LastImporterFingerprint;
+        double m_NextPoseRepaint;
 
         sealed class SceneGUIWrapper : GUIWrapper
         {
@@ -131,7 +133,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnEnable()
         {
-            titleContent = new GUIContent("Edit Mesh");
+            titleContent = new GUIContent("Edit Mesh", ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/CreateMesh.png"));
             minSize = new Vector2(340, 50) / Mathf.Max(1f, EditorGUIUtility.pixelsPerPoint);
             if (m_Session == null)
             {
@@ -152,6 +154,7 @@ namespace UnityEditor.U2D.Animation
             Undo.undoRedoPerformed += OnUndoRedo;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             EditorApplication.update += PollAltInput;
+            EditorApplication.update += UpdateScenePose;
             if (m_Renderer != null && m_Renderer.sprite != null)
                 RefreshSource();
         }
@@ -180,6 +183,7 @@ namespace UnityEditor.U2D.Animation
             Undo.undoRedoPerformed -= OnUndoRedo;
             EditorApplication.playModeStateChanged -= OnPlayModeChanged;
             EditorApplication.update -= PollAltInput;
+            EditorApplication.update -= UpdateScenePose;
             RestoreScene();
             if (m_ImageMesh != null) DestroyImmediate(m_ImageMesh);
             if (m_ImageMaterial != null) DestroyImmediate(m_ImageMaterial);
@@ -200,6 +204,10 @@ namespace UnityEditor.U2D.Animation
                 return;
             }
             template.CloneTree(rootVisualElement);
+            rootVisualElement.Q(className: "uniskin-mesh-window").AddToClassList("uniskin-edit-mesh");
+            var icon = rootVisualElement.Q<Image>("windowIcon");
+            icon.image = titleContent.image;
+            icon.style.width = icon.style.height = 16f / Mathf.Max(1f, EditorGUIUtility.pixelsPerPoint);
             SceneMeshWindowStyle.Configure(rootVisualElement, this, () => RequestClose());
             Bind("modify", () => SetMode(0));
             Bind("create", () => SetMode(1));
@@ -224,6 +232,7 @@ namespace UnityEditor.U2D.Animation
             BindToggle("triangles", m_Triangles, value => m_Triangles = value);
             BindToggle("dim", m_Dim, value => m_Dim = value);
             BindToggle("isolate", m_Isolate, value => { m_Isolate = value; RestoreVisibility(); });
+            BindToggle("deformed", m_Deformed, value => m_Deformed = value);
             var detail = rootVisualElement.Q<Slider>("detail");
             detail.SetValueWithoutNotify(m_Detail);
             detail.RegisterValueChangedCallback(evt => { m_Detail = evt.newValue; Trace(true); });
@@ -305,6 +314,17 @@ namespace UnityEditor.U2D.Animation
             UpdateUI();
             SceneView.RepaintAll();
         }
+
+        void UpdateScenePose()
+        {
+            if (!m_Deformed || m_TraceActive || m_SaveInProgress || m_MeshMutationInProgress ||
+                m_Renderer == null || m_Renderer.sprite == null || EditorApplication.timeSinceStartup < m_NextPoseRepaint) return;
+            m_NextPoseRepaint = EditorApplication.timeSinceStartup + 1.0 / 30.0;
+            SceneView.RepaintAll();
+        }
+
+        SceneMeshDeformation Deformation() => m_Deformed && !m_TraceActive && m_Session.mode != 3 ?
+            SceneMeshDeformation.Create(m_Renderer, m_Session.mesh) : null;
 
         void OnSelectionChanged()
         {
@@ -666,9 +686,11 @@ namespace UnityEditor.U2D.Animation
                     }
             }
             var matrix = SceneMeshSession.PixelToWorld(m_Renderer, m_Session.mesh.frame);
+            var deformation = evt.type == EventType.Repaint ? Deformation() : null;
+            var displayedMesh = deformation?.mesh ?? m_Session.mesh;
             if (evt.type == EventType.Repaint)
             {
-                DrawImage(matrix);
+                DrawImage(matrix, deformation?.mesh);
                 DrawImageBounds(matrix, scene);
             }
             if (evt.button == 1 || evt.button == 2) return;
@@ -693,15 +715,13 @@ namespace UnityEditor.U2D.Animation
             var backup = EditorJsonUtility.ToJson(m_Session);
             using (new Handles.DrawingScope(Color.white, matrix))
             {
-                if (evt.type == EventType.Repaint && m_Triangles) DrawTriangles();
+                if (evt.type == EventType.Repaint && m_Triangles) DrawTriangles(displayedMesh);
                 m_View.mode = m_TraceActive ? SpriteMeshViewMode.EditGeometry :
                     effectiveMode == 3 ? SpriteMeshViewMode.NewGeometry :
                     effectiveMode == 1 ? SpriteMeshViewMode.CreateVertex : SpriteMeshViewMode.EditGeometry;
                 m_View.defaultControlID = m_Control;
-                m_Controller.spriteMeshData = m_Session.mesh;
                 m_Controller.selection = m_Session.selection;
                 m_Controller.disable = m_TraceActive || m_Session.mode == 2;
-                m_Controller.frame = new Rect(Vector2.zero, m_Session.mesh.frame.size);
                 EditorGUI.BeginChangeCheck();
                 EditorGUI.BeginDisabledGroup(m_TraceActive);
                 try
@@ -712,13 +732,24 @@ namespace UnityEditor.U2D.Animation
                         evt.Use();
                     }
                     if (!m_TraceActive) HandleDelete(effectiveMode);
+                    // Delete operates on the staged source. Rebuild the transient pose
+                    // before handing it to the shared controller for this event.
+                    if (evt.type != EventType.Repaint) deformation = Deformation();
+                    displayedMesh = deformation?.mesh ?? m_Session.mesh;
+                    m_Controller.spriteMeshData = displayedMesh;
+                    m_Controller.frame = deformation?.editingFrame ?? new Rect(Vector2.zero, m_Session.mesh.frame.size);
                     // Controller edits also triangulate and may pump nested Scene GUI events.
                     // Keep partial vertices/indices private until the controller returns.
                     m_MeshMutationInProgress = true;
-                    try { m_Controller.OnGUI(); }
+                    try
+                    {
+                        m_Controller.OnGUI();
+                        if (evt.type != EventType.Repaint && evt.type != EventType.Layout && evt.type != EventType.MouseMove)
+                            deformation?.Commit(m_Session);
+                    }
                     finally { m_MeshMutationInProgress = false; }
                     if (m_View.isCreateEdgeDragActive && evt.type == EventType.MouseDown && evt.button == 0) evt.Use();
-                    if (!m_TraceActive) HandleBoxSelection();
+                    if (!m_TraceActive) HandleBoxSelection(displayedMesh);
                 }
                 catch (Exception ex) { EditorJsonUtility.FromJsonOverwrite(backup, m_Session); m_Error = ex.Message; GUIUtility.hotControl = 0; }
                 finally { EditorGUI.EndDisabledGroup(); EditorGUI.EndChangeCheck(); }
@@ -788,7 +819,7 @@ namespace UnityEditor.U2D.Animation
             evt.Use();
         }
 
-        void HandleBoxSelection()
+        void HandleBoxSelection(SpriteMeshData displayedMesh)
         {
             var evt = Event.current;
             if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Escape && m_Session.mode != 3)
@@ -807,8 +838,8 @@ namespace UnityEditor.U2D.Animation
             if (evt.type == EventType.MouseDrag || evt.type == EventType.MouseUp)
             {
                 m_Session.selection.elements = m_BoxSelection;
-                for (var i = 0; i < m_Session.mesh.vertexCount; ++i)
-                    if (rect.Contains(HandleUtility.WorldToGUIPoint(m_Session.mesh.vertices[i]))) m_Session.selection.Select(i, true);
+                for (var i = 0; i < displayedMesh.vertexCount; ++i)
+                    if (rect.Contains(HandleUtility.WorldToGUIPoint(displayedMesh.vertices[i]))) m_Session.selection.Select(i, true);
                 if (evt.type == EventType.MouseUp) { m_BoxSelecting = false; GUIUtility.hotControl = 0; }
                 evt.Use();
             }
@@ -818,9 +849,8 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        void DrawTriangles()
+        void DrawTriangles(SpriteMeshData mesh)
         {
-            var mesh = m_Session.mesh;
             var vertices = mesh.vertices;
             var indices = mesh.indices;
             Handles.color = new Color(0.7f, 0.7f, 0.7f, 0.6f);
@@ -907,7 +937,7 @@ namespace UnityEditor.U2D.Animation
             return from <= to;
         }
 
-        void DrawImage(Matrix4x4 matrix)
+        void DrawImage(Matrix4x4 matrix, SpriteMeshData deformedMesh)
         {
             var textureProvider = m_Source.textureProvider;
             if (textureProvider?.texture == null) return;
@@ -921,10 +951,20 @@ namespace UnityEditor.U2D.Animation
             var size = frame.size;
             textureProvider.GetTextureActualWidthAndHeight(out var width, out var height);
             Vector2 UV(float x, float y) => new Vector2((frame.x + x) / width, (frame.y + y) / height);
-            m_ImageMesh.vertices = new[] { Vector3.zero, new Vector3(size.x, 0), new Vector3(size.x, size.y), new Vector3(0, size.y) };
-            m_ImageMesh.uv = new[] { UV(0, 0), UV(size.x, 0), UV(size.x, size.y), UV(0, size.y) };
-            m_ImageMesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
-            m_ImageMesh.colors = new[] { Color.white, Color.white, Color.white, Color.white };
+            m_ImageMesh.Clear();
+            if (deformedMesh != null)
+            {
+                m_ImageMesh.vertices = Array.ConvertAll(deformedMesh.vertices, vertex => (Vector3)vertex);
+                m_ImageMesh.uv = Array.ConvertAll(m_Session.mesh.vertices, vertex => UV(vertex.x, vertex.y));
+                m_ImageMesh.triangles = deformedMesh.indices;
+            }
+            else
+            {
+                m_ImageMesh.vertices = new[] { Vector3.zero, new Vector3(size.x, 0), new Vector3(size.x, size.y), new Vector3(0, size.y) };
+                m_ImageMesh.uv = new[] { UV(0, 0), UV(size.x, 0), UV(size.x, size.y), UV(0, size.y) };
+                m_ImageMesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
+            }
+            m_ImageMesh.colors = Enumerable.Repeat(Color.white, m_ImageMesh.vertexCount).ToArray();
             var color = m_Renderer.color;
             if (m_Dim) { color.r *= 0.35f; color.g *= 0.35f; color.b *= 0.35f; }
             m_ImageMaterial.mainTexture = textureProvider.texture;

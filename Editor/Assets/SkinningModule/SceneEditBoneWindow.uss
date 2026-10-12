@@ -2,3 +2,4 @@
 .bone-properties .unity-base-field__label { min-width: 52px; padding-left: 0; color: #CFCFCF; }
 .bone-properties .unity-base-field__input { background-color: #1D2228; color: #CFCFCF; border-width: 1px; border-color: #14171B; border-radius: 0; }
 .bone-properties .unity-text-field__input { color: #CFCFCF; }
+#windowIcon { width: 16px; height: 16px; align-self: center; margin-left: 5px; flex-shrink: 0; }

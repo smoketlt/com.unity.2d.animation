@@ -156,6 +156,92 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void InspectorKeepsThreeIconButtonsAndRefreshesModeAndBakeAvailability()
+        {
+            var controls = new UniskinRigInspectorControls(() => m_Renderer.sprite);
+            var useRig = controls.Q<Button>("uniskinUseRig");
+            var usePsb = controls.Q<Button>("uniskinUsePsb");
+            var bake = controls.Q<Button>("uniskinBakeRig");
+            Assert.AreEqual(3, controls.Query<Button>().ToList().Count);
+            foreach (var button in new[] { useRig, usePsb, bake }) Assert.NotNull(button.Q<Image>().image);
+            Assert.AreEqual("Use Uniskin rig", useRig.Q<Label>().text);
+            Assert.AreEqual("Use PSB Importer", usePsb.Q<Label>().text);
+            Assert.AreEqual("Bake to PSB Importer", bake.Q<Label>().text);
+            Assert.AreSame(useRig.parent, usePsb.parent);
+            Assert.AreSame(controls, bake.parent);
+            controls.Refresh(m_Renderer.sprite, true);
+            Assert.IsFalse(useRig.enabledSelf);
+            Assert.IsTrue(usePsb.enabledSelf);
+            Assert.IsFalse(bake.enabledSelf);
+            var mesh = Source().ReadMesh(m_Renderer.sprite);
+            mesh.vertices[0] = new Vector2(3, 4);
+            Source().WriteMesh(mesh);
+            controls.Refresh(m_Renderer.sprite, true);
+            Assert.IsTrue(bake.enabledSelf);
+            UniskinRigUtility.UsePsb(m_Rig);
+            controls.Refresh(m_Renderer.sprite, true);
+            Assert.IsTrue(useRig.enabledSelf);
+            Assert.IsFalse(usePsb.enabledSelf);
+            Assert.IsFalse(bake.enabledSelf);
+            controls.Refresh(m_Renderer.sprite, false);
+            Assert.IsFalse(useRig.enabledSelf);
+            Assert.IsFalse(usePsb.enabledSelf);
+            Assert.IsFalse(bake.enabledSelf);
+        }
+
+        [Test]
+        public void SwitchingModesBakesRigThenCopiesCurrentPsbDataBackIntoRig()
+        {
+            var mesh = Source().ReadMesh(m_Renderer.sprite);
+            mesh.vertices[0] = new Vector2(3, 4);
+            Source().WriteMesh(mesh);
+            UniskinRigUtility.UsePsb(m_Rig);
+            Assert.IsFalse(m_Rig.editingEnabled);
+            Assert.IsFalse(m_Rig.hasUnbakedChanges);
+            Assert.AreEqual(new Vector2(3, 4), Source().meshProvider.GetVertices(Source().rect.spriteID)[0].position);
+            var provider = UniskinRigUtility.NativeProvider(m_Path);
+            var id = provider.GetSpriteRects().First().spriteID;
+            var nativeMesh = provider.GetDataProvider<ISpriteMeshDataProvider>();
+            var vertices = nativeMesh.GetVertices(id);
+            vertices[0].position = new Vector2(7, 9);
+            nativeMesh.SetVertices(id, vertices);
+            provider.Apply();
+            AssetImporter.GetAtPath(m_Path).SaveAndReimport();
+            var metadata = File.ReadAllBytes(m_Path + ".meta");
+            UniskinRigUtility.Enable(m_Rig);
+            Assert.IsTrue(m_Rig.editingEnabled);
+            Assert.IsFalse(m_Rig.hasUnbakedChanges);
+            Assert.AreSame(m_Rig.sprites[0].sprite, m_Renderer.sprite);
+            Assert.AreEqual(new Vector2(7, 9), Source().meshProvider.GetVertices(id)[0].position);
+            CollectionAssert.AreEqual(metadata, File.ReadAllBytes(m_Path + ".meta"));
+        }
+
+        [Test]
+        public void RigRootResolvesWithoutBonesAndRejectsAmbiguousPsbSources()
+        {
+            var container = new GameObject("Rig Inspector Root");
+            m_Root.transform.SetParent(container.transform);
+            try
+            {
+                Assert.IsTrue(UniskinRigInspectorControls.TryGetRootSource(container, out var renderer));
+                Assert.AreSame(m_Renderer, renderer);
+                Assert.IsFalse(UniskinRigInspectorControls.TryGetRootSource(m_Root, out _));
+                var otherPath = m_Folder + "/Other.psb";
+                WritePsb(otherPath);
+                AssetDatabase.ImportAsset(otherPath, ImportAssetOptions.ForceSynchronousImport);
+                var other = new GameObject("Other Source");
+                other.transform.SetParent(container.transform);
+                other.AddComponent<SpriteRenderer>().sprite = AssetDatabase.LoadAllAssetsAtPath(otherPath).OfType<Sprite>().First();
+                Assert.IsFalse(UniskinRigInspectorControls.TryGetRootSource(container, out _));
+            }
+            finally
+            {
+                m_Root.transform.SetParent(null);
+                Object.DestroyImmediate(container);
+            }
+        }
+
+        [Test]
         public void AutoBakeUsesTheActiveSkinningEditorProviderAndSkipsSynchronizedImports()
         {
             var mesh = Source().ReadMesh(m_Renderer.sprite);

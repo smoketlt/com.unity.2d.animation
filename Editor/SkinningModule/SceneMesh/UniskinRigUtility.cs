@@ -375,7 +375,8 @@ namespace UnityEditor.U2D.Animation
         internal static void Enable(UniskinRig rig)
         {
             if (!CloseSceneTools(AssetDatabase.GUIDToAssetPath(rig.sourceGuid))) return;
-            CheckSource(rig);
+            if (!rig.editingEnabled) ReloadFromPsb(rig);
+            else CheckSource(rig);
             Undo.RecordObject(rig, "Use UniskinRig");
             rig.editingEnabled = true;
             EditorUtility.SetDirty(rig);
