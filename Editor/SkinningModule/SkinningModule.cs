@@ -35,6 +35,7 @@ namespace UnityEditor.U2D.Animation
         IMeshPreviewBehaviour m_MeshPreviewBehaviourOverride = null;
         bool m_CollapseToolbar;
         bool m_HasUnsavedChanges = false;
+        string m_RigSynchronizationError;
         Texture2D m_WorkspaceBackgroundTexture;
 
         internal SkinningCache skinningCache
@@ -57,6 +58,13 @@ namespace UnityEditor.U2D.Animation
 
         public override void OnModuleActivate()
         {
+            m_RigSynchronizationError = null;
+            try { UniskinRigUtility.PrepareSkinningEditor(spriteEditor.GetDataProvider<ISpriteEditorDataProvider>()); }
+            catch (Exception exception)
+            {
+                m_RigSynchronizationError = exception.Message;
+                EditorUtility.DisplayDialog("UniskinRig Auto Bake", exception.Message, "OK");
+            }
             s_ActiveModules.Add(this);
             m_SkinningCache = Cache.Create<SkinningCache>();
             m_WorkspaceBackgroundTexture = new Texture2D(1, 1, TextureFormat.RGBAHalf, false, true);
@@ -66,6 +74,7 @@ namespace UnityEditor.U2D.Animation
             m_WorkspaceBackgroundTexture.Apply();
 
             AddMainUI(spriteEditor.GetMainVisualContainer());
+            spriteEditor.GetMainVisualContainer().SetEnabled(m_RigSynchronizationError == null);
 
             using (skinningCache.DisableUndoScope())
             {
@@ -146,6 +155,7 @@ namespace UnityEditor.U2D.Animation
 
         public override void OnModuleDeactivate()
         {
+            spriteEditor.GetMainVisualContainer().SetEnabled(true);
             s_ActiveModules.Remove(this);
             CancelNewGeometryModeOnDeactivate();
             SkinningEditorInput.Reset();
@@ -327,6 +337,11 @@ namespace UnityEditor.U2D.Animation
 
         public override void DoMainGUI()
         {
+            if (m_RigSynchronizationError != null)
+            {
+                GUI.Label(spriteEditor.windowDimension, "UniskinRig synchronization blocked.\n" + m_RigSynchronizationError, EditorStyles.wordWrappedLabel);
+                return;
+            }
             Debug.Assert(currentTool != null);
             if (SkinningEditorInput.Update(Event.current))
             {
@@ -621,6 +636,7 @@ namespace UnityEditor.U2D.Animation
 
         public override bool ApplyRevert(bool apply)
         {
+            if (apply && m_RigSynchronizationError != null) return false;
             if (apply)
             {
                 m_Analytics.FlushEvent();

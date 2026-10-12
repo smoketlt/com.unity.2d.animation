@@ -54,7 +54,7 @@ namespace UnityEditor.U2D.Animation
                 var index = Array.IndexOf(transforms, bone);
                 if (index < 0) continue;
                 var candidate = skin.GetComponent<SpriteRenderer>();
-                if (candidate == null || candidate.sprite == null || string.IsNullOrEmpty(AssetDatabase.GetAssetPath(candidate.sprite))) continue;
+                if (candidate == null || candidate.sprite == null || string.IsNullOrEmpty(UniskinRigUtility.SourcePath(candidate.sprite))) continue;
                 var bones = candidate.sprite.GetBones();
                 if (index >= bones.Length || string.IsNullOrEmpty(bones[index].guid)) continue;
                 renderer = candidate;
@@ -65,7 +65,7 @@ namespace UnityEditor.U2D.Animation
             // Resolve one shared character source in this hierarchy; never guess between assets.
             var sources = host.GetComponentsInChildren<SpriteRenderer>(true)
                 .Where(candidate => candidate.sprite != null)
-                .GroupBy(candidate => AssetDatabase.GetAssetPath(candidate.sprite));
+                .GroupBy(candidate => UniskinRigUtility.SourcePath(candidate.sprite));
             SpriteRenderer found = null;
             string foundGuid = null;
             foreach (var group in sources)
@@ -109,10 +109,10 @@ namespace UnityEditor.U2D.Animation
             return true;
         }
 
-        internal static Transform FindCharacterTransform(Transform host, SpriteBone[] bones, int index)
+        internal static Transform FindCharacterTransform(Transform host, SpriteBone[] bones, int index, Func<Transform, bool> filter = null)
         {
             var matches = host.GetComponentsInChildren<Transform>(true)
-                .Where(transform => MatchesCharacterPath(transform, host, bones, index)).Take(2).ToArray();
+                .Where(transform => (filter == null || filter(transform)) && MatchesCharacterPath(transform, host, bones, index)).Take(2).ToArray();
             return matches.Length == 1 ? matches[0] : null;
         }
 

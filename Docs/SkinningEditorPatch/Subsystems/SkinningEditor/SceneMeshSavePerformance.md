@@ -1,5 +1,7 @@
 # Scene mesh save performance
 
+The independent [UniskinRig](UniskinRig.md) workflow saves Scene edits to a separate asset and generated Sprite subassets. It avoids the PSB import path measured below during ordinary rig Save; explicit or automatic Bake still runs native PSB import. The historical numbers below are not timing measurements of the new rig workflow.
+
 ## Environment and method
 
 Measured on 2026-10-11 in the connected Unity **6000.0.81f1** editor, using this package through its existing local `file:` dependency. Rollback checkpoint: `ffc07190`.

@@ -4,6 +4,7 @@ using Unity.Mathematics;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
 using UnityEngine.U2D;
+using UnityEngine.U2D.Animation;
 
 namespace UnityEditor.U2D.Animation
 {
@@ -171,15 +172,22 @@ namespace UnityEditor.U2D.Animation
         public readonly ISpriteMeshDataProvider meshProvider;
         public readonly ITextureDataProvider textureProvider;
         public readonly SpriteRect rect;
+        internal readonly UniskinRig rig;
+        internal UnityEngine.Object saveTarget => rig != null ? (UnityEngine.Object)rig : importer;
+        internal string userData
+        {
+            get => provider is UniskinRigDataProvider rigProvider ? rigProvider.data.userData : importer.userData;
+            set { if (provider is UniskinRigDataProvider rigProvider) rigProvider.data.userData = value; else importer.userData = value; }
+        }
 
         // Every Sprite has runtime triangles, including untouched ordinary sprites.
         // Only explicit importer mesh data signifies an authored Skinning Editor mesh.
         public bool hasAuthoredMesh => meshProvider.GetVertices(rect.spriteID)?.Length >= 3 &&
             meshProvider.GetIndices(rect.spriteID)?.Length >= 3;
 
-        public SceneMeshSource(Sprite sprite)
+        public SceneMeshSource(Sprite sprite, bool useRig = true)
         {
-            assetPath = AssetDatabase.GetAssetPath(sprite);
+            assetPath = UniskinRigUtility.SourcePath(sprite);
             if (string.IsNullOrEmpty(assetPath))
                 throw new InvalidOperationException("Select an imported Sprite asset in the scene.");
             importer = AssetImporter.GetAtPath(assetPath);
@@ -189,6 +197,13 @@ namespace UnityEditor.U2D.Animation
             if (provider == null)
                 throw new InvalidOperationException("This importer does not support Sprite Editor data.");
             provider.InitSpriteEditorDataProvider();
+            rig = useRig ? UniskinRigUtility.FindAtSource(assetPath) : null;
+            if (rig != null && rig.editingEnabled)
+            {
+                UniskinRigUtility.CheckSource(rig);
+                provider = new UniskinRigDataProvider(rig, provider);
+            }
+            else rig = null;
             meshProvider = provider.GetDataProvider<ISpriteMeshDataProvider>();
             textureProvider = provider.GetDataProvider<ITextureDataProvider>();
             rect = provider.GetSpriteRects().FirstOrDefault(r => r.spriteID == sprite.GetSpriteID());
@@ -263,10 +278,18 @@ namespace UnityEditor.U2D.Animation
             meshProvider.SetVertices(rect.spriteID, vertices);
             meshProvider.SetIndices(rect.spriteID, (int[])indices.Clone());
             meshProvider.SetEdges(rect.spriteID, edges);
-            provider.Apply();
-            importer.SaveAndReimport();
+            ApplyAndSave();
             return true;
         }
+
+        internal void ApplyAndSave()
+        {
+            provider.Apply();
+            if (rig == null) importer.SaveAndReimport();
+        }
+
+        internal Sprite ResolveSprite(string id) => rig != null ? rig.Find(id).sprite :
+            AssetDatabase.LoadAllAssetsAtPath(assetPath).OfType<Sprite>().First(sprite => sprite.GetSpriteID().ToString() == id);
 
         internal static void Validate(BaseSpriteMeshData mesh)
         {

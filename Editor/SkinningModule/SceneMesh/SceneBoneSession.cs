@@ -119,7 +119,7 @@ namespace UnityEditor.U2D.Animation
             foreach (var skin in host.GetComponentsInChildren<SpriteSkin>(true))
             {
                 var sprite = skin.GetComponent<SpriteRenderer>()?.sprite;
-                if (sprite == null || AssetDatabase.GetAssetPath(sprite) != assetPath) continue;
+                if (sprite == null || UniskinRigUtility.SourcePath(sprite) != assetPath) continue;
                 var bones = sprite.GetBones();
                 var transforms = skin.boneTransforms;
                 if (transforms == null) continue;
@@ -341,13 +341,32 @@ namespace UnityEditor.U2D.Animation
                 throw new InvalidOperationException("The source asset changed while Edit Bone was open. Revert and reopen it to load the latest data.");
             if (!dirty) return;
             var renames = SceneBoneRenamePlan.Create(source, skeleton);
-            Undo.RegisterCompleteObjectUndo(source.importer, "Save Sprite Bones");
+            Undo.RegisterCompleteObjectUndo(source.saveTarget, "Save Sprite Bones");
             WithSourcePose(() => SkinningModule.ApplySceneBoneChanges(cache, source.provider, initializeMissingWeights: !skeletonOnly));
-            source.provider.Apply();
+            if (source.provider is UniskinRigDataProvider rigProvider)
+            {
+                UniskinRigUtility.CheckSource(rigProvider.rig);
+                UniskinRigUtility.Validate(rigProvider.data);
+                Undo.IncrementCurrentGroup();
+                var undoGroup = Undo.GetCurrentGroup();
+                try
+                {
+                    renames.Apply();
+                    source.ApplyAndSave();
+                    Undo.CollapseUndoOperations(undoGroup);
+                }
+                catch
+                {
+                    Undo.RevertAllDownToGroup(undoGroup);
+                    throw;
+                }
+                m_Saved = Snapshot();
+                return;
+            }
             // Set instance overrides before prefab regeneration so renamed objects retain
             // the exact names used by the rewritten animation paths.
             renames.Apply();
-            source.importer.SaveAndReimport();
+            source.ApplyAndSave();
             m_Saved = Snapshot();
         }
 

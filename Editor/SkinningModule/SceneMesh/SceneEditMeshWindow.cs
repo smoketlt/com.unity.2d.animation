@@ -25,6 +25,7 @@ namespace UnityEditor.U2D.Animation
         [SerializeField] UnityEngine.Object[] m_SelectionObjects;
         bool m_SelectionRestoreQueued;
         SceneMeshSource m_Source;
+        bool m_DiscardOnClose;
         SpriteMeshView m_View;
         SpriteMeshController m_Controller;
         Tool m_PreviousTool;
@@ -61,6 +62,7 @@ namespace UnityEditor.U2D.Animation
 
         internal static bool IsEditingAsset(string path) => Resources.FindObjectsOfTypeAll<SceneEditMeshWindow>()
             .Any(window => window.m_Session != null && window.m_Session.assetPath == path);
+        internal string editingAssetPath => m_Session != null ? m_Session.assetPath : null;
 
         internal static void OpenForRenderer(SpriteRenderer renderer, bool createMesh)
         {
@@ -117,13 +119,11 @@ namespace UnityEditor.U2D.Animation
         internal bool RequestClose()
         {
             if (m_SaveInProgress) return false;
+            rootVisualElement.focusController?.focusedElement?.Blur();
             if (m_Source != null && m_Session.dirty)
             {
-                var choice = EditorUtility.DisplayDialogComplex("Unsaved Sprite Mesh",
-                    "Save mesh changes to the original Sprite asset before leaving Edit Mesh?", "Save", "Cancel", "Revert");
-                if (choice == 1 || (choice == 0 && !Apply())) return false;
+                if (!Apply()) return false;
             }
-            // Discard only staged data. The importer has not changed until Apply.
             hasUnsavedChanges = false;
             Close();
             return true;
@@ -159,6 +159,22 @@ namespace UnityEditor.U2D.Animation
         void OnDisable()
         {
             EndTraceGesture();
+            if (!m_DiscardOnClose && !m_SaveInProgress && !EditorApplication.isPlaying && m_Source != null &&
+                m_Renderer != null && m_Renderer.sprite != null && m_Session != null && m_Session.dirty)
+            {
+                try
+                {
+                    if (m_Session.mode == 3) m_Session.CompleteNew();
+                    var source = new SceneMeshSource(m_Renderer.sprite);
+                    if (source.Fingerprint() != m_Session.sourceMesh)
+                        throw new InvalidOperationException("The source changed before the mesh window closed.");
+                    Undo.RegisterCompleteObjectUndo(source.saveTarget, "Auto Save Sprite Mesh");
+                    source.WriteMesh(m_Session.mesh);
+                    m_Session.pendingCreation = false;
+                    m_Session.savedMesh = JsonUtility.ToJson(m_Session.mesh);
+                }
+                catch (Exception exception) { Debug.LogError("Edit Mesh auto-save failed: " + exception.Message); }
+            }
             Selection.selectionChanged -= OnSelectionChanged;
             SceneView.duringSceneGui -= OnSceneGUI;
             Undo.undoRedoPerformed -= OnUndoRedo;
@@ -248,7 +264,7 @@ namespace UnityEditor.U2D.Animation
             if (EditorApplication.isPlayingOrWillChangePlaymode) return "Mesh editing is available in Edit Mode.";
             if (m_Renderer == null || m_Renderer.sprite == null || m_Source == null)
                 return m_Error ?? "Select a GameObject with a SpriteRenderer in the Hierarchy.";
-            if (m_Renderer.sprite.GetSpriteID().ToString() != m_Session.spriteId || AssetDatabase.GetAssetPath(m_Renderer.sprite) != m_Session.assetPath)
+            if (m_Renderer.sprite.GetSpriteID().ToString() != m_Session.spriteId || UniskinRigUtility.SourcePath(m_Renderer.sprite) != m_Session.assetPath)
                 return "The renderer's Sprite changed. Select another object, then select this sprite again to reload.";
             if (Mathf.Abs(m_Renderer.transform.lossyScale.x) < 0.000001f || Mathf.Abs(m_Renderer.transform.lossyScale.y) < 0.000001f)
                 return "The sprite needs non-zero X and Y scale for mesh editing.";
@@ -275,8 +291,7 @@ namespace UnityEditor.U2D.Animation
             foreach (var pair in new[] { ("modify", 0), ("create", 1), ("delete", 2), ("newMesh", 3) })
                 rootVisualElement.Q<Button>(pair.Item1).EnableInClassList("mesh-active", !m_TraceActive && effectiveMode == pair.Item2);
             rootVisualElement.Q<Button>("trace").EnableInClassList("mesh-active", m_TraceActive);
-            hasUnsavedChanges = m_Source != null && m_Session.dirty;
-            saveChangesMessage = "Apply mesh changes to the original Sprite asset? All instances will use this mesh.";
+            hasUnsavedChanges = false; // RequestClose saves before closing; no Unity confirmation.
             rootVisualElement.Q<Label>("vertexCount").text = $"Vertices: {m_Session.mesh.vertexCount}    Triangles: {m_Session.mesh.indices.Length / 3}";
             if (blocked != null) RestoreScene();
         }
@@ -331,7 +346,7 @@ namespace UnityEditor.U2D.Animation
             if (m_Session.hasBoneWeights) ExitTrace();
             if (m_Renderer == null || m_Renderer.sprite == null) return;
             // Importer Undo changes serialized data; reimport regenerates every Sprite instance.
-            if (m_AppliedUndoGroup >= 0 && new SceneMeshSource(m_Renderer.sprite).Fingerprint() != m_LastImporterFingerprint)
+            if (m_Source?.rig == null && m_AppliedUndoGroup >= 0 && new SceneMeshSource(m_Renderer.sprite).Fingerprint() != m_LastImporterFingerprint)
                 AssetDatabase.ImportAsset(m_Session.assetPath, ImportAssetOptions.ForceUpdate);
             RefreshSource();
             m_Session.EndUndoOperation();
@@ -348,6 +363,7 @@ namespace UnityEditor.U2D.Animation
 
         public override void DiscardChanges()
         {
+            m_DiscardOnClose = true;
             // Closing discards the in-memory session; no importer write needs rollback.
             base.DiscardChanges();
         }
@@ -363,12 +379,12 @@ namespace UnityEditor.U2D.Animation
                 if (m_Session.mode == 3) m_Session.CompleteNew();
                 var source = new SceneMeshSource(m_Renderer.sprite);
                 if (source.Fingerprint() != m_Session.sourceMesh)
-                    throw new InvalidOperationException("The Sprite asset changed since editing began. Close this window and choose Revert, then reopen the mesh from the Inspector to load the current asset.");
+                    throw new InvalidOperationException("The Sprite asset changed since editing began. Restore the source or undo the pending edits before closing, then reopen the mesh to load the current asset.");
                 SceneMeshSource.Validate(m_Session.mesh);
                 ExitTrace();
                 Undo.IncrementCurrentGroup();
                 m_AppliedUndoGroup = Undo.GetCurrentGroup();
-                Undo.RegisterCompleteObjectUndo(new UnityEngine.Object[] { source.importer, m_Session }, "Apply Sprite Mesh");
+                Undo.RegisterCompleteObjectUndo(new UnityEngine.Object[] { source.saveTarget, m_Session }, "Apply Sprite Mesh");
                 source.WriteMesh(m_Session.mesh);
                 m_Session.pendingCreation = false;
                 m_Session.savedMesh = JsonUtility.ToJson(m_Session.mesh);
@@ -622,7 +638,7 @@ namespace UnityEditor.U2D.Animation
                 UpdateUI();
                 scene.Repaint();
             }
-            if (m_Renderer.sprite.GetSpriteID().ToString() != m_Session.spriteId || AssetDatabase.GetAssetPath(m_Renderer.sprite) != m_Session.assetPath)
+            if (m_Renderer.sprite.GetSpriteID().ToString() != m_Session.spriteId || UniskinRigUtility.SourcePath(m_Renderer.sprite) != m_Session.assetPath)
             {
                 RestoreScene();
                 m_Error = "The renderer's Sprite changed. Select another object, then select this sprite again to reload.";
@@ -721,7 +737,7 @@ namespace UnityEditor.U2D.Animation
                 // slider cursors. Navigation exits above retain their native cursors.
                 EditorGUIUtility.AddCursorRect(new Rect(Vector2.zero, scene.position.size), cursor);
             }
-            hasUnsavedChanges = m_Session.dirty;
+            hasUnsavedChanges = false;
             if (evt.type != EventType.Repaint && evt.type != EventType.Layout) { scene.Repaint(); UpdateUI(); }
         }
 

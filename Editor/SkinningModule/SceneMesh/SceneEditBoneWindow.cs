@@ -16,6 +16,7 @@ namespace UnityEditor.U2D.Animation
         SkeletonView m_View;
         SkeletonController m_Controller;
         SceneMeshSource m_Source;
+        bool m_DiscardOnClose;
         Tool m_PreviousTool;
         bool m_OwnsTool;
         bool m_Saving;
@@ -32,6 +33,7 @@ namespace UnityEditor.U2D.Animation
 
         internal static bool IsEditingAsset(string path) => Resources.FindObjectsOfTypeAll<SceneEditBoneWindow>()
             .Any(window => window.m_Session != null && window.m_Session.assetPath == path);
+        internal string editingAssetPath => m_Session != null ? m_Session.assetPath : null;
 
         internal static bool IsEditingRenderer(SpriteRenderer renderer) => renderer != null && Resources.FindObjectsOfTypeAll<SceneEditBoneWindow>()
             .Any(window => window.m_Renderer == renderer);
@@ -61,7 +63,7 @@ namespace UnityEditor.U2D.Animation
                     throw new InvalidOperationException("Select a SpriteRenderer with an imported Sprite in the scene.");
                 if (EditorApplication.isPlayingOrWillChangePlaymode)
                     throw new InvalidOperationException("Bone editing is available in Edit Mode.");
-                var path = AssetDatabase.GetAssetPath(renderer.sprite);
+                var path = UniskinRigUtility.SourcePath(renderer.sprite);
                 if (SkinningModule.IsEditingAsset(path))
                     throw new InvalidOperationException("Close Skinning Editor for this asset before opening Edit Bone.");
                 foreach (var meshWindow in Resources.FindObjectsOfTypeAll<SceneEditMeshWindow>())
@@ -152,6 +154,12 @@ namespace UnityEditor.U2D.Animation
 
         void OnDisable()
         {
+            if (!m_DiscardOnClose && !m_Saving && !EditorApplication.isPlaying && m_Source != null &&
+                m_Renderer != null && m_Renderer.sprite != null && m_Session != null && m_Session.cache != null && m_Session.dirty)
+            {
+                try { m_Session.Save(new SceneMeshSource(m_Renderer.sprite)); }
+                catch (Exception exception) { Debug.LogError("Edit Bone auto-save failed: " + exception.Message); }
+            }
             Selection.selectionChanged -= OnSelectionChanged;
             SceneView.duringSceneGui -= OnSceneGUI;
             Undo.undoRedoPerformed -= OnUndoRedo;
@@ -219,7 +227,7 @@ namespace UnityEditor.U2D.Animation
             if (EditorApplication.isPlayingOrWillChangePlaymode) return "Bone editing is available in Edit Mode.";
             if (m_Renderer == null || m_Renderer.sprite == null || m_Session == null || m_Session.cache == null) return "The entry SpriteRenderer is unavailable.";
             if (m_Source == null) return m_Error ?? "The Sprite importer is unavailable. Close and reopen Edit Bone.";
-            if (AssetDatabase.GetAssetPath(m_Renderer.sprite) != m_Session.assetPath || m_Renderer.sprite.GetSpriteID().ToString() != m_Session.spriteId)
+            if (UniskinRigUtility.SourcePath(m_Renderer.sprite) != m_Session.assetPath || m_Renderer.sprite.GetSpriteID().ToString() != m_Session.spriteId)
                 return "The renderer's Sprite changed. Close and reopen Edit Bone.";
             if (m_Renderer.drawMode != SpriteDrawMode.Simple) return "Set SpriteRenderer Draw Mode to Simple.";
             if (Mathf.Abs(m_Renderer.transform.lossyScale.x) < 0.000001f || Mathf.Abs(m_Renderer.transform.lossyScale.y) < 0.000001f)
@@ -267,8 +275,7 @@ namespace UnityEditor.U2D.Animation
                 color.showMixedValue = selected.Any(bone => bone.bindPoseColor != selected[0].bindPoseColor);
             }
             else color.showMixedValue = false;
-            hasUnsavedChanges = m_Session.dirty;
-            saveChangesMessage = "Save skeleton changes to the original Sprite/PSB asset? All instances use this skeleton.";
+            hasUnsavedChanges = false; // Closing saves directly instead of prompting.
             if (blocked != null) RestoreTool();
         }
 
@@ -352,10 +359,10 @@ namespace UnityEditor.U2D.Animation
         internal bool RequestClose()
         {
             if (m_Saving) return false;
+            rootVisualElement.focusController?.focusedElement?.Blur();
             if (m_Session.dirty)
             {
-                var choice = EditorUtility.DisplayDialogComplex("Unsaved Sprite Bones", "Save skeleton changes to the original Sprite/PSB asset before leaving Edit Bone?", "Save", "Cancel", "Revert");
-                if (choice == 1 || (choice == 0 && !Apply())) return false;
+                if (!Apply()) return false;
             }
             hasUnsavedChanges = false; Close(); return true;
         }
@@ -380,7 +387,7 @@ namespace UnityEditor.U2D.Animation
         }
 
         public override void SaveChanges() { if (!Apply()) throw new InvalidOperationException(m_Error); base.SaveChanges(); }
-        public override void DiscardChanges() { base.DiscardChanges(); }
+        public override void DiscardChanges() { m_DiscardOnClose = true; base.DiscardChanges(); }
 
         void OnUndoRedo()
         {

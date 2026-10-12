@@ -39,6 +39,7 @@ Do not rename the UXML element unless all C# lookups, USS selectors, and metadat
 - `SceneEditBoneWindow.uxml` / `.uss`: floating Scene skeleton popup; shares the Edit Mesh stylesheet and header/height helper. `SceneMeshIcons/Bone_Create.png`, `Bone_Split.png`, and `Bone_SetParent.png` are the user's supplied command icons.
 - `SceneMeshIcons/EditBone.png`: user's supplied 16x16 icon for Edit Bone in both the SpriteRenderer Inspector and the bound bone's GameObject Inspector header.
 - `InfluenceWindow.uxml`
+- `SceneMeshInspector.uss` styles the renderer's Mesh/Bone/Weights buttons and the `.uniskin-rig-action` buttons created in C# by `UniskinSpriteRendererEditor` and `UniskinRigEditor`. Rig controls use UI Toolkit; no native UXML element names are replaced.
 - Constraint settings are built in `Editor/SkinningModule/ConstraintsTool.cs` and hosted in the bottom overlay.
 
 ## Shaders

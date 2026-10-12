@@ -28,7 +28,7 @@ namespace UnityEditor.U2D.Animation
             foreach (var renderer in Resources.FindObjectsOfTypeAll<SpriteRenderer>())
             {
                 if (!renderer.gameObject.scene.IsValid() || EditorUtility.IsPersistent(renderer) || renderer.sprite == null ||
-                    AssetDatabase.GetAssetPath(renderer.sprite) != source.assetPath) continue;
+                    UniskinRigUtility.SourcePath(renderer.sprite) != source.assetPath) continue;
                 var instance = PrefabUtility.GetNearestPrefabInstanceRoot(renderer.gameObject);
                 var host = instance != null ? instance.transform : renderer.transform.root;
                 hosts.Add(host);

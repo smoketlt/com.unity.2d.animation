@@ -4,6 +4,7 @@
 
 | If you need... | Read first | Then |
 | --- | --- | --- |
+| Independent rig assets, fast Scene saves, generated Sprite/bone bindings and explicit/automatic PSB baking | [Subsystems/SkinningEditor/UniskinRig](Subsystems/SkinningEditor/UniskinRig.md) | `Runtime/UniskinRig*.cs`, `SceneMesh/UniskinRig*.cs`, `Tests/Editor/UniskinRigTests.cs` |
 | Overall package/fork workflow | [Architecture/PackageForkWorkflow](Architecture/PackageForkWorkflow.md) | `package.json`, Unity project `Packages/manifest.json` |
 | Per-PSB Unity/Uniskin importer switching, preserving migration and cached mesh saves | [Subsystems/SkinningEditor/AlternativePsbImporter](Subsystems/SkinningEditor/AlternativePsbImporter.md) | `Editor/PsbImporter/**`, `Editor/SpritePostProcess.cs`, `SceneSpriteIdentity.cs`, `Tests/PsbImporter/**` |
 | Unity 6000.0–6000.6 compatibility, EntityId, GPU bridge, regression tests | [Architecture/UnityVersionCompatibility](Architecture/UnityVersionCompatibility.md) | `Runtime/UnityObjectCompatibility.cs`, `Editor/UnityEditorObjectCompatibility.cs`, `Editor/AnimationUICompatibility.cs`, `Tests/Editor/UnityCompatibilityTests.cs` |

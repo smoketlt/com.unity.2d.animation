@@ -82,7 +82,7 @@ namespace UnityEditor.U2D.Animation
             m_Context = CreateInstance<SceneBoneSession>();
             m_Context.hideFlags = HideFlags.HideAndDontSave;
             m_Context.Load(sprite, source);
-            var saved = ReadBindings(source.importer.userData).sprites.FirstOrDefault(item => item.id == m_Context.spriteId);
+            var saved = ReadBindings(source.userData).sprites.FirstOrDefault(item => item.id == m_Context.spriteId);
             m_DrawOrder = saved?.drawOrder?.ToList() ?? new List<string>();
             InvalidateDrawOrder();
             if (!cache.hasCharacter)
@@ -102,7 +102,7 @@ namespace UnityEditor.U2D.Animation
         internal void Attach() => m_Context?.Attach();
         string Snapshot() => cache == null ? string.Empty : JsonUtility.ToJson(new State
             { bones = mesh.bones.Select(bone => bone.guid).ToArray(), weights = mesh.vertexWeights, drawOrder = m_DrawOrder.ToArray() });
-        static string Fingerprint(SceneMeshSource source) => SceneBoneSession.Fingerprint(source) + "\n" + source.importer.userData;
+        static string Fingerprint(SceneMeshSource source) => SceneBoneSession.Fingerprint(source) + "\n" + source.userData;
 
         internal void SelectBone(BoneCache bone, bool additive, bool toggleSelected = true)
         {
@@ -379,22 +379,20 @@ namespace UnityEditor.U2D.Animation
             if (Fingerprint(source) != m_Fingerprint) throw new InvalidOperationException("The source changed while Edit Weights was open. Revert and reopen it.");
             if (!dirty) return;
             cache.EndUndoOperation();
-            Undo.RegisterCompleteObjectUndo(source.importer, "Save Mesh Weights");
+            Undo.RegisterCompleteObjectUndo(source.saveTarget, "Save Mesh Weights");
             m_Context.WithSourcePose(() => SkinningModule.ApplySceneWeightChanges(cache, source.provider, m_DrawOrder.Count > 0 ? DrawIndices() : null));
             if (!cache.hasCharacter || m_DrawOrder.Count > 0)
             {
-                var bindings = ReadBindings(source.importer.userData);
+                var bindings = ReadBindings(source.userData);
                 bindings.sprites.RemoveAll(item => item.id == m_Context.spriteId);
                 bindings.sprites.Add(new Binding { id = m_Context.spriteId, bones = cache.hasCharacter ? null : mesh.bones.Select(bone => bone.guid).ToArray(), drawOrder = m_DrawOrder.ToArray() });
-                var other = source.importer.userData.Split('\n').Where(line => !line.StartsWith(kBindingPrefix)).ToList();
+                var other = source.userData.Split('\n').Where(line => !line.StartsWith(kBindingPrefix)).ToList();
                 other.Add(kBindingPrefix + Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonUtility.ToJson(bindings))));
-                source.importer.userData = string.Join("\n", other);
+                source.userData = string.Join("\n", other);
             }
-            source.provider.Apply();
-            source.importer.SaveAndReimport();
+            source.ApplyAndSave();
             m_Saved = Snapshot();
-            m_Fingerprint = Fingerprint(new SceneMeshSource(AssetDatabase.LoadAllAssetsAtPath(source.assetPath).OfType<Sprite>()
-                .First(sprite => sprite.GetSpriteID().ToString() == m_Context.spriteId)));
+            m_Fingerprint = Fingerprint(new SceneMeshSource(source.ResolveSprite(m_Context.spriteId)));
         }
 
         static Bindings ReadBindings(string userData)

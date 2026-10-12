@@ -48,7 +48,7 @@ namespace UnityEditor.U2D.Animation
             {
                 if (!skin.isActiveAndEnabled) continue;
                 var sprite = skin.GetComponent<SpriteRenderer>()?.sprite;
-                if (sprite == null || AssetDatabase.GetAssetPath(sprite) != m_Session.context.assetPath) continue;
+                if (sprite == null || UniskinRigUtility.SourcePath(sprite) != m_Session.context.assetPath) continue;
                 var bones = sprite.GetBones(); var transforms = skin.boneTransforms;
                 if (transforms == null) continue;
                 for (var i = 0; i < Mathf.Min(bones.Length, transforms.Length); ++i)

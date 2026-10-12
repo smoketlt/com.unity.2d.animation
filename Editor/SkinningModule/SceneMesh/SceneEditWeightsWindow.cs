@@ -11,6 +11,7 @@ namespace UnityEditor.U2D.Animation
     {
         [SerializeField] SceneWeightSession m_Session;
         [SerializeField] SpriteRenderer m_Renderer;
+        bool m_DiscardOnClose;
         [SerializeField] UnityEngine.Object[] m_EntrySelection;
         [SerializeField] bool m_RemoveMode, m_Direct, m_Bind, m_Overlay, m_Selected;
         [SerializeField] bool m_Pieces = true;
@@ -75,6 +76,7 @@ namespace UnityEditor.U2D.Animation
 
         internal static bool IsEditingRenderer(SpriteRenderer renderer) => renderer != null && Resources.FindObjectsOfTypeAll<SceneEditWeightsWindow>().Any(window => window.m_Renderer == renderer);
         internal static bool IsEditingAsset(string path) => Resources.FindObjectsOfTypeAll<SceneEditWeightsWindow>().Any(window => window.m_Session?.context?.assetPath == path);
+        internal string editingAssetPath => m_Session?.context?.assetPath;
         internal static bool HasActiveSceneHost => Resources.FindObjectsOfTypeAll<SceneEditWeightsWindow>().Any(window => !window.m_Saving && window.BlockReason() == null);
 
         internal static void OpenForRenderer(SpriteRenderer renderer)
@@ -85,7 +87,7 @@ namespace UnityEditor.U2D.Animation
                 if (renderer == null || renderer.sprite == null || !renderer.gameObject.scene.IsValid())
                     throw new InvalidOperationException("Select a scene SpriteRenderer with an authored mesh.");
                 if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Weight editing is available in Edit Mode.");
-                if (SkinningModule.IsEditingAsset(AssetDatabase.GetAssetPath(renderer.sprite)))
+                if (SkinningModule.IsEditingAsset(UniskinRigUtility.SourcePath(renderer.sprite)))
                     throw new InvalidOperationException("Close Skinning Editor for this asset before opening Edit Weights.");
                 foreach (var window in Resources.FindObjectsOfTypeAll<SceneEditMeshWindow>()) if (!window.RequestClose()) return;
                 foreach (var window in Resources.FindObjectsOfTypeAll<SceneEditBoneWindow>()) if (!window.RequestClose()) return;
@@ -138,6 +140,13 @@ namespace UnityEditor.U2D.Animation
 
         void OnDisable()
         {
+            EndGesture();
+            if (!m_DiscardOnClose && !m_Saving && !EditorApplication.isPlaying && m_Source != null &&
+                m_Renderer != null && m_Renderer.sprite != null && m_Session?.context?.cache != null && m_Session.dirty)
+            {
+                try { m_Session.Save(new SceneMeshSource(m_Renderer.sprite)); }
+                catch (Exception exception) { Debug.LogError("Edit Weights auto-save failed: " + exception.Message); }
+            }
             SaveWindowPreferences();
             ClearBoneDrop();
             Selection.selectionChanged -= OnSelectionChanged;
@@ -416,8 +425,7 @@ namespace UnityEditor.U2D.Animation
             rootVisualElement.Q<Button>("remove").SetEnabled(selected.Length > 0);
             rootVisualElement.Q<Button>("auto").SetEnabled(m_Session.mesh.boneCount > 0);
             rootVisualElement.Q<Button>("smooth").SetEnabled(m_Session.mesh.boneCount > 0);
-            hasUnsavedChanges = m_Session.dirty;
-            saveChangesMessage = "Save weights to the original Sprite/PSB asset? All instances use these weights.";
+            hasUnsavedChanges = false; // Closing saves directly instead of prompting.
         }
 
         static Color WeightColor(BoneCache bone) => BoneColorUtility.GetWeightMapColor(bone.ToSpriteSheetIfNeeded());
@@ -444,7 +452,7 @@ namespace UnityEditor.U2D.Animation
             if (mesh.vertices.Length != mesh.vertexCount || mesh.vertexWeights.Length != mesh.vertexCount)
                 return "The staged mesh is incomplete. Reopen Edit Weights.";
             if (m_Source == null) return m_Error ?? "Reopen Edit Weights to load the importer.";
-            if (AssetDatabase.GetAssetPath(m_Renderer.sprite) != m_Session.context.assetPath || m_Renderer.sprite.GetSpriteID().ToString() != m_Session.context.spriteId)
+            if (UniskinRigUtility.SourcePath(m_Renderer.sprite) != m_Session.context.assetPath || m_Renderer.sprite.GetSpriteID().ToString() != m_Session.context.spriteId)
                 return "The renderer's Sprite changed. Reopen Edit Weights.";
             if (m_Renderer.drawMode != SpriteDrawMode.Simple) return "Set SpriteRenderer Draw Mode to Simple.";
             if (Mathf.Abs(m_Renderer.transform.lossyScale.x * m_Renderer.transform.lossyScale.y) < .000001f) return "The renderer needs non-zero X/Y scale.";
@@ -455,11 +463,11 @@ namespace UnityEditor.U2D.Animation
         internal bool RequestClose()
         {
             if (m_Saving) return false;
+            rootVisualElement.focusController?.focusedElement?.Blur();
             EndGesture();
             if (m_Session?.context?.cache != null && m_Session.dirty)
             {
-                var choice = EditorUtility.DisplayDialogComplex("Unsaved Mesh Weights", "Save weights to the original Sprite/PSB asset before leaving Edit Weights?", "Save", "Cancel", "Revert");
-                if (choice == 1 || (choice == 0 && !Apply())) return false;
+                if (!Apply()) return false;
             }
             hasUnsavedChanges = false; Close(); return true;
         }
@@ -479,7 +487,7 @@ namespace UnityEditor.U2D.Animation
         }
 
         public override void SaveChanges() { if (!Apply()) throw new InvalidOperationException(m_Error); base.SaveChanges(); }
-        public override void DiscardChanges() { base.DiscardChanges(); }
+        public override void DiscardChanges() { m_DiscardOnClose = true; base.DiscardChanges(); }
         void OnUndoRedo() { EndGesture(); ClearBoneDrop(); m_Session.InvalidateDrawOrder(); m_Session.context?.RestoreAfterUndo(); m_RowKey = null; UpdateUI(); SceneView.RepaintAll(); }
         void RestoreTool()
         {

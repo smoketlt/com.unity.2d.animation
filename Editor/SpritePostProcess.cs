@@ -12,6 +12,20 @@ namespace UnityEditor.U2D.Animation
 {
     internal class SpritePostProcess : AssetPostprocessor
     {
+        internal static void ApplyUniskinRigData(ISpriteEditorDataProvider provider, Sprite[] sprites)
+        {
+            if (sprites.Length == 0) return;
+            foreach (var sprite in sprites)
+            {
+                sprite.SetBones(Array.Empty<SpriteBone>());
+                using (var emptyPoses = new NativeArray<Matrix4x4>(0, Allocator.Temp)) sprite.SetBindPoses(emptyPoses);
+            }
+            var scale = sprites[0].pixelsPerUnit / provider.pixelsPerUnit;
+            PostProcessBoneData(provider, scale, sprites);
+            PostProcessSpriteMeshData(provider, scale, sprites, null);
+            BoneGizmo.instance.ClearSpriteBoneCache();
+        }
+
         // Cached PSB imports bypass TextureGenerator and its Sprite callback. Use the
         // same authoring-to-runtime conversion as a full native import.
         internal static void ApplyCachedMeshData(ISpriteEditorDataProvider provider, Sprite[] sprites, AssetImporter importer)

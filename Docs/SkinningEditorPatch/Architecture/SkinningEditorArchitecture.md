@@ -7,7 +7,7 @@ This page maps the editor-side architecture used by the forked Skinning Editor p
 ## Primary Flow
 
 1. Unity opens the Sprite Editor with the Skinning Editor module.
-2. `SkinningModule` creates `SkinningCache`, tool caches, preview tools, and toolbar UI.
+2. `SkinningModule` auto-bakes an enabled [UniskinRig](../Subsystems/SkinningEditor/UniskinRig.md) to its source PSB, then creates `SkinningCache`, tool caches, preview tools, and toolbar UI. A synchronization conflict blocks editing and Apply.
 3. `SkinningModuleView` wires toolbar button events to tool activation or command handlers.
 4. `SkinningCache` owns selected sprite, selected tool, mesh/bone selections, undo, and events.
 5. Geometry tools route through one shared `MeshTool` instance wrapped by `MeshToolWrapper` variants.
@@ -18,7 +18,8 @@ This page maps the editor-side architecture used by the forked Skinning Editor p
 
 ## Major Areas
 
-- Scene View authoring host: [Scene Mesh Editing](../Subsystems/SkinningEditor/SceneMeshEditing.md). It stages geometry independently, then uses the common Sprite importer providers for Apply and reimport.
+- Scene View authoring host: [Scene Mesh Editing](../Subsystems/SkinningEditor/SceneMeshEditing.md). It stages geometry independently, then saves through native importer providers or the detached UniskinRig provider. Rig saves update persistent Sprite subassets and scene bindings without importing the PSB.
+- Independent rig storage, player bindings and PSB fallback: [UniskinRig](../Subsystems/SkinningEditor/UniskinRig.md).
 - lifecycle and module host: `SkinningModule.cs`
 - UI and shortcuts: `SkinningModuleView.cs`
 - tool creation and state: `SkinningCache.cs`
