@@ -45,6 +45,18 @@ Use `SpriteMeshDataController` for geometry operations:
 - `NormalizeWeights(...)`
 - `CalculateWeights(...)`
 
+## Preserving Authored Geometry During Triangulation
+
+Normal triangulation separates the validated vertex/edge graph from the triangle result. `TriangulationUtility.TessellatePreservingGraph` runs the resolved 2D Common `PlanarGraph.Validate` and `Tessellator.Tessellate`, then publishes all validated graph vertices and edges alongside the returned indices. Synchronous, safe fallback and scheduled triangulation use this same helper. Subdivision keeps its existing refinement path.
+
+Unity's tessellator returns only the vertex prefix through the highest triangle index. Its higher-level wrapper also filters edges whose endpoints lie beyond that prefix. Closing an interior eye loop can therefore omit a trailing center vertex and all four spokes, even though the user added only an edge. Rebuilding the editor mesh from that truncated result previously deleted authored data and could trigger unnecessary weight regeneration.
+
+The helper preserves vertices that are not referenced by triangles and their incident edges. It retains Unity's existing exterior/interior triangle filtering; keeping an authored vertex does not imply that it must appear in the triangle indices. Planar validation still splits crossings/T-junctions and merges duplicate points. The controller's existing quad fallback for empty triangulation and weight generation for actual vertex-count changes remain in place. Explicit Delete/Reset/New/Generate commands retain their existing semantics and undo/event flows.
+
+`Tests/Editor/GeometryTriangulationTests.cs` covers closing an inner diamond around a center vertex in two vertex orders, preserving exact weights and all spokes, repeat triangulation, scheduled triangulation, crossing-edge splits and an unreferenced trailing vertex in the safe path. Run it alongside `GeometryDeletionTests` and `UnityCompatibilityTests` in disposable projects for both supported API families.
+
+Verified on 2026-10-14 using immutable snapshots in disposable projects: Unity **6000.0.81f1 / Common 9.1.2** and **6000.5.7f1 / Common 14.0.1** each passed all **28** triangulation/deletion/compatibility cases with no skips or C# compilation errors. Before the fix, three of the five new triangulation cases failed on both versions. A separate temporary test on each version replayed the read-only captured 67-vertex eye mesh with a reconstructed center and four spokes; closing the eye retained all 68 vertices, 90 edges and weights. No source Sprite/PSB or Scene data was modified by these tests. The open project used its Git dependency during verification and was not switched to the test snapshots. Exact Unity 6000.0.7 and interactive mouse/save/reopen checks remain unverified. The Common API signatures used here work on both tested versions, so no additional version branch is required.
+
 ## Quad Geometry
 
 `CreateQuad()` creates four vertices from `spriteMeshData.frame.size`:

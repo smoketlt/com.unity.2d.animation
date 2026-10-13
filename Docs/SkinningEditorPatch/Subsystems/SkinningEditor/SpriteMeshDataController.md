@@ -48,6 +48,8 @@
 
 `Triangulate(...)` copies current geometry into temporary arrays, runs the triangulator, then rebuilds the mesh. If triangulation fails or returns empty geometry, it clears the mesh, creates a quad, and triangulates again.
 
+The triangulator preserves the complete validated vertex/edge graph, including vertices that Unity's triangle filtering leaves unreferenced. Closing an interior loop therefore cannot implicitly remove a trailing center vertex and its spokes. The shared helper also serves scheduled and safe triangulation; see [MeshDataAndWeights](MeshDataAndWeights.md#preserving-authored-geometry-during-triangulation).
+
 ## Batch Vertex Deletion
 
 `RemoveVertex(IEnumerable<int>)` removes vertices in descending index order. It snapshots triangle-derived outline edges once, then stitches and remaps that working boundary after each removal. The serialized outline remains unchanged until retriangulation, so reading it again during a batch would use stale indices and could create edges into an unrelated mesh island. Single-vertex removal uses the same helper with a fresh boundary snapshot.

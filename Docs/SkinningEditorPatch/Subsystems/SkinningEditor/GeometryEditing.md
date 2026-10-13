@@ -59,6 +59,7 @@ This page documents the Geometry editing workflow: selection, vertex creation, e
 - In `Create`, dragging from a vertex starts edge creation.
 - In `Create`, vertex moving is disabled so drag from a vertex is not stolen by move behavior.
 - Edge-drag state is reset on mouse up so the tool returns to plain `Create`.
+- Adding an edge that closes an interior loop preserves the existing center vertices, internal edges and weights. Normal retriangulation keeps the validated authoring graph even when Unity's triangle filtering leaves some vertices unreferenced; it does not implicitly delete them.
 - In `New`, the current mesh is cleared and clicks define a new open hull.
 - In `New`, the selected sprite texture remains visible while the hull is open.
 - In `New`, other sprites render at 10% opacity.

@@ -7,6 +7,8 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using ModuleHandle = UnityEngine.U2D.Common.UTess.ModuleHandle;
+using PlanarGraph = UnityEngine.U2D.Common.UTess.PlanarGraph;
+using Tessellator = UnityEngine.U2D.Common.UTess.Tessellator;
 
 namespace UnityEditor.U2D.Animation
 {
@@ -29,7 +31,7 @@ namespace UnityEditor.U2D.Animation
         public void Execute()
         {
             int outputVertexCount = 0, outputIndexCount = 0, outputEdgeCount = 0;
-            ModuleHandle.Tessellate(Allocator.Temp, inputVertices, inputEdges, ref outputVertices, out outputVertexCount, ref outputIndices, out outputIndexCount, ref outputEdges, out outputEdgeCount, true);
+            TriangulationUtility.TessellatePreservingGraph(Allocator.Temp, inputVertices, inputEdges, ref outputVertices, out outputVertexCount, ref outputIndices, out outputIndexCount, ref outputEdges, out outputEdgeCount);
             result[0] = new int4(outputVertexCount, outputIndexCount, outputEdgeCount, 0);
         }
     }
@@ -72,6 +74,47 @@ namespace UnityEditor.U2D.Animation
 
         // Adjust Tolerance for Collinear Check.
         static readonly float k_CollinearTolerance = 0.0001f;
+
+        internal static void TessellatePreservingGraph(Allocator allocator, in NativeArray<float2> points,
+            in NativeArray<int2> edges, ref NativeArray<float2> outVertices, out int outVertexCount,
+            ref NativeArray<int> outIndices, out int outIndexCount, ref NativeArray<int2> outEdges,
+            out int outEdgeCount)
+        {
+            outVertexCount = 0;
+            outIndexCount = 0;
+            outEdgeCount = 0;
+            if (points.Length < 3 || points.Length >= ModuleHandle.kMaxVertexCount)
+                return;
+
+            var graphVertices = new NativeArray<float2>(points.Length * 4, allocator);
+            var graphEdges = new NativeArray<int2>(edges.Length * 8, allocator);
+            int graphVertexCount = 0, graphEdgeCount = 0;
+            bool validGraph = edges.Length > 0 && PlanarGraph.Validate(allocator, in points, points.Length,
+                in edges, edges.Length, ref graphVertices, out graphVertexCount, ref graphEdges, out graphEdgeCount);
+
+            if (!validGraph)
+            {
+                outVertexCount = points.Length;
+                outEdgeCount = edges.Length;
+                NativeArray<float2>.Copy(points, outVertices, outVertexCount);
+                NativeArray<int2>.Copy(edges, outEdges, outEdgeCount);
+            }
+            else if (graphVertexCount > 2 && graphEdgeCount > 2 &&
+                Tessellator.Tessellate(allocator, graphVertices, graphVertexCount, graphEdges, graphEdgeCount,
+                    ref outVertices, ref outVertexCount, ref outIndices, ref outIndexCount))
+            {
+                // Triangle filtering can leave graph vertices unreferenced, especially when an
+                // interior loop closes. They and their authored edges still belong to the mesh.
+                // Tessellator indices refer directly to the validated graph's vertex order.
+                outVertexCount = graphVertexCount;
+                outEdgeCount = graphEdgeCount;
+                NativeArray<float2>.Copy(graphVertices, outVertices, outVertexCount);
+                NativeArray<int2>.Copy(graphEdges, outEdges, outEdgeCount);
+            }
+
+            graphEdges.Dispose();
+            graphVertices.Dispose();
+        }
 
         [BurstCompile]
         static unsafe int ValidateCollinear(float2* points, int pointCount, float epsilon)
@@ -116,7 +159,7 @@ namespace UnityEditor.U2D.Animation
 
             int check = ValidateCollinear((float2*)_points.GetUnsafeReadOnlyPtr(), pointCount, k_CollinearTolerance);
             if (0 != check)
-                ModuleHandle.Tessellate(allocator, in _points, in _edges, ref _outVertices, out outVertexCount, ref _outIndices, out outIndexCount, ref _outEdges, out outEdgeCount, true);
+                TessellatePreservingGraph(allocator, in _points, in _edges, ref _outVertices, out outVertexCount, ref _outIndices, out outIndexCount, ref _outEdges, out outEdgeCount);
 
             for (int i = 0; i < outEdgeCount; ++i)
                 outEdges[i] = _outEdges[i];
@@ -186,7 +229,7 @@ namespace UnityEditor.U2D.Animation
 
             try
             {
-                ModuleHandle.Tessellate(Allocator.Persistent, in points, in edges, ref outVertices, out outVertexCount, ref outIndices, out outIndexCount, ref outEdges, out outEdgeCount, true);
+                TessellatePreservingGraph(Allocator.Persistent, in points, in edges, ref outVertices, out outVertexCount, ref outIndices, out outIndexCount, ref outEdges, out outEdgeCount);
             }
             catch (Exception)
             {
