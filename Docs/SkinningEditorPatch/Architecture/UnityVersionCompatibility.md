@@ -33,6 +33,16 @@ Removal sizes come from the actual remaining skin set after removing queued entr
 
 Verified on 2026-10-13 using an immutable snapshot in disposable projects: Unity 6000.0.81f1 with Common 9.1.2 and Unity 6000.5.7f1 with Common 14.0.1 each passed all 14 compatibility test cases with no skipped cases or C# compilation errors. Both runs used `-batchmode -nographics`; visual GPU deformation and the original scene remain unverified. The connected Unity 6000.0.81f1 development project also compiled successfully, but its manifest does not enable package tests, so its zero-test Pipeline run is not counted as regression verification.
 
+## Destroyed SpriteRenderer and SpriteSkin Cleanup
+
+Deleting a sprite GameObject can leave a destroyed renderer in a deformation batch until its deferred removal is processed. The reported follow-up on `420261d9` accessed that renderer in `DeactivateDeformableBuffers`, producing `MissingReferenceException` from `IsUsingDeformableBuffer`.
+
+Batch synchronization now filters destroyed skins/renderers from pending additions and active membership before copying sprite data. If active entries are removed this way, it rebuilds transform references from the surviving skins (excluding queued removals), avoiding the destroyed skins' disposed bone-ID arrays. Buffer deactivation also checks Unity object null semantics before calling the native bridge.
+
+`DeformationBatchDropsDestroyedSkins` destroys actual GameObjects in CPU/GPU batches, including pending additions, queued removal of the last skin, and deletion combined with truncated arrays. It checks the native deactivation boundary with a stale renderer, surviving membership and indices, repeated Update, and the final empty batch.
+
+Verified on 2026-10-14: all 20 compatibility cases passed with no skipped cases on Unity 6000.0.81f1/Common 9.1.2 and Unity 6000.5.7f1/Common 14.0.1. The disposable projects used a snapshot of published `420261d9` plus this runtime/test change, excluding unrelated working-tree edits. Both runs used `-batchmode -nographics`; the original scene and visual GPU output remain unverified.
+
 ## Identity Rules
 
 - Use the per-file `ObjectId` alias for object identities, including native job arrays, dictionaries, visibility rows, skeleton picking, and IK culling.
@@ -71,7 +81,7 @@ Example batch invocation (use an installed editor executable and a disposable pr
 Unity.exe -batchmode -nographics -projectPath <test-project> -runTests -testPlatform EditMode -testFilter UnityEditor.U2D.Animation.Tests.UnityCompatibilityTests -testResults <results.xml> -logFile <editor.log>
 ```
 
-Do not add `-quit` to this test invocation; let the Test Framework finish and exit. Confirm the XML reports fourteen executed test cases (including CPU/GPU batch recovery), not merely a successful process or a zero-test result. The historical matrix below predates these six additional cases.
+Do not add `-quit` to this test invocation; let the Test Framework finish and exit. Confirm the XML reports twenty executed test cases (including CPU/GPU batch recovery and destruction), not merely a successful process or a zero-test result. The historical matrix below predates these twelve additional cases.
 
 ## Verification Matrix
 

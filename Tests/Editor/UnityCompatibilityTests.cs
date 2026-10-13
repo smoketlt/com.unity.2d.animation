@@ -10,6 +10,55 @@ namespace UnityEditor.U2D.Animation.Tests
 {
     internal class UnityCompatibilityTests
     {
+        [TestCase(DeformationMethods.Cpu, false, false)]
+        [TestCase(DeformationMethods.Gpu, false, false)]
+        [TestCase(DeformationMethods.Cpu, true, false)]
+        [TestCase(DeformationMethods.Gpu, true, false)]
+        [TestCase(DeformationMethods.Cpu, false, true)]
+        [TestCase(DeformationMethods.Gpu, false, true)]
+        public void DeformationBatchDropsDestroyedSkins(DeformationMethods method, bool pendingAddition, bool truncatedArrays)
+        {
+            BaseDeformationSystem system = method == DeformationMethods.Gpu
+                ? (BaseDeformationSystem)new GpuDeformationSystem() : new CpuDeformationSystem();
+            var survivor = new GameObject("Surviving batch skin", typeof(SpriteRenderer), typeof(SpriteSkin));
+            var deleted = new GameObject("Deleted batch skin", typeof(SpriteRenderer), typeof(SpriteSkin));
+            system.Initialize(system.GetHashCode());
+            try
+            {
+                var survivingSkin = survivor.GetComponent<SpriteSkin>();
+                system.AddSpriteSkin(survivingSkin);
+                system.AddSpriteSkin(deleted.GetComponent<SpriteSkin>());
+                if (!pendingAddition)
+                    system.Update();
+                if (truncatedArrays)
+                    typeof(BaseDeformationSystem).GetMethod("ResizeAndCopyArrays", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .Invoke(system, new object[] { 1 });
+
+                UnityEngine.Object.DestroyImmediate(deleted);
+                if (!pendingAddition && !truncatedArrays)
+                    Assert.DoesNotThrow(() => typeof(BaseDeformationSystem)
+                        .GetMethod("DeactivateDeformableBuffers", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .Invoke(system, null));
+                Assert.DoesNotThrow(() => system.Update());
+                Assert.AreEqual(1, system.GetSpriteSkins().Count);
+                Assert.IsTrue(system.GetSpriteSkins().Contains(survivingSkin));
+                Assert.AreEqual(0, survivingSkin.dataIndex);
+                Assert.DoesNotThrow(() => system.Update());
+                system.RemoveSpriteSkin(survivingSkin);
+                UnityEngine.Object.DestroyImmediate(survivor);
+                Assert.DoesNotThrow(() => system.Update());
+                Assert.AreEqual(0, system.GetSpriteSkins().Count);
+            }
+            finally
+            {
+                system.Cleanup();
+                if (survivor != null)
+                    UnityEngine.Object.DestroyImmediate(survivor);
+                if (deleted != null)
+                    UnityEngine.Object.DestroyImmediate(deleted);
+            }
+        }
+
         [TestCase(DeformationMethods.Cpu, 0)]
         [TestCase(DeformationMethods.Gpu, 0)]
         [TestCase(DeformationMethods.Cpu, -1)]

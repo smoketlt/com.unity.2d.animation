@@ -261,8 +261,26 @@ namespace UnityEngine.U2D.Animation
 
         protected void SynchronizeSpriteSkinData()
         {
+            m_SpriteSkinsToAdd.RemoveWhere(IsSpriteSkinDestroyed);
+            bool removedDestroyedSkins = m_SpriteSkins.RemoveWhere(IsSpriteSkinDestroyed) > 0;
+            if (removedDestroyedSkins)
+            {
+                // A destroyed component may never have queued its removal. Rebuild the
+                // transform references without reading its disposed bone-ID arrays.
+                m_DeformJobHandle.Complete();
+                m_LocalToWorldTransformAccessJob.ResetCache();
+                m_WorldToLocalTransformAccessJob.ResetCache();
+                foreach (SpriteSkin spriteSkin in m_SpriteSkins)
+                {
+                    if (m_SpriteSkinsToRemove.Contains(spriteSkin))
+                        continue;
+                    m_WorldToLocalTransformAccessJob.AddTransform(spriteSkin.transform);
+                    AddBoneTransforms(spriteSkin);
+                }
+            }
+
             int count = m_SpriteSkins.Count;
-            if (m_IsSpriteSkinActiveForDeform.Length == count &&
+            if (!removedDestroyedSkins && m_IsSpriteSkinActiveForDeform.Length == count &&
                 m_PerSkinJobData.Length == count && m_SpriteSkinData.Length == count &&
                 m_BoundsData.Length == count && m_SpriteRenderers.Length == count &&
                 m_Buffers.Length == count && m_BufferSizes.Length == count)
@@ -279,6 +297,11 @@ namespace UnityEngine.U2D.Animation
                 spriteSkin.SetDataIndex(index++);
                 CopyToSpriteSkinData(spriteSkin);
             }
+        }
+
+        static bool IsSpriteSkinDestroyed(SpriteSkin spriteSkin)
+        {
+            return spriteSkin == null || spriteSkin.spriteRenderer == null;
         }
 
         internal virtual void Cleanup()
@@ -419,9 +442,10 @@ namespace UnityEngine.U2D.Animation
         {
             for (int i = 0; i < m_IsSpriteSkinActiveForDeform.Length; ++i)
             {
-                if (m_IsSpriteSkinActiveForDeform[i] || InternalEngineBridge.IsUsingDeformableBuffer(m_SpriteRenderers[i], IntPtr.Zero))
+                SpriteRenderer spriteRenderer = m_SpriteRenderers[i];
+                if (spriteRenderer == null || m_IsSpriteSkinActiveForDeform[i] || InternalEngineBridge.IsUsingDeformableBuffer(spriteRenderer, IntPtr.Zero))
                     continue;
-                m_SpriteRenderers[i].DeactivateDeformableBuffer();
+                spriteRenderer.DeactivateDeformableBuffer();
             }
         }
 
