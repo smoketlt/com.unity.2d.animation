@@ -17,7 +17,7 @@
           <ui:Button name="smooth" text="Smooth" /><ui:Button name="auto" text="Auto" /><ui:Button name="weld" text="Weld" class="mesh-last-action" tooltip="Weight transfer between meshes: workflow pending discussion." />
         </ui:VisualElement>
         <ui:VisualElement class="mesh-row mesh-options">
-          <ui:Toggle name="pieces" text="Pieces" class="mesh-option-toggle" /><ui:Toggle name="overlay" text="Overlay" class="mesh-option-toggle" /><ui:Toggle name="selected" text="Selected" class="mesh-option-toggle" />
+          <ui:Toggle name="pieces" text="Pieces" class="mesh-option-toggle" /><ui:Toggle name="overlay" text="Overlay" class="mesh-option-toggle" /><ui:Toggle name="selected" text="Selected" class="mesh-option-toggle" /><ui:Toggle name="preview" text="Preview" class="mesh-option-toggle" tooltip="Show only the sprite, hiding weight colors, mesh lines, vertices, bones and brush handles. Editing gestures remain available." />
         </ui:VisualElement>
         <ui:Label text="Bones" class="weight-list-title" />
         <ui:ScrollView name="bones" mode="Vertical" />
@@ -25,6 +25,9 @@
           <ui:Button name="bind" text="Bind" tooltip="Click bones to add them to this mesh. Assigned bones are inactive." />
           <ui:Button name="swap" text="Swap" tooltip="Swap two selected bones' weights on selected vertices, or all vertices." />
           <ui:Button name="remove" text="Remove" class="mesh-last-action" tooltip="Unbind selected bones and redistribute their weights. Skeleton bones remain." />
+        </ui:VisualElement>
+        <ui:VisualElement class="mesh-row">
+          <ui:Button name="updateBindings" text="Update Bindings" class="mesh-last-action" tooltip="Use the current bone pose as this mesh's binding pose, keeping its visible shape and weights. Other meshes keep their bindings." />
         </ui:VisualElement>
         <ui:Label name="status" />
       </ui:VisualElement>

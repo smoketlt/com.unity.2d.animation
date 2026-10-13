@@ -23,6 +23,7 @@ namespace UnityEditor.U2D.Animation
             var scale = sprites[0].pixelsPerUnit / provider.pixelsPerUnit;
             PostProcessBoneData(provider, scale, sprites);
             PostProcessSpriteMeshData(provider, scale, sprites, null);
+            SceneMeshBindingPose.Apply(provider, sprites, SceneMeshBindingPose.UserData(provider, null));
             BoneGizmo.instance.ClearSpriteBoneCache();
         }
 
@@ -32,6 +33,7 @@ namespace UnityEditor.U2D.Animation
         {
             if (sprites.Length == 0) return;
             PostProcessSpriteMeshData(provider, sprites[0].pixelsPerUnit / provider.pixelsPerUnit, sprites, importer);
+            SceneMeshBindingPose.Apply(provider, sprites, SceneMeshBindingPose.UserData(provider, importer));
             BoneGizmo.instance.ClearSpriteBoneCache();
             RefreshSpriteSkinCache();
         }
@@ -58,6 +60,7 @@ namespace UnityEditor.U2D.Animation
                 ai.InitSpriteEditorDataProvider();
                 PostProcessBoneData(ai, definitionScale, sprites);
                 PostProcessSpriteMeshData(ai, definitionScale, sprites, assetImporter);
+                SceneMeshBindingPose.Apply(ai, sprites, SceneMeshBindingPose.UserData(ai, assetImporter));
                 BoneGizmo.instance.ClearSpriteBoneCache();
             }
 

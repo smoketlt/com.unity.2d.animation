@@ -684,7 +684,7 @@ namespace UnityEditor.U2D.Animation
                 dataProvider.SetSpriteRects(spriteRects);
         }
 
-        internal static void ApplySceneWeightChanges(SkinningCache cache, ISpriteEditorDataProvider provider, int[] drawIndices = null)
+        internal static void ApplySceneWeightChanges(SkinningCache cache, ISpriteEditorDataProvider provider, int[] drawIndices = null, bool updatePositions = false)
         {
             var sprite = cache.selectedSprite;
             var id = new GUID(sprite.id);
@@ -726,6 +726,7 @@ namespace UnityEditor.U2D.Animation
                     BoneWeightExtensions.SetBoneIndex(ref weight, channel, savedIndex);
                 }
                 vertices[i].boneWeight = weight;
+                if (updatePositions) vertices[i].position = mesh.vertices[i];
             }
             meshProvider.SetVertices(id, vertices);
             meshProvider.SetIndices(id, drawIndices ?? meshProvider.GetIndices(id));

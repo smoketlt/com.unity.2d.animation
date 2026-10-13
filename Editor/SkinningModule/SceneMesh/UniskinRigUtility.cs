@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Unity.Collections;
 using UnityEditor.SceneManagement;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.U2D;
 using UnityEngine.U2D.Animation;
 using Object = UnityEngine.Object;
@@ -21,6 +23,7 @@ namespace UnityEditor.U2D.Animation
         {
             Undo.undoRedoPerformed += RefreshAfterUndo;
             EditorApplication.hierarchyChanged += QueueInstanceRefresh;
+            EditorApplication.delayCall += RepairMissingTextureCoordinates;
         }
 
         internal static string SourcePath(Sprite sprite)
@@ -220,9 +223,86 @@ namespace UnityEditor.U2D.Animation
             rig.rootOffset = data.hasCharacter ? -Vector2.Scale(data.character.dimension, data.character.pivot) / data.pixelsPerUnit :
                 -Vector2.Scale(data.sprites.First().rect.rect.size, data.sprites.First().rect.pivot) / data.pixelsPerUnit;
             SpritePostProcess.ApplyUniskinRigData(provider, rig.sprites.Select(entry => entry.sprite).ToArray());
+            foreach (var entry in rig.sprites) RestoreTextureCoordinates(entry.source, entry.sprite);
+            SceneMeshBindingPose.Apply(provider, rig.sprites.Select(entry => entry.sprite).ToArray(), data.userData);
             ++rig.revision;
             foreach (var entry in rig.sprites) EditorUtility.SetDirty(entry.sprite);
             EditorUtility.SetDirty(rig);
+        }
+
+        // Native mesh replacement/Undo can clear UV streams. Imports regenerate
+        // them afterwards; editing persistent Sprite subassets does not.
+        // Derive the atlas mapping from the imported Sprite, never from a generated
+        // Sprite whose streams may already have been cleared by Save or Undo.
+        internal static void RestoreTextureCoordinates(Sprite source, Sprite destination)
+        {
+            var positions = source.vertices;
+            var uv = source.uv;
+            if (positions.Length < 3 || uv.Length != positions.Length)
+                throw new InvalidOperationException("The source Sprite has no usable texture coordinates.");
+            var origin = positions[0];
+            var axisIndex = 1;
+            for (var i = 2; i < positions.Length; ++i)
+                if ((positions[i] - origin).sqrMagnitude > (positions[axisIndex] - origin).sqrMagnitude) axisIndex = i;
+            var axis = positions[axisIndex] - origin;
+            var otherIndex = -1;
+            var determinant = 0f;
+            for (var i = 1; i < positions.Length; ++i)
+            {
+                var offset = positions[i] - origin;
+                var cross = axis.x * offset.y - axis.y * offset.x;
+                if (Mathf.Abs(cross) <= Mathf.Abs(determinant)) continue;
+                otherIndex = i;
+                determinant = cross;
+            }
+            if (otherIndex < 0)
+                throw new InvalidOperationException("The source Sprite texture mapping is degenerate.");
+            var other = positions[otherIndex] - origin;
+            var uvAxis = uv[axisIndex] - uv[0];
+            var uvOther = uv[otherIndex] - uv[0];
+            var vertices = destination.GetVertexAttribute<Vector3>(VertexAttribute.Position);
+            var coordinates = new NativeArray<Vector2>(vertices.Length, Allocator.Temp);
+            try
+            {
+                for (var i = 0; i < vertices.Length; ++i)
+                {
+                    var offset = (Vector2)vertices[i] - origin;
+                    var x = (offset.x * other.y - offset.y * other.x) / determinant;
+                    var y = (axis.x * offset.y - axis.y * offset.x) / determinant;
+                    coordinates[i] = uv[0] + x * uvAxis + y * uvOther;
+                }
+                destination.SetVertexAttribute<Vector2>(VertexAttribute.TexCoord0, coordinates);
+            }
+            finally { coordinates.Dispose(); }
+        }
+
+        internal static void RepairMissingTextureCoordinates()
+        {
+            if (s_Rigs == null) FindAtSource(string.Empty);
+            foreach (var rig in s_Rigs.Values.Where(rig => rig != null && rig.editingEnabled))
+            {
+                try
+                {
+                    var repaired = false;
+                    foreach (var entry in rig.sprites)
+                    {
+                        if (entry.source == null || entry.sprite == null) continue;
+                        var uv = entry.sprite.uv;
+                        if (entry.sprite.GetVertexCount() == 0 || uv.Any(point => point != Vector2.zero)) continue;
+                        RestoreTextureCoordinates(entry.source, entry.sprite);
+                        var provider = new UniskinRigDataProvider(rig, NativeProvider(AssetDatabase.GUIDToAssetPath(rig.sourceGuid)));
+                        SceneMeshBindingPose.Apply(provider, new[] { entry.sprite }, provider.data.userData);
+                        EditorUtility.SetDirty(entry.sprite);
+                        repaired = true;
+                    }
+                    if (!repaired) continue;
+                    foreach (var binding in Resources.FindObjectsOfTypeAll<UniskinRigBinding>().Where(binding => binding.rig == rig)) binding.Apply();
+                    EditorUtility.SetDirty(rig);
+                    AssetDatabase.SaveAssetIfDirty(rig);
+                    SceneView.RepaintAll();
+                }
+                catch (Exception exception) { Debug.LogException(exception); }
+            }
         }
 
         internal static bool CloseSceneTools(string path)

@@ -8,7 +8,7 @@ using UnityEngine.UIElements;
 
 namespace UnityEditor.U2D.Animation
 {
-    internal sealed class SceneEditMeshWindow : EditorWindow
+    internal sealed class SceneEditMeshWindow : SceneEditWindow
     {
         [SerializeField] SceneMeshSession m_Session;
         [SerializeField] SpriteRenderer m_Renderer;
@@ -29,8 +29,6 @@ namespace UnityEditor.U2D.Animation
         bool m_DiscardOnClose;
         SpriteMeshView m_View;
         SpriteMeshController m_Controller;
-        Tool m_PreviousTool;
-        bool m_OwnsTool;
         SpriteRenderer m_PreviewRenderer;
         bool m_PreviousForceRenderingOff;
         readonly List<GameObject> m_HiddenObjects = new List<GameObject>();
@@ -133,6 +131,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnEnable()
         {
+            if (!EnableWindowLifetime(m_Renderer != null || m_Session != null)) return;
             titleContent = new GUIContent("Edit Mesh", ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/CreateMesh.png"));
             minSize = new Vector2(340, 50) / Mathf.Max(1f, EditorGUIUtility.pixelsPerPoint);
             if (m_Session == null)
@@ -150,6 +149,7 @@ namespace UnityEditor.U2D.Animation
                 newGeometryCompleted = () => { m_Session.mode = 0; m_Session.newMeshBackup = null; }
             };
             Selection.selectionChanged += OnSelectionChanged;
+            SceneView.beforeSceneGui += BeforeSceneGUI;
             SceneView.duringSceneGui += OnSceneGUI;
             Undo.undoRedoPerformed += OnUndoRedo;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
@@ -161,24 +161,29 @@ namespace UnityEditor.U2D.Animation
 
         void OnDisable()
         {
+            DisableWindowLifetime();
             EndTraceGesture();
-            if (!m_DiscardOnClose && !m_SaveInProgress && !EditorApplication.isPlaying && m_Source != null &&
-                m_Renderer != null && m_Renderer.sprite != null && m_Session != null && m_Session.dirty)
+            if (!isClosingForReload && !isRestoredWindow && !m_DiscardOnClose && !m_SaveInProgress && !EditorApplication.isPlaying && m_Source != null &&
+                m_Renderer != null && m_Renderer.sprite != null && m_Session != null)
             {
                 try
                 {
-                    if (m_Session.mode == 3) m_Session.CompleteNew();
-                    var source = new SceneMeshSource(m_Renderer.sprite);
-                    if (source.Fingerprint() != m_Session.sourceMesh)
-                        throw new InvalidOperationException("The source changed before the mesh window closed.");
-                    Undo.RegisterCompleteObjectUndo(source.saveTarget, "Auto Save Sprite Mesh");
-                    source.WriteMesh(m_Session.mesh);
-                    m_Session.pendingCreation = false;
-                    m_Session.savedMesh = JsonUtility.ToJson(m_Session.mesh);
+                    if (m_Session.dirty)
+                    {
+                        if (m_Session.mode == 3) m_Session.CompleteNew();
+                        var source = new SceneMeshSource(m_Renderer.sprite);
+                        if (source.Fingerprint() != m_Session.sourceMesh)
+                            throw new InvalidOperationException("The source changed before the mesh window closed.");
+                        Undo.RegisterCompleteObjectUndo(source.saveTarget, "Auto Save Sprite Mesh");
+                        source.WriteMesh(m_Session.mesh);
+                        m_Session.pendingCreation = false;
+                        m_Session.savedMesh = JsonUtility.ToJson(m_Session.mesh);
+                    }
                 }
                 catch (Exception exception) { Debug.LogError("Edit Mesh auto-save failed: " + exception.Message); }
             }
             Selection.selectionChanged -= OnSelectionChanged;
+            SceneView.beforeSceneGui -= BeforeSceneGUI;
             SceneView.duringSceneGui -= OnSceneGUI;
             Undo.undoRedoPerformed -= OnUndoRedo;
             EditorApplication.playModeStateChanged -= OnPlayModeChanged;
@@ -196,6 +201,7 @@ namespace UnityEditor.U2D.Animation
 
         public void CreateGUI()
         {
+            if (isRestoredWindow) return;
             rootVisualElement.Clear();
             var template = ResourceLoader.Load<VisualTreeAsset>("SkinningModule/SceneEditMeshWindow.uxml");
             if (template == null)
@@ -636,10 +642,16 @@ namespace UnityEditor.U2D.Animation
             RestoreVisibility();
             if (m_PreviewRenderer != null) m_PreviewRenderer.forceRenderingOff = m_PreviousForceRenderingOff;
             m_PreviewRenderer = null;
-            if (m_OwnsTool && UnityEditor.Tools.current == Tool.None) UnityEditor.Tools.current = m_PreviousTool;
-            m_OwnsTool = false;
+            toolScope.Restore();
             m_BoxSelecting = false;
             SceneView.RepaintAll();
+        }
+
+        void BeforeSceneGUI(SceneView scene)
+        {
+            if (m_SaveInProgress) return;
+            if (BlockReason() != null) toolScope.Restore();
+            else toolScope.Hide();
         }
 
         void OnSceneGUI(SceneView scene)
@@ -664,12 +676,7 @@ namespace UnityEditor.U2D.Animation
                 m_Error = "The renderer's Sprite changed. Select another object, then select this sprite again to reload.";
                 return;
             }
-            if (!m_OwnsTool)
-            {
-                m_PreviousTool = UnityEditor.Tools.current;
-                UnityEditor.Tools.current = Tool.None;
-                m_OwnsTool = true;
-            }
+            toolScope.Hide();
             if (m_PreviewRenderer == null)
             {
                 m_PreviewRenderer = m_Renderer;
@@ -952,11 +959,17 @@ namespace UnityEditor.U2D.Animation
             textureProvider.GetTextureActualWidthAndHeight(out var width, out var height);
             Vector2 UV(float x, float y) => new Vector2((frame.x + x) / width, (frame.y + y) / height);
             m_ImageMesh.Clear();
-            if (deformedMesh != null)
+            var bindingPose = m_Source.bindingPose;
+            if (deformedMesh != null || bindingPose != null)
             {
-                m_ImageMesh.vertices = Array.ConvertAll(deformedMesh.vertices, vertex => (Vector3)vertex);
-                m_ImageMesh.uv = Array.ConvertAll(m_Session.mesh.vertices, vertex => UV(vertex.x, vertex.y));
-                m_ImageMesh.triangles = deformedMesh.indices;
+                var displayed = deformedMesh ?? m_Session.mesh;
+                m_ImageMesh.vertices = Array.ConvertAll(displayed.vertices, vertex => (Vector3)vertex);
+                m_ImageMesh.uv = m_Session.mesh.vertices.Select((vertex, i) =>
+                {
+                    var pixel = bindingPose?.TexturePosition(vertex, i) ?? vertex;
+                    return UV(pixel.x, pixel.y);
+                }).ToArray();
+                m_ImageMesh.triangles = displayed.indices;
             }
             else
             {

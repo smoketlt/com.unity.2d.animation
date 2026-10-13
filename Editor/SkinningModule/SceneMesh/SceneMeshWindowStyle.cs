@@ -116,7 +116,8 @@ namespace UnityEditor.U2D.Animation
             title.style.paddingBottom = Px(11);
             root.Query<Button>().ForEach(button =>
             {
-                button.style.height = Px(24);
+                button.style.height = Px(button.name == "updateBindings" ? 30 : 24);
+                if (button.name == "updateBindings") button.style.minHeight = Px(30);
                 button.style.borderBottomWidth = Px(1);
                 button.style.paddingLeft = button.style.paddingRight = Px(4);
             });

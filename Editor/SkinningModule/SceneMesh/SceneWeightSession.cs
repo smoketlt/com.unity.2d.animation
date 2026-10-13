@@ -15,17 +15,20 @@ namespace UnityEditor.U2D.Animation
         [SerializeField] List<string> m_Locked = new List<string>();
         [SerializeField] List<string> m_DrawOrder = new List<string>();
         [SerializeField] DonorHistory[] m_DonorHistory;
+        [SerializeField] SceneMeshBindingPose m_BindingPose;
+        [SerializeField] bool m_HasBindingPose;
         int[] m_DrawIndices;
         const string kBindingPrefix = "Uniskin.WeightBindings.v1:";
         [Serializable] sealed class Bindings { public List<Binding> sprites = new List<Binding>(); }
         [Serializable] sealed class Binding { public string id; public string[] bones; public string[] drawOrder; }
-        [Serializable] sealed class State { public string[] bones; public EditableBoneWeight[] weights; public string[] drawOrder; }
+        [Serializable] sealed class State { public string[] bones; public EditableBoneWeight[] weights; public string[] drawOrder; public Vector2[] positions; public SceneMeshBindingPose bindingPose; }
         [Serializable] sealed class DonorHistory { public int[] edited; public float[] values; }
 
         internal SceneBoneSession context => m_Context;
         internal SkinningCache cache => m_Context.cache;
         internal MeshCache mesh => cache.selectedSprite.GetMesh();
         internal IndexedSelection vertices => cache.vertexSelection;
+        internal SceneMeshBindingPose bindingPose => m_HasBindingPose ? m_BindingPose : null;
         internal bool dirty => m_Saved != Snapshot();
         internal int[] selectedBones => mesh.bones.Select((bone, i) => (bone, i))
             .Where(pair => cache.skeletonSelection.Contains(pair.bone)).Select(pair => pair.i).ToArray();
@@ -85,6 +88,8 @@ namespace UnityEditor.U2D.Animation
             m_Context = CreateInstance<SceneBoneSession>();
             m_Context.hideFlags = HideFlags.HideAndDontSave;
             m_Context.Load(sprite, source);
+            m_BindingPose = SceneMeshBindingPose.Read(source.userData, m_Context.spriteId);
+            m_HasBindingPose = m_BindingPose != null;
             var saved = ReadBindings(source.userData).sprites.FirstOrDefault(item => item.id == m_Context.spriteId);
             m_DrawOrder = saved?.drawOrder?.ToList() ?? new List<string>();
             InvalidateDrawOrder();
@@ -104,7 +109,7 @@ namespace UnityEditor.U2D.Animation
 
         internal void Attach() => m_Context?.Attach();
         string Snapshot() => cache == null ? string.Empty : JsonUtility.ToJson(new State
-            { bones = mesh.bones.Select(bone => bone.guid).ToArray(), weights = mesh.vertexWeights, drawOrder = m_DrawOrder.ToArray() });
+            { bones = mesh.bones.Select(bone => bone.guid).ToArray(), weights = mesh.vertexWeights, drawOrder = m_DrawOrder.ToArray(), positions = mesh.vertices, bindingPose = bindingPose });
         static string Fingerprint(SceneMeshSource source) => SceneBoneSession.Fingerprint(source) + "\n" + source.userData;
 
         internal void SelectBone(BoneCache bone, bool additive, bool toggleSelected = true)
@@ -123,6 +128,30 @@ namespace UnityEditor.U2D.Animation
         }
 
         internal void Changed() { InvalidateDrawOrder(); cache.events.meshChanged.Invoke(mesh); }
+
+        internal void UpdateBindings(Vector2[] positions, Matrix4x4[] pixelsToBone)
+        {
+            mesh.ClearVertexPositionOverride();
+            if (positions == null || positions.Length != mesh.vertexCount || pixelsToBone == null || pixelsToBone.Length != mesh.boneCount)
+                throw new InvalidOperationException("Every bound bone must have an available scene Transform.");
+            var pose = new SceneMeshBindingPose
+            {
+                id = context.spriteId,
+                bones = mesh.bones.Select((bone, i) => new SceneMeshBindingPose.Bone { guid = bone.guid, pixelsToBone = pixelsToBone[i] }).ToArray(),
+                positions = (Vector2[])positions.Clone(),
+                texturePositions = mesh.vertices.Select((position, i) => bindingPose?.TexturePosition(position, i) ?? position).ToArray(),
+                indices = (int[])mesh.indices.Clone()
+            };
+            pose.Validate();
+            using (cache.UndoScope("Update Mesh Bindings"))
+            {
+                Undo.RegisterCompleteObjectUndo(this, "Update Mesh Bindings");
+                m_BindingPose = pose;
+                m_HasBindingPose = true;
+                mesh.SetVertices((Vector2[])positions.Clone(), mesh.vertexWeights);
+                Changed();
+            }
+        }
 
         internal void BeginWeightUndo(string name)
         {
@@ -423,7 +452,7 @@ namespace UnityEditor.U2D.Animation
             if (!dirty) return;
             cache.EndUndoOperation();
             Undo.RegisterCompleteObjectUndo(source.saveTarget, "Save Mesh Weights");
-            m_Context.WithSourcePose(() => SkinningModule.ApplySceneWeightChanges(cache, source.provider, m_DrawOrder.Count > 0 ? DrawIndices() : null));
+            m_Context.WithSourcePose(() => SkinningModule.ApplySceneWeightChanges(cache, source.provider, m_DrawOrder.Count > 0 ? DrawIndices() : null, bindingPose != null));
             if (!cache.hasCharacter || m_DrawOrder.Count > 0)
             {
                 var bindings = ReadBindings(source.userData);
@@ -433,6 +462,7 @@ namespace UnityEditor.U2D.Animation
                 other.Add(kBindingPrefix + Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonUtility.ToJson(bindings))));
                 source.userData = string.Join("\n", other);
             }
+            if (bindingPose != null) source.userData = SceneMeshBindingPose.Write(source.userData, bindingPose);
             source.ApplyAndSave();
             m_Saved = Snapshot();
             m_Fingerprint = Fingerprint(new SceneMeshSource(source.ResolveSprite(m_Context.spriteId)));

@@ -7,7 +7,7 @@ using UnityEngine.UIElements;
 
 namespace UnityEditor.U2D.Animation
 {
-    internal sealed class SceneEditBoneWindow : EditorWindow
+    internal sealed class SceneEditBoneWindow : SceneEditWindow
     {
         [SerializeField] SceneBoneSession m_Session;
         [SerializeField] SpriteRenderer m_Renderer;
@@ -17,8 +17,6 @@ namespace UnityEditor.U2D.Animation
         SkeletonController m_Controller;
         SceneMeshSource m_Source;
         bool m_DiscardOnClose;
-        Tool m_PreviousTool;
-        bool m_OwnsTool;
         bool m_Saving;
         bool m_CloseQueued;
         string m_Error;
@@ -120,6 +118,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnEnable()
         {
+            if (!EnableWindowLifetime(m_Renderer != null || m_Session != null)) return;
             titleContent = new GUIContent("Edit Bones", ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/EditBone.png"));
             minSize = new Vector2(340, 50) / Mathf.Max(1f, EditorGUIUtility.pixelsPerPoint);
             if (m_Session == null)
@@ -135,6 +134,7 @@ namespace UnityEditor.U2D.Animation
             }
             SetupController();
             Selection.selectionChanged += OnSelectionChanged;
+            SceneView.beforeSceneGui += BeforeSceneGUI;
             SceneView.duringSceneGui += OnSceneGUI;
             Undo.undoRedoPerformed += OnUndoRedo;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
@@ -156,13 +156,15 @@ namespace UnityEditor.U2D.Animation
 
         void OnDisable()
         {
-            if (!m_DiscardOnClose && !m_Saving && !EditorApplication.isPlaying && m_Source != null &&
-                m_Renderer != null && m_Renderer.sprite != null && m_Session != null && m_Session.cache != null && m_Session.dirty)
+            DisableWindowLifetime();
+            if (!isClosingForReload && !isRestoredWindow && !m_DiscardOnClose && !m_Saving && !EditorApplication.isPlaying && m_Source != null &&
+                m_Renderer != null && m_Renderer.sprite != null && m_Session != null && m_Session.cache != null)
             {
-                try { m_Session.Save(new SceneMeshSource(m_Renderer.sprite)); }
+                try { if (m_Session.dirty) m_Session.Save(new SceneMeshSource(m_Renderer.sprite)); }
                 catch (Exception exception) { Debug.LogError("Edit Bones auto-save failed: " + exception.Message); }
             }
             Selection.selectionChanged -= OnSelectionChanged;
+            SceneView.beforeSceneGui -= BeforeSceneGUI;
             SceneView.duringSceneGui -= OnSceneGUI;
             Undo.undoRedoPerformed -= OnUndoRedo;
             EditorApplication.playModeStateChanged -= OnPlayModeChanged;
@@ -175,6 +177,7 @@ namespace UnityEditor.U2D.Animation
 
         public void CreateGUI()
         {
+            if (isRestoredWindow) return;
             rootVisualElement.Clear();
             m_DisplayedNameGuid = null;
             m_DisplayedNameValue = null;
@@ -298,11 +301,18 @@ namespace UnityEditor.U2D.Animation
             rootVisualElement.Q<TextField>("boneName").SetValueWithoutNotify(value);
         }
 
+        void BeforeSceneGUI(SceneView scene)
+        {
+            if (m_Saving) return;
+            if (BlockReason() != null || m_Controller == null) toolScope.Restore();
+            else toolScope.Hide();
+        }
+
         void OnSceneGUI(SceneView scene)
         {
             if (m_Saving || BlockReason() != null || m_Controller == null) return;
             if (Event.current.type == EventType.Layout) m_Session.RefreshScenePose(m_Renderer, m_Source.rect.rect);
-            if (!m_OwnsTool) { m_PreviousTool = UnityEditor.Tools.current; UnityEditor.Tools.current = Tool.None; m_OwnsTool = true; }
+            toolScope.Hide();
             var evt = Event.current;
             if (evt.alt || evt.button == 1 || evt.button == 2) return;
             if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Escape) { CancelMode(); evt.Use(); return; }
@@ -364,10 +374,7 @@ namespace UnityEditor.U2D.Animation
 
         void RestoreTool()
         {
-            if (!m_OwnsTool) return;
-            if (UnityEditor.Tools.current == Tool.None) UnityEditor.Tools.current = m_PreviousTool;
-            m_OwnsTool = false;
-            SceneView.RepaintAll();
+            if (toolScope.Restore()) SceneView.RepaintAll();
         }
 
         internal bool RequestClose()

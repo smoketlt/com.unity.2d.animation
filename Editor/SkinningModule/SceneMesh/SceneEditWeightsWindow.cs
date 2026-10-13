@@ -7,13 +7,13 @@ using UnityEngine.UIElements;
 
 namespace UnityEditor.U2D.Animation
 {
-    internal sealed partial class SceneEditWeightsWindow : EditorWindow
+    internal sealed partial class SceneEditWeightsWindow : SceneEditWindow
     {
         [SerializeField] SceneWeightSession m_Session;
         [SerializeField] SpriteRenderer m_Renderer;
         bool m_DiscardOnClose;
         [SerializeField] UnityEngine.Object[] m_EntrySelection;
-        [SerializeField] bool m_RemoveMode, m_Direct, m_Bind, m_Overlay, m_Selected;
+        [SerializeField] bool m_RemoveMode, m_Direct, m_Bind, m_Overlay, m_Selected, m_Preview;
         [SerializeField] bool m_Pieces = true;
         [SerializeField] float m_Strength = 100, m_Size = 80, m_Feather = 60;
         [SerializeField] bool m_SettingsLoaded;
@@ -23,7 +23,7 @@ namespace UnityEditor.U2D.Animation
         {
             public Rect rect;
             public float strength = 100, size = 80, feather = 60;
-            public bool direct, remove, pieces = true, overlay, selected;
+            public bool direct, remove, pieces = true, overlay, selected, preview;
         }
         static string PreferencesKey => "Unity.2D.Animation.SceneEditWeights." + Application.dataPath;
 
@@ -40,6 +40,7 @@ namespace UnityEditor.U2D.Animation
                 if (float.IsFinite(settings.feather)) m_Feather = Mathf.Clamp(settings.feather, 0, 100);
                 m_Direct = settings.direct; m_RemoveMode = settings.remove;
                 m_Pieces = settings.pieces; m_Overlay = settings.overlay; m_Selected = settings.selected;
+                m_Preview = settings.preview;
                 var rect = settings.rect;
                 if (float.IsFinite(rect.x) && float.IsFinite(rect.y) && float.IsFinite(rect.width) && float.IsFinite(rect.height) && rect.width > 0 && rect.height > 0)
                     m_PreferredRect = rect;
@@ -53,14 +54,13 @@ namespace UnityEditor.U2D.Animation
             var json = JsonUtility.ToJson(new WindowPreferences
             {
                 rect = position, strength = m_Strength, size = m_Size, feather = m_Feather,
-                direct = m_Direct, remove = m_RemoveMode, pieces = m_Pieces, overlay = m_Overlay, selected = m_Selected
+                direct = m_Direct, remove = m_RemoveMode, pieces = m_Pieces, overlay = m_Overlay, selected = m_Selected, preview = m_Preview
             });
             if (json == m_LastPreferences) return;
             EditorPrefs.SetString(PreferencesKey, json); m_LastPreferences = json;
         }
         SceneMeshSource m_Source;
-        Tool m_PreviousTool;
-        bool m_OwnsTool, m_Saving, m_SelectionRestoreQueued;
+        bool m_Saving, m_SelectionRestoreQueued;
         string m_Error, m_RowKey;
         PopupField<string> m_ModePopup;
         VisualElement m_BindPulse;
@@ -106,7 +106,7 @@ namespace UnityEditor.U2D.Animation
                 var blocked = opening.BlockReason();
                 if (blocked != null) throw new InvalidOperationException(blocked);
                 var origin = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.position.position + new Vector2(35, 55) : new Vector2(100, 100);
-                opening.position = new Rect(origin, new Vector2(370, 410) / Mathf.Max(1, EditorGUIUtility.pixelsPerPoint));
+                opening.position = new Rect(origin, new Vector2(370, 444) / Mathf.Max(1, EditorGUIUtility.pixelsPerPoint));
                 if (opening.m_PreferredRect.width > 0)
                 {
                     var rect = opening.m_PreferredRect;
@@ -124,8 +124,9 @@ namespace UnityEditor.U2D.Animation
 
         void OnEnable()
         {
+            if (!EnableWindowLifetime(m_Renderer != null || m_Session != null)) return;
             titleContent = new GUIContent("Edit Weights");
-            minSize = new Vector2(370, 320) / Mathf.Max(1, EditorGUIUtility.pixelsPerPoint);
+            minSize = new Vector2(370, 354) / Mathf.Max(1, EditorGUIUtility.pixelsPerPoint);
             if (!m_SettingsLoaded) { LoadWindowPreferences(); m_SettingsLoaded = true; }
             if (m_Session == null) { m_Session = CreateInstance<SceneWeightSession>(); m_Session.hideFlags = HideFlags.HideAndDontSave; }
             m_Session.Attach();
@@ -140,11 +141,12 @@ namespace UnityEditor.U2D.Animation
 
         void OnDisable()
         {
+            DisableWindowLifetime();
             EndGesture();
-            if (!m_DiscardOnClose && !m_Saving && !EditorApplication.isPlaying && m_Source != null &&
-                m_Renderer != null && m_Renderer.sprite != null && m_Session?.context?.cache != null && m_Session.dirty)
+            if (!isClosingForReload && !isRestoredWindow && !m_DiscardOnClose && !m_Saving && !EditorApplication.isPlaying && m_Source != null &&
+                m_Renderer != null && m_Renderer.sprite != null && m_Session?.context?.cache != null)
             {
-                try { m_Session.Save(new SceneMeshSource(m_Renderer.sprite)); }
+                try { if (m_Session.dirty) m_Session.Save(new SceneMeshSource(m_Renderer.sprite)); }
                 catch (Exception exception) { Debug.LogError("Edit Weights auto-save failed: " + exception.Message); }
             }
             SaveWindowPreferences();
@@ -162,6 +164,7 @@ namespace UnityEditor.U2D.Animation
 
         public void CreateGUI()
         {
+            if (isRestoredWindow) return;
             rootVisualElement.Clear(); m_Rows.Clear(); m_RowKey = null;
             ResourceLoader.Load<VisualTreeAsset>("SkinningModule/SceneEditWeightsWindow.uxml").CloneTree(rootVisualElement);
             SceneMeshWindowStyle.Configure(rootVisualElement, this, () => RequestClose(), resizeHeight: true);
@@ -184,6 +187,7 @@ namespace UnityEditor.U2D.Animation
             Option("pieces", m_Pieces, value => m_Pieces = value);
             Option("overlay", m_Overlay, value => m_Overlay = value);
             Option("selected", m_Selected, value => m_Selected = value);
+            Option("preview", m_Preview, value => m_Preview = value);
             Command("smooth", "Smooth", () => Run(m_Session.Smooth));
             Command("auto", "Auto", () => Run(m_Session.Auto));
             Command("prune", "Prune", ShowPrune);
@@ -197,6 +201,7 @@ namespace UnityEditor.U2D.Animation
             rootVisualElement.schedule.Execute(UpdateBindPulse).Every(16);
             Command("swap", "Swap", () => Run(m_Session.Swap));
             Command("remove", "Delete", () => Run(m_Session.Remove));
+            Command("updateBindings", "UpdateBind", () => Run(UpdateBindings));
             var titleIcon = rootVisualElement.Q<Image>("weightsIcon");
             titleIcon.image = ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/Weights.png");
             rootVisualElement.RegisterCallback<KeyDownEvent>(evt =>
@@ -425,6 +430,7 @@ namespace UnityEditor.U2D.Animation
             rootVisualElement.Q<Button>("remove").SetEnabled(selected.Length > 0);
             rootVisualElement.Q<Button>("auto").SetEnabled(m_Session.mesh.boneCount > 0);
             rootVisualElement.Q<Button>("smooth").SetEnabled(m_Session.mesh.boneCount > 0);
+            rootVisualElement.Q<Button>("updateBindings").SetEnabled(m_Session.mesh.boneCount > 0 && !m_Bind);
             hasUnsavedChanges = false; // Closing saves directly instead of prompting.
         }
 
@@ -496,9 +502,7 @@ namespace UnityEditor.U2D.Animation
                 if (m_Renderer != null) m_Renderer.forceRenderingOff = m_PreviousForceRenderingOff;
                 m_HidesRenderer = false;
             }
-            if (!m_OwnsTool) return;
-            if (UnityEditor.Tools.current == Tool.None) UnityEditor.Tools.current = m_PreviousTool;
-            m_OwnsTool = false; SceneView.RepaintAll();
+            if (toolScope.Restore()) SceneView.RepaintAll();
         }
         void OnSelectionChanged()
         {

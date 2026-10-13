@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using Unity.Collections;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -133,6 +134,125 @@ namespace UnityEditor.U2D.Animation.Tests
                 bones.Changed(true);
             }
             bones.Save(source);
+        }
+
+        SceneEditWeightsWindow BindingWindow(SceneWeightSession session)
+        {
+            var window = Session<SceneEditWeightsWindow>();
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(SceneEditWeightsWindow).GetField("m_Renderer", flags).SetValue(window, m_Renderer);
+            typeof(SceneEditWeightsWindow).GetField("m_Source", flags).SetValue(window, Source());
+            typeof(SceneEditWeightsWindow).GetField("m_Session", flags).SetValue(window, session);
+            typeof(SceneEditWeightsWindow).GetMethod("RefreshLiveBoneBindings", flags).Invoke(window, null);
+            return window;
+        }
+
+        static Vector3[] BindingWorldVertices(SceneEditWeightsWindow window) => (Vector3[])typeof(SceneEditWeightsWindow)
+            .GetMethod("WorldVertices", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(window, new object[] { true });
+
+        static void UpdateBindingWindow(SceneEditWeightsWindow window) => typeof(SceneEditWeightsWindow)
+            .GetMethod("UpdateBindings", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(window, null);
+
+        static void AssertPoints(Vector3[] expected, Vector3[] actual)
+        {
+            Assert.AreEqual(expected.Length, actual.Length);
+            for (var i = 0; i < expected.Length; ++i) Assert.That(Vector3.Distance(expected[i], actual[i]), Is.LessThan(.0001f), "Vertex " + i);
+        }
+
+        Vector3[] RuntimeBindingVertices()
+        {
+            var sprite = m_Renderer.sprite;
+            var skin = m_Renderer.GetComponent<SpriteSkin>();
+            var positions = sprite.GetVertexAttribute<Vector3>(VertexAttribute.Position).ToArray();
+            var weights = sprite.GetVertexAttribute<BoneWeight>(VertexAttribute.BlendWeight).ToArray();
+            var poses = sprite.GetBindPoses();
+            var flip = m_Renderer.transform.localToWorldMatrix * Matrix4x4.Scale(new Vector3(m_Renderer.flipX ? -1 : 1, m_Renderer.flipY ? -1 : 1, 1)) * m_Renderer.transform.worldToLocalMatrix;
+            return positions.Select((position, i) =>
+            {
+                var point = Vector3.zero;
+                for (var c = 0; c < 4; ++c)
+                    if (weights[i].GetWeight(c) > 0)
+                    {
+                        var bone = weights[i].GetBoneIndex(c);
+                        point += skin.boneTransforms[bone].TransformPoint(poses[bone].MultiplyPoint3x4(position)) * weights[i].GetWeight(c);
+                    }
+                return flip.MultiplyPoint3x4(point);
+            }).ToArray();
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void UpdateBindingsPreservesShapeTextureAndWeightsThroughSaveReopenAndBake(bool flipped)
+        {
+            AddBones();
+            m_Renderer.transform.position = new Vector3(3, -2, 0);
+            m_Renderer.transform.rotation = Quaternion.Euler(0, 0, 23);
+            m_Renderer.transform.localScale = new Vector3(1.4f, .8f, 1);
+            m_Renderer.flipX = flipped;
+            var skin = m_Renderer.GetComponent<SpriteSkin>();
+            skin.boneTransforms[1].localPosition += new Vector3(.12f, .07f, 0);
+            skin.boneTransforms[1].localRotation = Quaternion.Euler(0, 0, 39);
+            skin.boneTransforms[1].localScale = new Vector3(1.2f, .9f, 1);
+            var skeleton = JsonUtility.ToJson(Source().provider.GetDataProvider<ICharacterDataProvider>().GetCharacterData());
+            var metadata = File.ReadAllBytes(m_Path + ".meta");
+            var uv = m_Renderer.sprite.uv;
+            var weights = Session<SceneWeightSession>(); weights.Load(m_Renderer.sprite, Source());
+            weights.SetRow(1, .35f);
+            var oldWeights = weights.mesh.vertexWeights.Select(JsonUtility.ToJson).ToArray();
+            var window = BindingWindow(weights);
+            var before = BindingWorldVertices(window);
+            UpdateBindingWindow(window);
+            CollectionAssert.AreEqual(oldWeights, weights.mesh.vertexWeights.Select(JsonUtility.ToJson));
+            AssertPoints(before, BindingWorldVertices(window));
+            weights.SetRow(1, 1);
+            AssertPoints(before, BindingWorldVertices(window));
+            weights.Save(Source());
+            AssertPoints(before, RuntimeBindingVertices());
+            Assert.AreEqual(skeleton, JsonUtility.ToJson(Source().provider.GetDataProvider<ICharacterDataProvider>().GetCharacterData()));
+            CollectionAssert.AreEqual(metadata, File.ReadAllBytes(m_Path + ".meta"));
+            for (var i = 0; i < uv.Length; ++i) Assert.That(Vector2.Distance(uv[i], m_Renderer.sprite.uv[i]), Is.LessThan(.00001f));
+            var reloaded = Session<SceneWeightSession>(); reloaded.Load(m_Renderer.sprite, Source());
+            Assert.IsFalse(reloaded.dirty); Assert.NotNull(reloaded.bindingPose);
+            var reopened = BindingWindow(reloaded);
+            AssertPoints(before, BindingWorldVertices(reopened));
+            reloaded.SetRow(0, 1);
+            AssertPoints(before, BindingWorldVertices(reopened));
+            reloaded.Save(Source());
+            Object.DestroyImmediate(window); Object.DestroyImmediate(reopened);
+            Assert.IsTrue(UniskinRigUtility.Bake(m_Rig));
+            var native = SourceSprite();
+            for (var i = 0; i < uv.Length; ++i) Assert.That(Vector2.Distance(uv[i], native.uv[i]), Is.LessThan(.00001f), "Baked UV " + i);
+            for (var i = 0; i < native.GetBindPoses().Length; ++i)
+                for (var c = 0; c < 16; ++c) Assert.That(native.GetBindPoses()[i][c], Is.EqualTo(m_Renderer.sprite.GetBindPoses()[i][c]).Within(.0001f));
+            UniskinRigUtility.UsePsb(m_Rig);
+            AssertPoints(before, RuntimeBindingVertices());
+        }
+
+        [Test]
+        public void UpdateBindingsIsUndoableAndRepeatedUpdatesRetainTextureMapping()
+        {
+            AddBones();
+            var skin = m_Renderer.GetComponent<SpriteSkin>();
+            skin.boneTransforms[1].localRotation = Quaternion.Euler(0, 0, 30);
+            var weights = Session<SceneWeightSession>(); weights.Load(m_Renderer.sprite, Source());
+            var window = BindingWindow(weights);
+            var original = (Vector2[])weights.mesh.vertices.Clone();
+            var before = BindingWorldVertices(window);
+            Undo.IncrementCurrentGroup(); UpdateBindingWindow(window); Undo.FlushUndoRecordObjects();
+            Assert.IsTrue(weights.dirty);
+            Undo.PerformUndo(); weights.context.RestoreAfterUndo();
+            Assert.IsNull(weights.bindingPose); Assert.IsFalse(weights.dirty);
+            CollectionAssert.AreEqual(original, weights.mesh.vertices);
+            AssertPoints(before, BindingWorldVertices(window));
+            Undo.PerformRedo(); weights.context.RestoreAfterUndo();
+            Assert.NotNull(weights.bindingPose); AssertPoints(before, BindingWorldVertices(window));
+            var texture = weights.bindingPose.texturePositions.ToArray();
+            skin.boneTransforms[1].localPosition += Vector3.right * .1f;
+            before = BindingWorldVertices(window);
+            Undo.IncrementCurrentGroup(); UpdateBindingWindow(window);
+            AssertPoints(before, BindingWorldVertices(window));
+            CollectionAssert.AreEqual(texture, weights.bindingPose.texturePositions);
+            weights.SetRow(0, 1); AssertPoints(before, BindingWorldVertices(window));
         }
 
         [Test]
@@ -342,6 +462,124 @@ namespace UnityEditor.U2D.Animation.Tests
             Undo.PerformUndo();
             Assert.AreEqual(before, m_Rig.authoringData);
             CollectionAssert.AreEqual(vertices, m_Renderer.sprite.vertices);
+            CollectionAssert.AreEqual(metadata, File.ReadAllBytes(m_Path + ".meta"));
+        }
+
+        [Test]
+        public void MeshSaveAndUndoRestoreSourceAtlasCoordinatesForChangedVertices()
+        {
+            var source = m_Rig.sprites[0].source;
+            var originalUV = source.uv;
+            AssertTextureCoordinates(originalUV, m_Renderer.sprite.uv);
+            var metadata = File.ReadAllBytes(m_Path + ".meta");
+            var mesh = Source().ReadMesh(m_Renderer.sprite);
+            mesh.vertices[0] = (mesh.vertices[0] + mesh.vertices[1]) * .5f;
+            Undo.IncrementCurrentGroup();
+            Source().WriteMesh(mesh);
+            var expected = originalUV.ToArray();
+            expected[0] = (originalUV[0] + originalUV[1]) * .5f;
+            AssertTextureCoordinates(expected, m_Renderer.sprite.uv);
+            Undo.FlushUndoRecordObjects();
+            Undo.PerformUndo();
+            AssertTextureCoordinates(originalUV, m_Renderer.sprite.uv);
+            Undo.PerformRedo();
+            AssertTextureCoordinates(expected, m_Renderer.sprite.uv);
+            AssertTextureCoordinates(originalUV, source.uv);
+            CollectionAssert.AreEqual(metadata, File.ReadAllBytes(m_Path + ".meta"));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void StagedWeightUndoRedoAndWindowClosePreserveEveryLayerTextureCoordinates(bool multilayer)
+        {
+            if (multilayer) LoadCharacterFixture(); else AddBones();
+            var sprites = m_Rig.sprites.Select(entry => entry.sprite).ToArray();
+            var coordinates = sprites.Select(sprite => sprite.uv).ToArray();
+            Assert.IsTrue(coordinates.All(uv => uv.Any(point => point != Vector2.zero)));
+            var metadata = File.ReadAllBytes(m_Path + ".meta");
+            var authoring = m_Rig.authoringData;
+            var renderers = m_Root.GetComponentsInChildren<SpriteRenderer>(true);
+            var suppression = renderers.Select(renderer => renderer.forceRenderingOff).ToArray();
+            var window = ScriptableObject.CreateInstance<SceneEditWeightsWindow>();
+            try
+            {
+                var source = Source();
+                SetWindowField(window, "m_Renderer", m_Renderer);
+                SetWindowField(window, "m_Source", source);
+                var session = GetWindowSession<SceneWeightSession>(window);
+                session.Load(m_Renderer.sprite, source);
+                var before = session.Values(0);
+                session.vertices.elements = new[] { 0 };
+                Undo.IncrementCurrentGroup();
+                session.SetRow(0, before[0] > .5f ? .25f : .75f);
+                var changed = session.Values(0);
+                Undo.FlushUndoRecordObjects();
+                Undo.PerformUndo();
+                CollectionAssert.AreEqual(before, session.Values(0));
+                for (var i = 0; i < sprites.Length; ++i) AssertTextureCoordinates(coordinates[i], sprites[i].uv);
+                Undo.PerformRedo();
+                CollectionAssert.AreEqual(changed, session.Values(0));
+                for (var i = 0; i < sprites.Length; ++i) AssertTextureCoordinates(coordinates[i], sprites[i].uv);
+                Undo.PerformUndo();
+                Assert.IsFalse(session.dirty);
+            }
+            finally { Object.DestroyImmediate(window); }
+            Assert.AreEqual(authoring, m_Rig.authoringData);
+            for (var i = 0; i < sprites.Length; ++i) AssertTextureCoordinates(coordinates[i], sprites[i].uv);
+            CollectionAssert.AreEqual(suppression, renderers.Select(renderer => renderer.forceRenderingOff));
+            CollectionAssert.AreEqual(metadata, File.ReadAllBytes(m_Path + ".meta"));
+        }
+
+        static void AssertTextureCoordinates(Vector2[] expected, Vector2[] actual)
+        {
+            Assert.AreEqual(expected.Length, actual.Length);
+            for (var i = 0; i < expected.Length; ++i)
+                Assert.That(Vector2.Distance(expected[i], actual[i]), Is.LessThan(.00001f), "UV at vertex " + i);
+        }
+
+        [Test]
+        public void TextureMappingSupportsRotatedAtlasCoordinatesAndNewVertices()
+        {
+            var source = Object.Instantiate(SourceSprite());
+            var destination = Object.Instantiate(m_Renderer.sprite);
+            try
+            {
+                Vector2 Map(Vector2 position) => new Vector2(.7f - position.y * .04f, .2f + position.x * .03f);
+                var original = source.vertices;
+                var sourceUV = original.Select(Map).ToArray();
+                var positions = original.Select(point => (Vector3)point).Concat(new[] { (Vector3)((original[0] + original[1] + original[2]) / 3f) }).ToArray();
+                var uv = new NativeArray<Vector2>(sourceUV, Allocator.Temp);
+                var vertices = new NativeArray<Vector3>(positions, Allocator.Temp);
+                try
+                {
+                    source.SetVertexAttribute<Vector2>(VertexAttribute.TexCoord0, uv);
+                    destination.SetVertexCount(positions.Length);
+                    destination.SetVertexAttribute<Vector3>(VertexAttribute.Position, vertices);
+                    UniskinRigUtility.RestoreTextureCoordinates(source, destination);
+                    AssertTextureCoordinates(positions.Select(point => Map(point)).ToArray(), destination.uv);
+                    AssertTextureCoordinates(sourceUV, source.uv);
+                }
+                finally { uv.Dispose(); vertices.Dispose(); }
+            }
+            finally { Object.DestroyImmediate(source); Object.DestroyImmediate(destination); }
+        }
+
+        [Test]
+        public void ReloadRepairRestoresClearedCoordinatesWithoutChangingAuthoringData()
+        {
+            var expected = m_Renderer.sprite.uv;
+            var authoring = m_Rig.authoringData;
+            var metadata = File.ReadAllBytes(m_Path + ".meta");
+            var uv = new NativeArray<Vector2>(expected.Length, Allocator.Temp);
+            try { m_Renderer.sprite.SetVertexAttribute<Vector2>(VertexAttribute.TexCoord0, uv); }
+            finally { uv.Dispose(); }
+            Assert.IsTrue(m_Renderer.sprite.uv.All(point => point == Vector2.zero));
+            UniskinRigUtility.RepairMissingTextureCoordinates();
+            AssertTextureCoordinates(expected, m_Renderer.sprite.uv);
+            var rigPath = AssetDatabase.GetAssetPath(m_Rig);
+            AssetDatabase.ImportAsset(rigPath, ImportAssetOptions.ForceSynchronousImport);
+            AssertTextureCoordinates(expected, AssetDatabase.LoadAssetAtPath<UniskinRig>(rigPath).sprites[0].sprite.uv);
+            Assert.AreEqual(authoring, m_Rig.authoringData);
             CollectionAssert.AreEqual(metadata, File.ReadAllBytes(m_Path + ".meta"));
         }
 

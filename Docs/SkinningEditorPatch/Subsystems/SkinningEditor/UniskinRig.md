@@ -10,6 +10,10 @@ The SpriteRenderer Inspector and the scene character root's GameObject Inspector
 
 The asset contains persistent generated Sprite subassets cloned from the imported Sprites. They share the imported texture/atlas and retain native rendering information; geometry and bones use the same authoring-to-runtime conversion as PSB postprocessing. Scene Mesh/Bone/Weights resolve both source and generated Sprites back to the original PSB identity and use a detached provider adapter for staged changes. Save updates the rig and its generated Sprites without calling PSB Apply or SaveAndReimport. The original image bytes and importer metadata remain unchanged until baking.
 
+Scene Edit Weights [Update Bindings](SceneWeightEditing.md#update-bindings) persists a mesh-specific pose and retained texture mapping in the document's namespaced userData. Generated Sprite rebuilds restore these matrices/UVs after ordinary texture-coordinate recovery; Bake copies the metadata so native PSB imports restore the same binding. Shared character bones and other meshes' references are unchanged.
+
+This mesh-specific reference is restored by this fork's import hooks; the standard shared character skeleton still describes the original source bones. Ordinary native importer bone fields alone do not represent the extra binding/texture mapping.
+
 ## Scene and runtime bindings
 
 `UniskinRigBinding` is serialized on each loaded character root. It maps bone GUIDs to existing Transforms, preserves existing scene poses, creates missing bones with Undo, and assigns the generated Sprites and SpriteSkin Transform arrays. Rig saves affect loaded instances of the same source. Newly instantiated source characters are attached through the editor hierarchy update. Each character must have its own root; a single binding root cannot represent two PSB rigs.
@@ -34,6 +38,8 @@ Source dependency hashes and the captured native authoring baseline protect agai
 
 Staged editing continues to use the existing mesh/skeleton Undo scopes and events. Rig saves record the asset, native Sprite subassets, bindings, bone creation and affected scene objects; failed saves revert their scene update group. The original PSB is not reimported by Undo of a rig mesh save, including after the rig lookup cache has been invalidated. Bake records the source importer through its normal Unity Undo lifecycle.
 
+Every generated Sprite rebuild explicitly restores `TexCoord0` after native geometry replacement. Undo can restore a native Sprite with cleared UV streams; relying on importer-time UV generation made all character layers sample the transparent atlas origin. Edit Weights still drew its selected layer through a separate preview, giving the appearance of isolation until closing hid that preview too. `UniskinRigUtility.RestoreTextureCoordinates` derives an affine local-position-to-atlas mapping from three noncollinear vertices of the original imported Sprite, so new vertices, atlas offsets and rotated texture mappings remain supported. It never samples the potentially damaged generated Sprite's UVs or changes source image/provider data. After domain reload, enabled rigs with all-zero generated UV streams receive the same derived-data repair and their SpriteSkin bindings refresh.
+
 ## Source routes
 
 - `Runtime/UniskinRig.cs`: persistent authoring document, source identity and generated Sprite references.
@@ -48,6 +54,10 @@ Staged editing continues to use the existing mesh/skeleton Undo scopes and event
 - `Tests/Editor/UniskinRigTests.cs`: persistent native Sprite round-trip, source preservation, new bones/weights, explicit/automatic baking, conflicts and Undo.
 
 ## Verification
+
+On 2026-10-13, live read-only diagnostics in Unity **6000.0.81f1** found all-zero UVs on the enabled 34-layer character's generated Sprites while source Sprites retained valid atlas coordinates and renderer visibility flags were normal. After the local package recompiled, all **34/34** generated layers had nonzero UVs and the Editor Console reported no errors. Six EditMode cases passed in a separate project with a copied PSB: staged weight Undo/Redo and window close for single/multiple layers, mesh save Undo/Redo, the existing rig-save Undo regression, rotated atlas/new-vertex mapping, and recovery of deliberately cleared UVs with asset persistence. No source PSB/provider changes were needed for recovery. The three ordinary round-trip cases also passed with explicit UV restoration disabled; they do not reproduce the original native-stream loss by themselves. The cleared-stream case exercises that failure state directly.
+
+The complete editor assembly and updated fixture compiled against Unity 6000.0.81f1. The exact texture-coordinate restoration method also compiled against **6000.5.7f1** engine references with `UNITY_6000_5_OR_NEWER`; this is an isolated API check, not a complete modern package test. No version-sensitive API was introduced. Unity 6000.0.7 and live mouse/keyboard reproduction remain unverified. With the local `file:` dependency, Unity recompiles directly from this checkout.
 
 On 2026-10-12 the renderer/root three-button controls and two-way mode synchronization passed four EditMode tests in both Unity **6000.0.81f1** (PSD Importer/Common 9.1.2) and **6000.5.7f1** (PSD Importer 14.0.3/Common 14.0.1): **4 passed, 0 failed, 0 skipped** per editor. The tests check labels/icons/layout structure, current versus alternative mode availability, Bake enablement, a bone-free root, ambiguous source rejection, rig-to-PSB baking and copying subsequently changed native mesh data back into the enabled rig. The existing complete bones/mesh bake round-trip also passes. Both runs use disposable projects consuming the same packed snapshot, so newer texture importers cannot modify checkout metadata. The connected Unity 6000.0 editor also recompiles this local file dependency without errors. Inspector appearance at different widths/DPI and actual mouse clicks remain manual checks; Unity 6000.0.7 was not tested directly.
 

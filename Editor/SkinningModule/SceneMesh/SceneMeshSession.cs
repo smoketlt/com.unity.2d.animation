@@ -173,6 +173,21 @@ namespace UnityEditor.U2D.Animation
         public readonly ITextureDataProvider textureProvider;
         public readonly SpriteRect rect;
         internal readonly UniskinRig rig;
+        string m_BindingUserData;
+        SceneMeshBindingPose m_BindingPose;
+        internal SceneMeshBindingPose bindingPose
+        {
+            get
+            {
+                var data = userData;
+                if (m_BindingUserData != data)
+                {
+                    m_BindingUserData = data;
+                    m_BindingPose = SceneMeshBindingPose.Read(data, rect.spriteID.ToString());
+                }
+                return m_BindingPose;
+            }
+        }
         internal UnityEngine.Object saveTarget => rig != null ? (UnityEngine.Object)rig : importer;
         internal string userData
         {

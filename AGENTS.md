@@ -26,6 +26,7 @@ Then choose the most relevant page before opening source files.
 
 ## Routing
 
+- Unity CLI, Pipeline, installed agent skills and live Editor verification: `Docs/SkinningEditorPatch/Architecture/UnityAgentTooling.md`
 - Package dependency, fork, or Unity project setup: `Docs/SkinningEditorPatch/Architecture/PackageForkWorkflow.md`
 - Overall module architecture: `Docs/SkinningEditorPatch/Architecture/SkinningEditorArchitecture.md`
 - Geometry toolbar labels, checked state, and button events: `Docs/SkinningEditorPatch/Subsystems/SkinningEditor/MeshToolbar.md`
@@ -60,6 +61,16 @@ Only after reading the relevant docs should source inspection become the primary
 - For significant editor behavior changes, inspect `git diff --stat` and the relevant docs diff.
 - When pushing changes for Unity to consume from Git, push `codex/skinning-editor-fork`.
 - If Unity local file dependency is being used, remind that Unity should recompile directly from this checkout.
+
+## Unity Agent Tooling
+
+- Read `Docs/SkinningEditorPatch/Architecture/UnityAgentTooling.md` before Unity CLI or Pipeline automation.
+- Use the official Unity skills for task-specific guidance and CLI/package documentation. Use ArkTarusov `unity-cli-core`, `unity-editors`, and `unity-pipeline-operations` for operating conventions and recovery. The latter is locally renamed to preserve the official `unity-pipeline` skill.
+- Discover the installed CLI and live command schemas before invoking commands. Prefer JSON output and non-interactive mode; pass `--project-path` explicitly for Editor operations and `--caller plugin --skill <active-skill>` on every `unity command` invocation.
+- This checkout is a UPM package, not a Unity project. Install Pipeline in the consuming project's `Packages/manifest.json`; do not add tooling as a runtime dependency of this fork.
+- Prefer a connected Editor for scene/asset mutations. After source changes, refresh/recompile, wait for completion and run relevant tests. Preserve unsaved scenes before switching scenes or restarting the Editor.
+- A sandbox can hide running Editors. Diagnose process visibility, pending package refresh and Safe Mode before concluding that Unity is closed. Never stop all Unity processes or delete locks to recover a connection.
+- CLI/Pipeline installation was explicitly authorized for this setup. Future installation or upgrades require authorization within the relevant task; do not infer continuing upgrade permission from this setup.
 
 ## Language Preference
 

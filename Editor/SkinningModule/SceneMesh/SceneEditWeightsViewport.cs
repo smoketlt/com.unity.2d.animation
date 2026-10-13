@@ -90,44 +90,89 @@ namespace UnityEditor.U2D.Animation
             m_Session?.context?.cache?.EndUndoOperation();
         }
 
-        Vector3[] WorldVertices()
+        Matrix4x4[] BoneDeformationMatrices()
         {
             var mesh = m_Session.mesh;
-            // This host deforms bind vertices itself, independently of Sprite Editor previews.
-            mesh.ClearVertexPositionOverride();
-            var vertices = mesh.vertices;
-            var result = new Vector3[mesh.vertexCount];
-            var pixelToWorld = SceneMeshSession.PixelToWorld(m_Renderer, m_Source.rect.rect);
+            var result = new Matrix4x4[mesh.boneCount];
+            var pixelToLocal = SceneMeshBindingPose.PixelsToLocal(m_Renderer.sprite, m_Source.rect.rect);
+            var pixelToWorld = m_Renderer.transform.localToWorldMatrix * pixelToLocal;
             var skin = m_Renderer.GetComponent<SpriteSkin>();
             var transforms = skin != null ? skin.boneTransforms : null;
             var bones = m_Renderer.sprite.GetBones();
             var poses = m_Renderer.sprite.GetBindPoses();
-            var map = mesh.bones.Select(bone => Array.FindIndex(bones, item => item.guid == bone.guid)).ToArray();
             var skeletonToWorld = m_Session.context.SkeletonToWorld(m_Renderer, m_Source.rect.rect);
             var localToSkeleton = m_Session.cache.selectedSprite.GetLocalToWorldMatrixFromMode();
             for (var i = 0; i < result.Length; ++i)
             {
-                var rest = pixelToWorld.MultiplyPoint3x4(vertices[i]);
-                var local = m_Renderer.transform.InverseTransformPoint(rest);
-                var sum = 0f; var posed = Vector3.zero;
-                if (transforms != null && skin.isActiveAndEnabled)
-                    foreach (var channel in mesh.vertexWeights[i])
-                    {
-                        if (!channel.enabled || channel.weight <= 0 || channel.boneIndex < 0 || channel.boneIndex >= map.Length) continue;
-                        var index = map[channel.boneIndex];
-                        var position = index >= 0 && index < transforms.Length && index < poses.Length && transforms[index] != null ?
-                            transforms[index].localToWorldMatrix.MultiplyPoint3x4(poses[index].MultiplyPoint3x4(local)) :
-                            (skeletonToWorld * m_Session.context.CapturedDeformation(mesh.bones[channel.boneIndex]) * localToSkeleton).MultiplyPoint3x4(vertices[i]);
-                        posed += position * channel.weight;
-                        sum += channel.weight;
-                    }
-                result[i] = sum > 0 ? posed / sum : rest;
+                result[i] = pixelToWorld;
+                if (skin == null || !skin.isActiveAndEnabled) continue;
+                var bone = mesh.bones[i];
+                var binding = m_Session.bindingPose?.FindBone(bone.guid);
+                if (binding.HasValue && m_LiveBoneBindings.TryGetValue(bone.guid, out var live) && live.transform != null)
+                    result[i] = live.transform.localToWorldMatrix * Matrix4x4.Scale(Vector3.one / m_Source.provider.pixelsPerUnit) * binding.Value;
+                else
+                {
+                    var index = Array.FindIndex(bones, item => item.guid == bone.guid);
+                    result[i] = transforms != null && index >= 0 && index < transforms.Length && index < poses.Length && transforms[index] != null ?
+                        transforms[index].localToWorldMatrix * poses[index] * pixelToLocal :
+                        skeletonToWorld * m_Session.context.CapturedDeformation(bone) * localToSkeleton;
+                }
             }
             return result;
         }
 
+        Vector3[] WorldVertices(bool applyFlip = true)
+        {
+            var mesh = m_Session.mesh;
+            mesh.ClearVertexPositionOverride();
+            var matrices = BoneDeformationMatrices();
+            var result = new Vector3[mesh.vertexCount];
+            var pixelToWorld = m_Renderer.transform.localToWorldMatrix * SceneMeshBindingPose.PixelsToLocal(m_Renderer.sprite, m_Source.rect.rect);
+            var flip = m_Renderer.transform.localToWorldMatrix * Matrix4x4.Scale(new Vector3(m_Renderer.flipX ? -1 : 1, m_Renderer.flipY ? -1 : 1, 1)) * m_Renderer.transform.worldToLocalMatrix;
+            for (var i = 0; i < result.Length; ++i)
+            {
+                var rest = pixelToWorld.MultiplyPoint3x4(mesh.vertices[i]);
+                var sum = 0f; var posed = Vector3.zero;
+                foreach (var channel in mesh.vertexWeights[i])
+                {
+                    if (!channel.enabled || channel.weight <= 0 || channel.boneIndex < 0 || channel.boneIndex >= matrices.Length) continue;
+                    posed += matrices[channel.boneIndex].MultiplyPoint3x4(mesh.vertices[i]) * channel.weight;
+                    sum += channel.weight;
+                }
+                result[i] = sum > 0 ? posed / sum : rest;
+                if (applyFlip) result[i] = flip.MultiplyPoint3x4(result[i]);
+            }
+            return result;
+        }
+
+        void UpdateBindings()
+        {
+            RefreshLiveBoneBindings();
+            var skin = m_Renderer.GetComponent<SpriteSkin>();
+            if (skin == null || !skin.isActiveAndEnabled)
+                throw new InvalidOperationException("Update Bindings requires an enabled Sprite Skin.");
+            var toWorld = m_Renderer.transform.localToWorldMatrix * SceneMeshBindingPose.PixelsToLocal(m_Renderer.sprite, m_Source.rect.rect);
+            var worldToPixels = toWorld.inverse;
+            var matrices = m_Session.mesh.bones.Select(bone =>
+            {
+                if (!m_LiveBoneBindings.TryGetValue(bone.guid, out var binding) || binding.transform == null)
+                    throw new InvalidOperationException("No scene Transform is available for " + bone.name + ". Save newly created bones before updating bindings.");
+                var matrix = binding.transform.localToWorldMatrix;
+                if (!SceneMeshBindingPose.IsFinite(matrix) || Mathf.Abs(matrix.determinant) < 1e-12f)
+                    throw new InvalidOperationException("The bound bones need non-zero scale.");
+                return Matrix4x4.Scale(Vector3.one * m_Source.provider.pixelsPerUnit) * matrix.inverse * toWorld;
+            }).ToArray();
+            var positions = WorldVertices(false).Select(point => (Vector2)worldToPixels.MultiplyPoint3x4(point)).ToArray();
+            m_Session.UpdateBindings(positions, matrices);
+        }
+
         void BeforeSceneGUI(SceneView scene)
         {
+            if (!m_Saving)
+            {
+                if (BlockReason() != null) toolScope.Restore();
+                else toolScope.Hide();
+            }
             m_EscapeHandledBeforeSceneGUI = false;
             var evt = Event.current;
             if (m_Saving || m_Session?.cache == null || evt == null ||
@@ -153,7 +198,7 @@ namespace UnityEditor.U2D.Animation
             if (BlockReason() != null) { RestoreTool(); return; }
             RefreshLiveBoneBindings();
             var world = WorldVertices();
-            if (!m_OwnsTool) { m_PreviousTool = UnityEditor.Tools.current; UnityEditor.Tools.current = Tool.None; m_OwnsTool = true; }
+            toolScope.Hide();
             if (!m_HidesRenderer) { m_PreviousForceRenderingOff = m_Renderer.forceRenderingOff; m_HidesRenderer = true; m_Renderer.forceRenderingOff = true; }
             m_ModePopup?.SetValueWithoutNotify(m_Direct ? "Direct" : m_RemoveMode || evt.alt ? "Remove" : "Add");
             m_Control = GUIUtility.GetControlID("UniskinSceneWeights".GetHashCode(), FocusType.Passive);
@@ -162,11 +207,14 @@ namespace UnityEditor.U2D.Animation
             if (evt.type == EventType.Repaint)
             {
                 DrawPreview(world);
-                DrawMeshEdges(screen);
-                if (scene.drawGizmos) DrawBones();
-                DrawPieces(screen);
-                if (!m_Bind && !m_Direct && !evt.control && !evt.command) DrawBrush(evt.mousePosition);
-                if (m_Gesture == Gesture.Select) DrawSelectionRect(m_GestureStart, evt.mousePosition);
+                if (!m_Preview)
+                {
+                    DrawMeshEdges(screen);
+                    if (scene.drawGizmos) DrawBones();
+                    DrawPieces(screen);
+                    if (!m_Bind && !m_Direct && !evt.control && !evt.command) DrawBrush(evt.mousePosition);
+                    if (m_Gesture == Gesture.Select) DrawSelectionRect(m_GestureStart, evt.mousePosition);
+                }
             }
             if (m_Direct) EditorGUIUtility.AddCursorRect(new Rect(Vector2.zero, scene.position.size), MouseCursor.Arrow);
             if (evt.rawType == EventType.MouseUp && m_Gesture != Gesture.None)
@@ -415,13 +463,15 @@ namespace UnityEditor.U2D.Animation
                     if (channel.enabled && channel.boneIndex >= 0 && channel.boneIndex < bones.Length && (!m_Selected || selected.Contains(channel.boneIndex)))
                         color += WeightColor(bones[channel.boneIndex]) * channel.weight;
                 color.a = m_Renderer.color.a; colors[vertex] = color;
-                var pixel = textureRect.position + Vector2.Scale(mesh.vertices[vertex] / m_Source.rect.rect.size, textureRect.size);
+                var texturePosition = m_Session.bindingPose?.TexturePosition(mesh.vertices[vertex], vertex) ?? mesh.vertices[vertex];
+                var pixel = textureRect.position - m_Renderer.sprite.textureRectOffset + Vector2.Scale(texturePosition / m_Source.rect.rect.size, m_Renderer.sprite.rect.size);
                 uv[vertex] = pixel / new Vector2(texture.width, texture.height);
             }
             m_OverlayMesh.Clear(); m_OverlayMesh.vertices = vertices; m_OverlayMesh.colors = colors; m_OverlayMesh.uv = uv; m_OverlayMesh.triangles = m_Session.DrawIndices();
             m_OverlayMaterial.SetTexture("_MainTex", texture);
-            m_OverlayMaterial.SetFloat("_Overlay", m_Overlay ? 1 : 0);
+            m_OverlayMaterial.SetFloat("_Overlay", m_Overlay && !m_Preview ? 1 : 0);
             m_OverlayMaterial.SetColor("_Tint", m_Renderer.color);
+            m_OverlayMaterial.SetFloat("_AdjustLinearForGamma", m_Preview && QualitySettings.activeColorSpace == ColorSpace.Linear ? 1 : 0);
             if (m_OverlayMaterial.SetPass(0)) Graphics.DrawMeshNow(m_OverlayMesh, Matrix4x4.identity);
         }
 
