@@ -41,6 +41,8 @@ namespace UnityEditor.U2D.Animation
         Vector2 m_BoxStart;
         int[] m_BoxSelection;
         int m_Control;
+        int m_PrimaryInputControl;
+        readonly GUIWrapper m_InputGUI = new GUIWrapper();
         int m_AppliedUndoGroup = -1;
         int m_TraceUndoGroup = -1;
         bool m_TraceInProgress;
@@ -638,6 +640,8 @@ namespace UnityEditor.U2D.Animation
 
         void RestoreScene()
         {
+            ReleasePrimaryScenePress(m_InputGUI, m_PrimaryInputControl);
+            m_PrimaryInputControl = 0;
             m_View?.CancelCreateEdgeDrag();
             RestoreVisibility();
             if (m_PreviewRenderer != null) m_PreviewRenderer.forceRenderingOff = m_PreviousForceRenderingOff;
@@ -651,11 +655,35 @@ namespace UnityEditor.U2D.Animation
         {
             if (m_SaveInProgress) return;
             if (BlockReason() != null) toolScope.Restore();
-            else toolScope.Hide();
+            else
+            {
+                toolScope.Hide();
+                var evt = Event.current;
+                // Native inspector handles run before duringSceneGui. Reserve the
+                // press now, then release it to our mesh handles in OnSceneGUI.
+                int control = GUIUtility.GetControlID("UniskinSceneMeshInput".GetHashCode(), FocusType.Passive);
+                var temporaryAltMode = !m_TraceActive && evt.alt && (m_Session.mode == 0 || m_Session.mode == 1);
+                if ((!evt.alt && UnityEditor.Tools.current != Tool.View) || temporaryAltMode)
+                    if (CapturePrimaryScenePress(m_InputGUI, control)) m_PrimaryInputControl = control;
+            }
+        }
+
+        internal static bool CapturePrimaryScenePress(IGUIWrapper gui, int control)
+        {
+            if (!gui.IsMouseDown(0) || !gui.IsControlHot(0)) return false;
+            gui.SetControlHot(control);
+            return true;
+        }
+
+        internal static void ReleasePrimaryScenePress(IGUIWrapper gui, int control)
+        {
+            if (control != 0 && gui.IsControlHot(control)) gui.SetControlHot(0);
         }
 
         void OnSceneGUI(SceneView scene)
         {
+            ReleasePrimaryScenePress(m_InputGUI, m_PrimaryInputControl);
+            m_PrimaryInputControl = 0;
             if (m_TraceInProgress || m_MeshMutationInProgress || m_SaveInProgress) return;
             if (BlockReason() != null) return;
             var evt = Event.current;

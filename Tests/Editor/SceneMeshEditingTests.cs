@@ -24,7 +24,8 @@ namespace UnityEditor.U2D.Animation.Tests
             public int nearest;
             public Vector2 mousePosition { get; private set; }
             public EventType eventType { get; private set; }
-            public int mouseButton => 0;
+            public int button;
+            public int mouseButton => button;
             public int clickCount => 1;
             public bool isShiftDown => false;
             public bool isAltDown => false;
@@ -49,8 +50,8 @@ namespace UnityEditor.U2D.Animation.Tests
             public bool IsMultiStepControlHot(int id) => false;
             public void SetControlHot(int id) => hot = id;
             public void SetMultiStepControlHot(int id) { }
-            public bool IsMouseDown(int button) => eventType == EventType.MouseDown && button == 0;
-            public bool IsMouseUp(int button) => eventType == EventType.MouseUp && button == 0;
+            public bool IsMouseDown(int button) => eventType == EventType.MouseDown && button == mouseButton;
+            public bool IsMouseUp(int button) => eventType == EventType.MouseUp && button == mouseButton;
             public bool IsKeyDown(KeyCode key) => false;
             public bool DoSlider(int id, SliderData data, out Vector3 position) { position = mousePosition; return hot == id; }
             public void UseCurrentEvent() => eventType = EventType.Used;
@@ -66,6 +67,34 @@ namespace UnityEditor.U2D.Animation.Tests
             public float GetHandleSize(Vector3 position) => 1f;
             public bool IsViewToolActive() => false;
             public bool HasCurrentCamera() => false;
+        }
+
+        [Test]
+        public void SceneMeshPrimaryPressIsReservedBeforePickingAndReleasedForMeshTools()
+        {
+            var gui = new DragGUI();
+            gui.Event(EventType.MouseDown, new Vector2(32, 32));
+            Assert.IsTrue(SceneEditMeshWindow.CapturePrimaryScenePress(gui, 321));
+            Assert.AreEqual(321, gui.hot, "Native handles must see an owned press before mesh input runs.");
+            Assert.AreEqual(EventType.MouseDown, gui.eventType, "The mesh controller must still receive the original press.");
+            Assert.IsFalse(SceneEditMeshWindow.CapturePrimaryScenePress(gui, 654), "Do not steal another control's press.");
+            SceneEditMeshWindow.ReleasePrimaryScenePress(gui, 321);
+            var view = new SpriteMeshView(gui) { useSceneHandles = true, mode = SpriteMeshViewMode.CreateVertex,
+                selection = new IndexedSelection(), defaultControlID = 99, frame = new Rect(0, 0, 64, 64) };
+            view.BeginLayout(); view.EndLayout();
+            Assert.IsTrue(view.DoCreateVertex(), "After handoff, the original interior click must reach Create.");
+            gui.Event(EventType.MouseDown, new Vector2(32, 32));
+            gui.hot = 654;
+            SceneEditMeshWindow.ReleasePrimaryScenePress(gui, 321);
+            Assert.AreEqual(654, gui.hot, "Cleanup must preserve another tool's capture.");
+            gui.hot = 0;
+            gui.button = 1;
+            Assert.IsFalse(SceneEditMeshWindow.CapturePrimaryScenePress(gui, 321));
+            gui.button = 2;
+            Assert.IsFalse(SceneEditMeshWindow.CapturePrimaryScenePress(gui, 321));
+            gui.button = 0;
+            gui.Event(EventType.MouseUp, new Vector2(32, 32));
+            Assert.IsFalse(SceneEditMeshWindow.CapturePrimaryScenePress(gui, 321));
         }
 
         [TestCase(false)]
