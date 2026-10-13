@@ -149,8 +149,10 @@ namespace UnityEngine.U2D.Animation
 
         internal override void Update()
         {
+            SynchronizeSpriteSkinData();
             BatchRemoveSpriteSkins();
             BatchAddSpriteSkins();
+            SynchronizeSpriteSkinData();
 
             int count = m_SpriteSkins.Count;
             if (count == 0)

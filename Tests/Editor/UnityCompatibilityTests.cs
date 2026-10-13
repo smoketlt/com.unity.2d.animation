@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using System.Reflection;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
@@ -9,6 +10,61 @@ namespace UnityEditor.U2D.Animation.Tests
 {
     internal class UnityCompatibilityTests
     {
+        [TestCase(DeformationMethods.Cpu, 0)]
+        [TestCase(DeformationMethods.Gpu, 0)]
+        [TestCase(DeformationMethods.Cpu, -1)]
+        [TestCase(DeformationMethods.Gpu, -1)]
+        [TestCase(DeformationMethods.Cpu, 1)]
+        [TestCase(DeformationMethods.Gpu, 1)]
+        public void DeformationBatchRecoversTruncatedArraysAndStaleIndices(DeformationMethods method, int pendingChange)
+        {
+            BaseDeformationSystem system = method == DeformationMethods.Gpu
+                ? (BaseDeformationSystem)new GpuDeformationSystem() : new CpuDeformationSystem();
+            var objects = new GameObject[5];
+            system.Initialize(system.GetHashCode());
+            try
+            {
+                for (int i = 0; i < 4; ++i)
+                {
+                    objects[i] = new GameObject("Batch recovery " + i, typeof(SpriteRenderer), typeof(SpriteSkin));
+                    system.AddSpriteSkin(objects[i].GetComponent<SpriteSkin>());
+                }
+                system.Update();
+
+                typeof(BaseDeformationSystem).GetMethod("ResizeAndCopyArrays", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(system, new object[] { 2 });
+                foreach (var skin in system.GetSpriteSkins())
+                    skin.SetDataIndex(99);
+
+                if (pendingChange < 0)
+                    system.RemoveSpriteSkin(objects[0].GetComponent<SpriteSkin>());
+                else if (pendingChange > 0)
+                {
+                    objects[4] = new GameObject("Pending batch addition", typeof(SpriteRenderer), typeof(SpriteSkin));
+                    system.AddSpriteSkin(objects[4].GetComponent<SpriteSkin>());
+                }
+
+                Assert.DoesNotThrow(() => system.Update());
+                int index = 0;
+                foreach (var skin in system.GetSpriteSkins())
+                    Assert.AreEqual(index++, skin.dataIndex);
+                var flags = (NativeArray<bool>)typeof(BaseDeformationSystem)
+                    .GetField("m_IsSpriteSkinActiveForDeform", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(system);
+                Assert.AreEqual(4 + pendingChange, flags.Length);
+                var renderers = (SpriteRenderer[])typeof(BaseDeformationSystem)
+                    .GetField("m_SpriteRenderers", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(system);
+                foreach (var skin in system.GetSpriteSkins())
+                    Assert.AreSame(skin.spriteRenderer, renderers[skin.dataIndex]);
+            }
+            finally
+            {
+                system.Cleanup();
+                foreach (var go in objects)
+                    if (go != null)
+                        UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
+
         [Test]
         public void GpuBoneOffsetsUsePackedRangesAndClearInactiveSkins()
         {

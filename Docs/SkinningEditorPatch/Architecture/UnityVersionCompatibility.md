@@ -21,6 +21,18 @@ GPU selection is controlled by `ANIMATION_COMMON_13_OR_NEWER`, an assembly versi
 
 The modern GPU upload uses each valid skin's `PerSkinJobData.bindPosesIndex.x`. Invalid skins receive `-1`. Existing packed bone-matrix uploads and bounds computation remain in place.
 
+## Batched Deformation State Recovery
+
+`GpuDeformationSystem.Update` can report an assertion such as `Expected: 2 == 4` when the per-skin active array has two entries but the registered skin set has four. This checks batch registration state, not the sprite's vertex or bone count. The report was observed with the `AlphaVersion` Git dependency at `a04a09cc` on Unity 6000.5.7; the original triggering action has not yet been reproduced.
+
+CPU and GPU updates now use the shared `BaseDeformationSystem.SynchronizeSpriteSkinData` before and after processing pending registration changes, before validation and job scheduling. When shared per-skin arrays or the renderer array have inconsistent lengths, it completes the deformation job, resizes through the system's virtual resize method (including GPU arrays), reassigns every skin's data index and recopies its sprite/renderer data. Existing assertions remain enabled. Normal frames with matching lengths do not rebuild the batch.
+
+Removal sizes come from the actual remaining skin set after removing queued entries, rather than subtracting the queue size. Cleanup also clears pending additions, removals and transform-removal IDs so those queues cannot survive system disposal.
+
+`DeformationBatchRecoversTruncatedArraysAndStaleIndices` exercises both CPU and GPU systems with four registered skins, arrays truncated to two entries and deliberately stale indices, with no pending change, a pending removal or a pending addition. It checks that Update succeeds, indices are contiguous and renderer bindings match each skin. This is an injected-state regression test, not reproduction of the original user's scene or proof of rendered GPU output.
+
+Verified on 2026-10-13 using an immutable snapshot in disposable projects: Unity 6000.0.81f1 with Common 9.1.2 and Unity 6000.5.7f1 with Common 14.0.1 each passed all 14 compatibility test cases with no skipped cases or C# compilation errors. Both runs used `-batchmode -nographics`; visual GPU deformation and the original scene remain unverified. The connected Unity 6000.0.81f1 development project also compiled successfully, but its manifest does not enable package tests, so its zero-test Pipeline run is not counted as regression verification.
+
 ## Identity Rules
 
 - Use the per-file `ObjectId` alias for object identities, including native job arrays, dictionaries, visibility rows, skeleton picking, and IK culling.
@@ -59,7 +71,7 @@ Example batch invocation (use an installed editor executable and a disposable pr
 Unity.exe -batchmode -nographics -projectPath <test-project> -runTests -testPlatform EditMode -testFilter UnityEditor.U2D.Animation.Tests.UnityCompatibilityTests -testResults <results.xml> -logFile <editor.log>
 ```
 
-Do not add `-quit` to this test invocation; let the Test Framework finish and exit. Confirm the XML reports eight executed tests, not merely a successful process or a zero-test result.
+Do not add `-quit` to this test invocation; let the Test Framework finish and exit. Confirm the XML reports fourteen executed test cases (including CPU/GPU batch recovery), not merely a successful process or a zero-test result. The historical matrix below predates these six additional cases.
 
 ## Verification Matrix
 

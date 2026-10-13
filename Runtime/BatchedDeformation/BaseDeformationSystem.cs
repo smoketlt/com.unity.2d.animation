@@ -194,16 +194,10 @@ namespace UnityEngine.U2D.Animation
 
             m_WorldToLocalTransformAccessJob.RemoveTransformsByIds(m_TransformIdsToRemove);
 
-            int updatedCount = Math.Max(m_SpriteSkins.Count - spritesToRemoveCount, 0);
-            if (updatedCount == 0)
-            {
-                m_SpriteSkins.Clear();
-            }
-            else
-            {
-                foreach (SpriteSkin spriteSkin in m_SpriteSkinsToRemove)
-                    m_SpriteSkins.Remove(spriteSkin);
-            }
+            foreach (SpriteSkin spriteSkin in m_SpriteSkinsToRemove)
+                m_SpriteSkins.Remove(spriteSkin);
+
+            int updatedCount = m_SpriteSkins.Count;
 
             int count = 0;
             foreach (SpriteSkin spriteSkin in m_SpriteSkins)
@@ -265,11 +259,36 @@ namespace UnityEngine.U2D.Animation
             NativeArrayHelpers.ResizeAndCopyIfNeeded(ref m_BoundsData, updatedCount);
         }
 
+        protected void SynchronizeSpriteSkinData()
+        {
+            int count = m_SpriteSkins.Count;
+            if (m_IsSpriteSkinActiveForDeform.Length == count &&
+                m_PerSkinJobData.Length == count && m_SpriteSkinData.Length == count &&
+                m_BoundsData.Length == count && m_SpriteRenderers.Length == count &&
+                m_Buffers.Length == count && m_BufferSizes.Length == count)
+                return;
+
+            // Restore the batch before any jobs consume its indices or renderer buffers.
+            // Resizing alone is insufficient: copied data can still belong to an old skin.
+            m_DeformJobHandle.Complete();
+            Array.Resize(ref m_SpriteRenderers, count);
+            ResizeAndCopyArrays(count);
+            int index = 0;
+            foreach (SpriteSkin spriteSkin in m_SpriteSkins)
+            {
+                spriteSkin.SetDataIndex(index++);
+                CopyToSpriteSkinData(spriteSkin);
+            }
+        }
+
         internal virtual void Cleanup()
         {
             m_DeformJobHandle.Complete();
 
             m_SpriteSkins.Clear();
+            m_SpriteSkinsToAdd.Clear();
+            m_SpriteSkinsToRemove.Clear();
+            m_TransformIdsToRemove.Clear();
             m_SpriteRenderers = new SpriteRenderer[0];
             BufferManager.instance.ReturnBuffer(m_ObjectId);
             m_IsSpriteSkinActiveForDeform.DisposeIfCreated();
