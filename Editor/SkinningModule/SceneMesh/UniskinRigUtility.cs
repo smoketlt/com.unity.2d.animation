@@ -640,16 +640,19 @@ namespace UnityEditor.U2D.Animation
                 if (created) transform.SetParent(parent, false);
                 else if (transform.parent != parent) Undo.SetTransformParent(transform, parent, "Reparent Rig Bone");
                 var desired = bone.position / rig.pixelsPerUnit + (bone.parentId < 0 ? (Vector3)rig.rootOffset : Vector3.zero);
-                if (created || parentChanged)
+                if (created)
                 {
                     transform.localPosition = desired;
                     transform.localRotation = bone.rotation;
                 }
-                else
+                else if (!parentChanged)
                 {
                     transform.localPosition += (bone.position - link.sourcePose.position) / rig.pixelsPerUnit;
                     transform.localRotation = bone.rotation * Quaternion.Inverse(link.sourcePose.rotation) * transform.localRotation;
                 }
+                // Set Parent preserves the displayed world pose. Undo.SetTransformParent
+                // has already converted it to the new parent's scene coordinates; the
+                // source bind pose is in a different frame on a posed instance.
                 RecordSceneObject(transform);
             }
             link.sourcePose = bone;

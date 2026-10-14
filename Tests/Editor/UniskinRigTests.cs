@@ -827,6 +827,74 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.IsFalse(m_Root.GetComponentsInChildren<Transform>(true).Any(transform => transform.name == "Unused"));
         }
 
+        [TestCase(0, false)]
+        [TestCase(0, true)]
+        [TestCase(1, false)]
+        [TestCase(1, true)]
+        [TestCase(2, false)]
+        [TestCase(2, true)]
+        public void ReparentingPosedBonePreservesWorldPose(int pathway, bool detach)
+        {
+            var provider = (UniskinRigDataProvider)Source().provider;
+            provider.data.sprites[0].bones = new[]
+            {
+                new SpriteBone { guid = "old-parent", name = "OldParent", parentId = -1, position = new Vector3(4, 4, 0), rotation = Quaternion.Euler(0, 0, 30), length = 8 },
+                new SpriteBone { guid = "new-parent", name = "NewParent", parentId = -1, position = new Vector3(18, 7, 0), rotation = Quaternion.Euler(0, 0, -40), length = 8 },
+                new SpriteBone { guid = "ear", name = "Ear", parentId = 0, position = new Vector3(8, 0, 0), rotation = Quaternion.Euler(0, 0, 15), length = 8 },
+                new SpriteBone { guid = "tip", name = "Tip", parentId = 2, position = new Vector3(8, 0, 0), rotation = Quaternion.identity, length = 4 }
+            };
+            UpdateCharacterBoneMap(provider);
+            provider.Apply();
+            var binding = m_Root.GetComponent<UniskinRigBinding>();
+            var oldParent = binding.bones.Single(link => link.guid == "old-parent").transform;
+            var newParent = binding.bones.Single(link => link.guid == "new-parent").transform;
+            var ear = binding.bones.Single(link => link.guid == "ear").transform;
+            var tip = binding.bones.Single(link => link.guid == "tip").transform;
+            m_Root.transform.SetPositionAndRotation(new Vector3(2, -3, 0), Quaternion.Euler(0, 0, 17));
+            m_Root.transform.localScale = Vector3.one * 1.7f;
+            oldParent.localRotation *= Quaternion.Euler(0, 0, 43);
+            newParent.localPosition += new Vector3(.4f, -.2f, 0);
+            newParent.localRotation *= Quaternion.Euler(0, 0, -26);
+            ear.localRotation *= Quaternion.Euler(0, 0, 12);
+            var position = ear.position;
+            var rotation = ear.rotation;
+            var tipPosition = tip.position;
+            provider = (UniskinRigDataProvider)Source().provider;
+            var bones = provider.data.sprites[0].bones;
+            var worldPosition = bones[0].position + bones[0].rotation * bones[2].position;
+            var worldRotation = bones[0].rotation * bones[2].rotation;
+            bones[2].parentId = detach ? -1 : 1;
+            bones[2].position = detach ? worldPosition : Quaternion.Inverse(bones[1].rotation) * (worldPosition - bones[1].position);
+            bones[2].rotation = detach ? worldRotation : Quaternion.Inverse(bones[1].rotation) * worldRotation;
+            UpdateCharacterBoneMap(provider);
+            Action apply;
+            if (pathway == 1)
+            {
+                m_Rig.characterBones = UniskinRigData.Clone(bones);
+                apply = () => typeof(UniskinRigBinding).GetMethod("UpdateRuntimeBones", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(binding, null);
+            }
+            else if (pathway == 2)
+            {
+                var source = Source();
+                var session = Session<SceneBoneSession>();
+                session.Load(m_Renderer.sprite, source, skeletonOnly: provider.data.hasCharacter);
+                session.CaptureScenePose(m_Renderer, source.rect.rect);
+                var child = session.skeleton.bones.Single(bone => bone.guid == "ear");
+                session.SetParent(child, detach ? null : session.skeleton.bones.Single(bone => bone.guid == "new-parent"));
+                Assert.IsTrue(session.dirty);
+                apply = () => session.Save(Source());
+            }
+            else apply = () => provider.Apply();
+            apply();
+            Assert.AreSame(detach ? m_Root.transform : newParent, ear.parent);
+            Assert.That(Vector3.Distance(position, ear.position), Is.LessThan(.00001f));
+            Assert.That(Quaternion.Angle(rotation, ear.rotation), Is.LessThan(.001f));
+            Assert.That(Vector3.Distance(tipPosition, tip.position), Is.LessThan(.00001f));
+            apply();
+            Assert.That(Vector3.Distance(position, ear.position), Is.LessThan(.00001f), "Repeated synchronization must not apply another pose delta.");
+            Assert.That(Quaternion.Angle(rotation, ear.rotation), Is.LessThan(.001f));
+        }
+
         static void UpdateCharacterBoneMap(UniskinRigDataProvider provider)
         {
             if (!provider.data.hasCharacter) return;

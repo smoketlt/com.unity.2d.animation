@@ -93,9 +93,10 @@ namespace UnityEngine.U2D.Animation
                 {
                     if (link.transform.parent != parent)
                     {
-                        link.transform.SetParent(parent, false);
-                        link.transform.localPosition = bone.position / rig.pixelsPerUnit + (bone.parentId < 0 ? (Vector3)rig.rootOffset : Vector3.zero);
-                        link.transform.localRotation = bone.rotation;
+                        // Keep the instance's pose when adopting a changed hierarchy.
+                        // Source local coordinates belong to the bind pose, which can
+                        // differ from the current animated/prefab pose.
+                        link.transform.SetParent(parent, true);
                     }
                     else
                     {

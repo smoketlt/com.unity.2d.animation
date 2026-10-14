@@ -60,6 +60,8 @@ Root/unbound resolution searches the enclosing prefab/root for one character sou
 
 Property fields refresh after viewport changes and Undo without replacing unfinished text/numeric input. Name and Length are disabled for multiple selections; Color supports bulk editing. There is no extra Modify or Delete button.
 
+For enabled Uniskin rigs, saving or automatically closing after Set Parent also preserves the existing scene Transform's world position and rotation. The binding reparents with world-pose preservation and retains the resulting scene-local coordinates, rather than replacing them with bind-pose locals. This matters when the old/new parents have scene pose overrides. See [UniskinRig](UniskinRig.md#scene-and-runtime-bindings) for runtime prefab synchronization and verification limits.
+
 ### Redrawing a selected bone with Alt
 
 Select exactly one bone in either mesh-entry or skeleton-only **Edit Bones**, then hold Alt and draw its new start/end with the primary mouse button. This temporarily overrides the active command; the Create tile highlights while Alt is held and the previous command resumes on release. Starting over another bone still redraws the selected bone. The preview leaves the skeleton untouched until mouse-up; a click without a drag produces the same short right-facing minimum bone as Create. Esc, releasing Alt before mouse-up, leaving the Scene window, Undo/Redo, changing commands or closing the popup cancels the preview. Right/middle mouse navigation remains available.
