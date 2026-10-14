@@ -827,13 +827,19 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.IsFalse(m_Root.GetComponentsInChildren<Transform>(true).Any(transform => transform.name == "Unused"));
         }
 
-        [TestCase(0, false)]
-        [TestCase(0, true)]
-        [TestCase(1, false)]
-        [TestCase(1, true)]
-        [TestCase(2, false)]
-        [TestCase(2, true)]
-        public void ReparentingPosedBonePreservesWorldPose(int pathway, bool detach)
+        [TestCase(0, false, false)]
+        [TestCase(0, true, false)]
+        [TestCase(1, false, false)]
+        [TestCase(1, true, false)]
+        [TestCase(2, false, false)]
+        [TestCase(2, true, false)]
+        [TestCase(0, false, true)]
+        [TestCase(0, true, true)]
+        [TestCase(1, false, true)]
+        [TestCase(1, true, true)]
+        [TestCase(2, false, true)]
+        [TestCase(2, true, true)]
+        public void ReparentingPosedBonePreservesAuthoredWorldPose(int pathway, bool detach, bool move)
         {
             var provider = (UniskinRigDataProvider)Source().provider;
             provider.data.sprites[0].bones = new[]
@@ -859,10 +865,15 @@ namespace UnityEditor.U2D.Animation.Tests
             var position = ear.position;
             var rotation = ear.rotation;
             var tipPosition = tip.position;
+            var movePixels = move ? new Vector3(6, 3, 0) : Vector3.zero;
+            var sceneDelta = ear.TransformVector(movePixels / m_Rig.pixelsPerUnit);
+            position += sceneDelta;
+            tipPosition += sceneDelta;
             provider = (UniskinRigDataProvider)Source().provider;
             var bones = provider.data.sprites[0].bones;
             var worldPosition = bones[0].position + bones[0].rotation * bones[2].position;
             var worldRotation = bones[0].rotation * bones[2].rotation;
+            worldPosition += worldRotation * movePixels;
             bones[2].parentId = detach ? -1 : 1;
             bones[2].position = detach ? worldPosition : Quaternion.Inverse(bones[1].rotation) * (worldPosition - bones[1].position);
             bones[2].rotation = detach ? worldRotation : Quaternion.Inverse(bones[1].rotation) * worldRotation;
@@ -876,13 +887,22 @@ namespace UnityEditor.U2D.Animation.Tests
             else if (pathway == 2)
             {
                 var source = Source();
-                var session = Session<SceneBoneSession>();
-                session.Load(m_Renderer.sprite, source, skeletonOnly: provider.data.hasCharacter);
-                session.CaptureScenePose(m_Renderer, source.rect.rect);
-                var child = session.skeleton.bones.Single(bone => bone.guid == "ear");
-                session.SetParent(child, detach ? null : session.skeleton.bones.Single(bone => bone.guid == "new-parent"));
-                Assert.IsTrue(session.dirty);
-                apply = () => session.Save(Source());
+                var window = ScriptableObject.CreateInstance<SceneEditBoneWindow>();
+                try
+                {
+                    SetWindowField(window, "m_Renderer", m_Renderer);
+                    SetWindowField(window, "m_Source", source);
+                    var session = GetWindowSession<SceneBoneSession>(window);
+                    session.Load(m_Renderer.sprite, source, skeletonOnly: provider.data.hasCharacter);
+                    session.CaptureScenePose(m_Renderer, source.rect.rect);
+                    var child = session.skeleton.bones.Single(bone => bone.guid == "ear");
+                    session.SetParent(child, detach ? null : session.skeleton.bones.Single(bone => bone.guid == "new-parent"));
+                    child.position += session.SkeletonToWorld(m_Renderer, source.rect.rect).inverse.MultiplyVector(sceneDelta);
+                    session.Changed();
+                    Assert.IsTrue(session.dirty);
+                }
+                catch { Object.DestroyImmediate(window); throw; }
+                apply = () => Object.DestroyImmediate(window);
             }
             else apply = () => provider.Apply();
             apply();
@@ -890,7 +910,8 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.That(Vector3.Distance(position, ear.position), Is.LessThan(.00001f));
             Assert.That(Quaternion.Angle(rotation, ear.rotation), Is.LessThan(.001f));
             Assert.That(Vector3.Distance(tipPosition, tip.position), Is.LessThan(.00001f));
-            apply();
+            if (pathway == 1) apply();
+            else UniskinRigUtility.RefreshInstances(m_Rig);
             Assert.That(Vector3.Distance(position, ear.position), Is.LessThan(.00001f), "Repeated synchronization must not apply another pose delta.");
             Assert.That(Quaternion.Angle(rotation, ear.rotation), Is.LessThan(.001f));
         }

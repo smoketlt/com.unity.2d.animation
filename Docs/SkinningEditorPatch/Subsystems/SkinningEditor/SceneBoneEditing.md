@@ -60,7 +60,7 @@ Root/unbound resolution searches the enclosing prefab/root for one character sou
 
 Property fields refresh after viewport changes and Undo without replacing unfinished text/numeric input. Name and Length are disabled for multiple selections; Color supports bulk editing. There is no extra Modify or Delete button.
 
-For enabled Uniskin rigs, saving or automatically closing after Set Parent also preserves the existing scene Transform's world position and rotation. The binding reparents with world-pose preservation and retains the resulting scene-local coordinates, rather than replacing them with bind-pose locals. This matters when the old/new parents have scene pose overrides. See [UniskinRig](UniskinRig.md#scene-and-runtime-bindings) for runtime prefab synchronization and verification limits.
+For enabled Uniskin rigs, saving or automatically closing after Set Parent preserves the final displayed pose, including movement performed after reparenting. The binding snapshots the old scene pose and old/new source world matrices before updating the hierarchy, then applies the authored delta through each bone's scene-pose conversion. It does not replace scene locals with bind-pose locals or discard explicit movement. This matters when the old/new parents have scene pose overrides. Unweighted character bones first resolve through the rig's stable GUID-to-Transform map, before source-name-chain fallback, so a stale scene hierarchy does not make their initial display lose its scene-pose conversion. See [UniskinRig](UniskinRig.md#scene-and-runtime-bindings) for runtime prefab synchronization and verification limits.
 
 ### Redrawing a selected bone with Alt
 

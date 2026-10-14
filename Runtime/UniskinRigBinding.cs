@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.U2D;
@@ -66,6 +67,7 @@ namespace UnityEngine.U2D.Animation
 
         void UpdateRuntimeBones()
         {
+            var hierarchyPoses = CaptureHierarchyPoses(rig, bones, transform);
             var links = bones.Where(binding => binding.transform != null).ToDictionary(binding => binding.guid);
             var created = new Transform[rig.characterBones.Length];
             for (var i = 0; i < created.Length; ++i) Ensure(i);
@@ -91,14 +93,17 @@ namespace UnityEngine.U2D.Animation
                 }
                 else
                 {
-                    if (link.transform.parent != parent)
+                    var parentChanged = link.transform.parent != parent;
+                    if (parentChanged)
                     {
                         // Keep the instance's pose when adopting a changed hierarchy.
                         // Source local coordinates belong to the bind pose, which can
                         // differ from the current animated/prefab pose.
                         link.transform.SetParent(parent, true);
                     }
-                    else
+                    if (hierarchyPoses.TryGetValue(bone.guid, out var pose))
+                        link.transform.SetPositionAndRotation(pose.position, pose.rotation);
+                    else if (!parentChanged)
                     {
                         link.transform.localPosition += (bone.position - link.sourcePose.position) / rig.pixelsPerUnit;
                         link.transform.localRotation = bone.rotation * Quaternion.Inverse(link.sourcePose.rotation) * link.transform.localRotation;
@@ -108,6 +113,52 @@ namespace UnityEngine.U2D.Animation
                 }
                 return created[index] = link.transform;
             }
+        }
+
+        // Capture before changing any parent or baseline. Local source coordinates
+        // from different hierarchies cannot be subtracted. Transfer the authored
+        // world-space delta through each bone's current scene-pose conversion.
+        internal static Dictionary<string, Pose> CaptureHierarchyPoses(UniskinRig rig, BoneBinding[] bindings, Transform root)
+        {
+            var result = new Dictionary<string, Pose>();
+            var previous = bindings.Select(binding => binding.sourcePose).ToArray();
+            var next = rig.characterBones;
+            string ParentGuid(SpriteBone[] values, int index) => index >= 0 && index < values.Length ? values[index].guid : null;
+            var sourceHierarchyChanged = previous.Any(bone => Array.Exists(next, candidate => candidate.guid == bone.guid &&
+                ParentGuid(previous, bone.parentId) != ParentGuid(next, candidate.parentId)));
+            var sceneHierarchyChanged = bindings.Any(binding => binding.transform != null && Array.Exists(next, bone =>
+                bone.guid == binding.guid && binding.transform.parent != (bone.parentId < 0 ? root :
+                    Array.Find(bindings, parent => parent.guid == next[bone.parentId].guid)?.transform)));
+            if (!sourceHierarchyChanged && !sceneHierarchyChanged) return result;
+            Matrix4x4[] Matrices(SpriteBone[] values)
+            {
+                var matrices = new Matrix4x4[values.Length];
+                var ready = new bool[values.Length];
+                Matrix4x4 Build(int i)
+                {
+                    if (ready[i]) return matrices[i];
+                    var bone = values[i];
+                    var local = Matrix4x4.TRS(bone.position / rig.pixelsPerUnit +
+                        (bone.parentId < 0 ? (Vector3)rig.rootOffset : Vector3.zero), bone.rotation, Vector3.one);
+                    matrices[i] = bone.parentId >= 0 ? Build(bone.parentId) * local : local;
+                    ready[i] = true;
+                    return matrices[i];
+                }
+                for (var i = 0; i < values.Length; ++i) Build(i);
+                return matrices;
+            }
+            var before = Matrices(previous);
+            var after = Matrices(next);
+            for (var i = 0; i < bindings.Length; ++i)
+            {
+                var binding = bindings[i];
+                var index = Array.FindIndex(next, bone => bone.guid == binding.guid);
+                if (binding.transform == null || index < 0) continue;
+                var delta = before[i].inverse * after[index];
+                result[binding.guid] = new Pose(binding.transform.TransformPoint(delta.MultiplyPoint3x4(Vector3.zero)),
+                    binding.transform.rotation * delta.rotation);
+            }
+            return result;
         }
     }
 }

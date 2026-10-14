@@ -577,8 +577,9 @@ namespace UnityEditor.U2D.Animation
                                 { guid = oldBones[i].guid, transform = skin.boneTransforms[i], sourcePose = rig.characterBones[index] };
                             }
                     }
+                    var hierarchyPoses = UniskinRigBinding.CaptureHierarchyPoses(rig, binding.bones, root);
                     var transforms = new Transform[rig.characterBones.Length];
-                    for (var i = 0; i < transforms.Length; ++i) EnsureBone(i, rig, root, map, transforms, new HashSet<int>());
+                    for (var i = 0; i < transforms.Length; ++i) EnsureBone(i, rig, root, map, transforms, new HashSet<int>(), hierarchyPoses);
                     foreach (var obsolete in map.Values.Where(link => link.transform != null &&
                         !rig.characterBones.Any(bone => bone.guid == link.guid)))
                     {
@@ -609,12 +610,13 @@ namespace UnityEditor.U2D.Animation
         }
 
         static Transform EnsureBone(int index, UniskinRig rig, Transform root,
-            Dictionary<string, UniskinRigBinding.BoneBinding> map, Transform[] transforms, HashSet<int> stack)
+            Dictionary<string, UniskinRigBinding.BoneBinding> map, Transform[] transforms, HashSet<int> stack,
+            Dictionary<string, UnityEngine.Pose> hierarchyPoses)
         {
             if (transforms[index] != null) return transforms[index];
             if (!stack.Add(index)) throw new InvalidOperationException("Cyclic rig hierarchy.");
             var bone = rig.characterBones[index];
-            var parent = bone.parentId >= 0 ? EnsureBone(bone.parentId, rig, root, map, transforms, stack) : root;
+            var parent = bone.parentId >= 0 ? EnsureBone(bone.parentId, rig, root, map, transforms, stack, hierarchyPoses) : root;
             if (!map.TryGetValue(bone.guid, out var link))
             {
                 var existing = SceneBoneInspector.FindCharacterTransform(root, rig.characterBones, index,
@@ -633,7 +635,7 @@ namespace UnityEditor.U2D.Animation
             var transform = link.transform;
             var parentChanged = !created && transform.parent != parent;
             var changed = created || !link.sourcePose.position.Equals(bone.position) || !link.sourcePose.rotation.Equals(bone.rotation) ||
-                parentChanged;
+                parentChanged || hierarchyPoses.ContainsKey(bone.guid);
             if (changed)
             {
                 Undo.RecordObject(transform, "Update Rig Bone");
@@ -645,14 +647,13 @@ namespace UnityEditor.U2D.Animation
                     transform.localPosition = desired;
                     transform.localRotation = bone.rotation;
                 }
+                else if (hierarchyPoses.TryGetValue(bone.guid, out var pose))
+                    transform.SetPositionAndRotation(pose.position, pose.rotation);
                 else if (!parentChanged)
                 {
                     transform.localPosition += (bone.position - link.sourcePose.position) / rig.pixelsPerUnit;
                     transform.localRotation = bone.rotation * Quaternion.Inverse(link.sourcePose.rotation) * transform.localRotation;
                 }
-                // Set Parent preserves the displayed world pose. Undo.SetTransformParent
-                // has already converted it to the new parent's scene coordinates; the
-                // source bind pose is in a different frame on a posed instance.
                 RecordSceneObject(transform);
             }
             link.sourcePose = bone;
