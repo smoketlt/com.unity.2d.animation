@@ -18,9 +18,20 @@ namespace UnityEditor.U2D.Animation
 
         SpriteMeshDataController m_SpriteMeshDataController = new();
         EdgeIntersectionResult m_EdgeIntersectionResult;
+        internal (Vector2 position, int vertex, int edge) createEdgePreview =>
+            (m_EdgeIntersectionResult.endPosition, m_EdgeIntersectionResult.endVertexIndex, m_EdgeIntersectionResult.intersectEdgeIndex);
 
         public Action newGeometryCompleted = () => { };
         public Action newGeometryCanceled = () => { };
+        public Action<Vector2> newGeometryVertexCreated;
+        public Action<int[]> newGeometryVerticesRemoved;
+        public Action<int[], Vector2[]> newGeometryVerticesMoved;
+        public Action newGeometryPreview;
+        public Action newGeometryCompletionRequested;
+        public Action<Vector2, int> geometryVertexCreated;
+        public Action<int, Vector2, int, int> geometryEdgeCreated;
+        public Action<int[], Vector2[]> geometryVerticesMoved;
+        public Action geometrySymmetryPreview;
         public ISpriteMeshView spriteMeshView { get; set; }
         public BaseSpriteMeshData spriteMeshData { get; set; }
         public ISelection<int> selection { get; set; }
@@ -69,6 +80,7 @@ namespace UnityEditor.U2D.Animation
                         PreviewCreateVertex();
                         PreviewCreateEdge();
                         PreviewSplitEdge();
+                        geometrySymmetryPreview?.Invoke();
                     }
                 }
 
@@ -248,6 +260,7 @@ namespace UnityEditor.U2D.Animation
 
         void PreviewNewGeometry()
         {
+            if (newGeometryPreview != null) { newGeometryPreview(); return; }
             if (spriteMeshData.vertexCount == 0)
                 return;
 
@@ -307,10 +320,19 @@ namespace UnityEditor.U2D.Animation
                 if (spriteMeshView.mode == SpriteMeshViewMode.NewGeometry)
                 {
                     cacheUndo.BeginUndoOperation(TextContent.moveVertices);
-                    MoveSelectedVerticesWithoutTriangulation(in movedVertexSelection);
+                    if (newGeometryVerticesMoved != null)
+                        newGeometryVerticesMoved(selectionArray, movedVertexSelection);
+                    else
+                        MoveSelectedVerticesWithoutTriangulation(in movedVertexSelection);
                     return;
                 }
 
+                if (geometryVerticesMoved != null)
+                {
+                    cacheUndo.BeginUndoOperation(TextContent.moveVertices);
+                    geometryVerticesMoved(selectionArray, movedVertexSelection);
+                    return;
+                }
                 if (IsMovedEdgeIntersectingWithOtherEdge(in selectionArray, in movedVertexSelection, spriteMeshData.edges, spriteMeshData.vertices))
                     return;
                 if (IsMovedVertexIntersectingWithOutline(in selectionArray, in movedVertexSelection, spriteMeshData.outlineEdges, spriteMeshData.vertices))
@@ -357,6 +379,7 @@ namespace UnityEditor.U2D.Animation
             {
                 Vector2 position = ClampToFrame(spriteMeshView.mouseWorldPosition);
                 int edgeIndex = spriteMeshView.hoveredEdge;
+                if (geometryVertexCreated != null) { geometryVertexCreated(position, edgeIndex); return; }
                 if (spriteMeshView.hoveredEdge != -1)
                     CreateVertex(position, edgeIndex);
                 else if (m_SpriteMeshDataController.FindTriangle(position, out Vector3Int indices, out Vector3 barycentricCoords))
@@ -367,7 +390,10 @@ namespace UnityEditor.U2D.Animation
         void HandleSplitEdge()
         {
             if (spriteMeshView.DoSplitEdge())
-                SplitEdge(ClampToFrame(spriteMeshView.mouseWorldPosition), spriteMeshView.closestEdge);
+            {
+                if (geometryVertexCreated != null) geometryVertexCreated(ClampToFrame(spriteMeshView.mouseWorldPosition), spriteMeshView.closestEdge);
+                else SplitEdge(ClampToFrame(spriteMeshView.mouseWorldPosition), spriteMeshView.closestEdge);
+            }
         }
 
         void HandleCreateEdge()
@@ -376,6 +402,12 @@ namespace UnityEditor.U2D.Animation
             {
                 Vector2 clampedMousePosition = ClampToFrame(spriteMeshView.mouseWorldPosition);
                 EdgeIntersectionResult edgeIntersectionResult = CalculateEdgeIntersection(selection.activeElement, spriteMeshView.hoveredVertex, spriteMeshView.hoveredEdge, clampedMousePosition);
+                if (geometryEdgeCreated != null)
+                {
+                    geometryEdgeCreated(selection.activeElement, edgeIntersectionResult.endPosition,
+                        edgeIntersectionResult.endVertexIndex, edgeIntersectionResult.intersectEdgeIndex);
+                    return;
+                }
 
                 if (edgeIntersectionResult.endVertexIndex != -1)
                 {
@@ -559,6 +591,7 @@ namespace UnityEditor.U2D.Animation
 
         void CreateNewGeometryVertex(Vector2 position)
         {
+            if (newGeometryVertexCreated != null) { newGeometryVertexCreated(position); return; }
             cacheUndo.BeginUndoOperation(TextContent.newGeometry);
 
             int previousVertexIndex = spriteMeshData.vertexCount - 1;
@@ -575,6 +608,7 @@ namespace UnityEditor.U2D.Animation
 
         void CompleteNewGeometry()
         {
+            if (newGeometryCompletionRequested != null) { newGeometryCompletionRequested(); return; }
             if (spriteMeshData.vertexCount < 3)
                 return;
 
@@ -588,6 +622,7 @@ namespace UnityEditor.U2D.Animation
 
         void DeleteNewGeometryVertex(int index)
         {
+            if (newGeometryVerticesRemoved != null) { newGeometryVerticesRemoved(new[] { index }); return; }
             if (index < 0 || index >= spriteMeshData.vertexCount)
                 return;
 
@@ -603,6 +638,7 @@ namespace UnityEditor.U2D.Animation
 
         void RemoveSelectedNewGeometryVertices()
         {
+            if (newGeometryVerticesRemoved != null) { newGeometryVerticesRemoved(selection.elements); return; }
             if (selection.Count == 0)
                 return;
 
@@ -840,7 +876,7 @@ namespace UnityEditor.U2D.Animation
             return movedVertices;
         }
 
-        static bool IsMovedEdgeIntersectingWithOtherEdge(in int[] selection, in Vector2[] movedVertices, in int2[] meshEdges, in Vector2[] meshVertices)
+        internal static bool IsMovedEdgeIntersectingWithOtherEdge(in int[] selection, in Vector2[] movedVertices, in int2[] meshEdges, in Vector2[] meshVertices)
         {
             int edgeCount = meshEdges.Length;
             Vector2 edgeIntersectionPoint = Vector2.zero;
@@ -883,20 +919,19 @@ namespace UnityEditor.U2D.Animation
                 if (selection[m] == edge.x)
                 {
                     selectionIndex.x = m;
-                    break;
                 }
 
                 if (selection[m] == edge.y)
                 {
                     selectionIndex.y = m;
-                    break;
                 }
+                if (selectionIndex.x >= 0 && selectionIndex.y >= 0) break;
             }
 
             return selectionIndex;
         }
 
-        static bool IsMovedVertexIntersectingWithOutline(in int[] selection, in Vector2[] movedVertices, in int2[] outlineEdges, in Vector2[] meshVertices)
+        internal static bool IsMovedVertexIntersectingWithOutline(in int[] selection, in Vector2[] movedVertices, in int2[] outlineEdges, in Vector2[] meshVertices)
         {
             Vector2 edgeIntersectionPoint = Vector2.zero;
 

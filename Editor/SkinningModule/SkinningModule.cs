@@ -753,13 +753,15 @@ namespace UnityEditor.U2D.Animation
                     throw new InvalidOperationException("Sprite geometry changed while editing bones. Reopen Edit Bone.");
                 // Assigning the first bones makes PSB Importer enable SpriteSkin.
                 // Zero-weight vertices would then collapse to the origin. Fill only
-                // missing weights; retain every existing authored positive weight.
-                if (initializeMissingWeights && bones.Length > 0 && mesh.vertexWeights.Any(weight => weight.Sum() == 0f))
+                // missing weights when new influences are added; editing existing
+                // bone identities must preserve authored zero and positive weights.
+                var initializeWeights = initializeMissingWeights && bones.Any(bone => !previousBones.Any(previous => previous.guid == bone.guid));
+                if (initializeWeights && mesh.vertexWeights.Any(weight => weight.Sum() == 0f))
                     sprite.CalculateMissingWeights();
                 for (var i = 0; i < vertices.Length; ++i)
                 {
                     var weight = vertices[i].boneWeight;
-                    var preserve = weight.weight0 + weight.weight1 + weight.weight2 + weight.weight3 > 0f || bones.Length == 0;
+                    var preserve = weight.weight0 + weight.weight1 + weight.weight2 + weight.weight3 > 0f || bones.Length == 0 || !initializeWeights;
                     for (var channel = 0; channel < 4; ++channel)
                     {
                         if (weight.GetWeight(channel) <= 0) continue;

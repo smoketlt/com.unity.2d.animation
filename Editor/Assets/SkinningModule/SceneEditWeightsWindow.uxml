@@ -17,9 +17,14 @@
           <ui:Button name="smooth" text="Smooth" /><ui:Button name="auto" text="Auto" /><ui:Button name="weld" text="Weld" class="mesh-last-action" tooltip="Weight transfer between meshes: workflow pending discussion." />
         </ui:VisualElement>
         <ui:VisualElement class="mesh-row mesh-options">
-          <ui:Toggle name="pieces" text="Pieces" class="mesh-option-toggle" /><ui:Toggle name="overlay" text="Overlay" class="mesh-option-toggle" /><ui:Toggle name="selected" text="Selected" class="mesh-option-toggle" /><ui:Toggle name="preview" text="Preview" class="mesh-option-toggle" tooltip="Show only the sprite, hiding weight colors, mesh lines, vertices, bones and brush handles. Editing gestures remain available." />
+          <ui:Toggle name="pieces" text="Pieces" class="mesh-option-toggle" /><ui:Toggle name="overlay" text="Overlay" class="mesh-option-toggle" /><ui:Toggle name="selected" text="Selected" class="mesh-option-toggle" /><ui:Toggle name="triangles" text="Triangles" class="mesh-option-toggle" tooltip="Show all triangle edges on the deformed mesh. Hidden during Preview." /><ui:Toggle name="preview" text="Preview" class="mesh-option-toggle" tooltip="Show only the sprite, hiding weight colors, mesh lines, vertices, bones and brush handles. Editing gestures remain available." />
         </ui:VisualElement>
-        <ui:Label text="Bones" class="weight-list-title" />
+        <ui:VisualElement class="mesh-row weight-list-title weight-offset-controls">
+          <ui:Label text="Bones" class="weight-offset-title" />
+          <ui:Button name="weightDecrease" text="−" tooltip="Subtract Step % from the selected bone on each selected vertex." />
+          <ui:FloatField name="weightStep" label="Step %" value="5" tooltip="Change in percentage points per selected vertex. Fractional values are supported." />
+          <ui:Button name="weightIncrease" text="+" class="mesh-last-action" tooltip="Add Step % to the selected bone on each selected vertex." />
+        </ui:VisualElement>
         <ui:ScrollView name="bones" mode="Vertical" />
         <ui:VisualElement class="mesh-row">
           <ui:Button name="bind" text="Bind" tooltip="Click bones to add them to this mesh. Assigned bones are inactive." />

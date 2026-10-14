@@ -1,6 +1,8 @@
 .uniskin-weights-window #weightsIcon { width: 16px; height: 16px; margin: 7px 0 0 6px; }
 .uniskin-weights-window #mode { flex-grow: 1; }
-.uniskin-weights-window .mesh-options > Toggle { margin-left: 4px; margin-right: 4px; }
+.uniskin-weights-window .mesh-options { flex-wrap: nowrap; }
+.uniskin-weights-window .mesh-options > Toggle { margin-left: 2px; margin-right: 2px; padding-left: 0; padding-right: 0; }
+.uniskin-weights-window .mesh-options > Toggle > .unity-toggle__input { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
 .uniskin-weights-window #prune { flex-grow: 0; flex-basis: auto; width: 80px; }
 .uniskin-weights-window .unity-base-field__label { min-width: 65px; color: #CFCFCF; }
 .uniskin-weights-window #weightMode { margin: 0 4px 0 0; height: 24px; }
@@ -13,6 +15,12 @@
 .uniskin-weights-window #heightResizeGrip { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; cursor: resize-vertical; background-color: #14171B; }
 .uniskin-weights-window .mesh-body { padding-bottom: 10px; }
 .weight-list-title { border-top-width: 1px; border-color: #14171B; padding-top: 5px; margin-bottom: 4px; }
+.weight-offset-controls { align-items: center; }
+.weight-offset-title { flex-grow: 1; margin: 0; }
+.uniskin-weights-window .weight-offset-controls > Button { flex-grow: 0; flex-basis: auto; width: 24px; min-width: 24px; height: 20px; margin: 0 4px; }
+.uniskin-weights-window #weightStep { width: 90px; height: 20px; margin: 0; }
+.uniskin-weights-window #weightStep > .unity-base-field__label { min-width: 0; margin-right: 4px; }
+.uniskin-weights-window #weightStep .unity-base-text-field__input { background-color: #14171B; border-width: 0; color: #CFCFCF; -unity-text-align: middle-right; }
 .weight-bone-row { flex-direction: row; align-items: center; height: 27px; min-height: 27px; flex-shrink: 0; padding: 2px 4px; }
 .weight-bone-selected { background-color: #005050; }
 .weight-drop-before { border-top-width: 2px; border-top-color: #A8D4DD; }

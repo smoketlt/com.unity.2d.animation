@@ -19,6 +19,280 @@ namespace UnityEditor.U2D.Animation
         public string newMeshBackup;
         public int mode;
         public bool pendingCreation;
+        public bool symmetry;
+        [SerializeField] System.Collections.Generic.List<Vector2> m_SymmetryHull = new System.Collections.Generic.List<Vector2>();
+        [SerializeField] System.Collections.Generic.List<int> m_SymmetrySources = new System.Collections.Generic.List<int>();
+
+        internal bool symmetryActive => symmetry;
+        internal bool symmetryHullActive => symmetry && mode == 3;
+        float symmetryTolerance => Mathf.Max(0.0001f, Mathf.Max(mesh.frame.width, mesh.frame.height) * 0.0000005f);
+        internal Vector2 MirrorHullPoint(Vector2 point) => new Vector2(mesh.frame.width - point.x, point.y);
+
+        internal Vector2 SymmetryHullPoint(Vector2 point)
+        {
+            float center = mesh.frame.width * 0.5f;
+            point.x = Mathf.Clamp(point.x, 0f, mesh.frame.width);
+            point.y = Mathf.Clamp(point.y, 0f, mesh.frame.height);
+            if (Mathf.Abs(point.x - center) <= mesh.frame.width * 0.005f) point.x = center;
+            else if (point.x > center) point = MirrorHullPoint(point);
+            return point;
+        }
+
+        internal void SetSymmetry(bool value)
+        {
+            if (value == symmetry) return;
+            BeginUndoOperation("Sprite Mesh Symmetry");
+            if (value && mode == 3)
+            {
+                m_SymmetryHull = mesh.vertices.Select(SymmetryHullPoint).Distinct().ToList();
+                RebuildSymmetryHull();
+            }
+            symmetry = value;
+            selection.Clear();
+            EndUndoOperation();
+        }
+
+        internal void AddSymmetryVertex(Vector2 position)
+        {
+            position = SymmetryHullPoint(position);
+            if (m_SymmetryHull.Contains(position)) return;
+            BeginUndoOperation("Create Symmetric Sprite Mesh Vertex");
+            m_SymmetryHull.Add(position);
+            RebuildSymmetryHull();
+            selection.Clear();
+            selection.Select(m_SymmetryHull.Count - 1, true);
+            if (m_SymmetryHull.Count >= 3 && m_SymmetryHull[0].x == mesh.frame.width * 0.5f &&
+                position.x == mesh.frame.width * 0.5f)
+                CompleteNew();
+            EndUndoOperation();
+        }
+
+        internal bool IsNewHullClosureVertex(int index) => index == 0 ||
+            (symmetryHullActive && index >= 0 && index < m_SymmetrySources.Count && m_SymmetrySources[index] == 0);
+
+        internal void RemoveSymmetryVertices(int[] indices)
+        {
+            var sources = indices.Where(i => i >= 0 && i < m_SymmetrySources.Count)
+                .Select(i => m_SymmetrySources[i]).Distinct().OrderByDescending(i => i).ToArray();
+            if (sources.Length == 0) return;
+            BeginUndoOperation("Delete Symmetric Sprite Mesh Vertices");
+            foreach (var index in sources) m_SymmetryHull.RemoveAt(index);
+            RebuildSymmetryHull();
+            selection.Clear();
+            EndUndoOperation();
+        }
+
+        internal void MoveSymmetryVertices(int[] indices, Vector2[] positions)
+        {
+            var moved = new System.Collections.Generic.HashSet<int>();
+            for (var i = 0; i < indices.Length; ++i)
+            {
+                int index = indices[i];
+                int source = m_SymmetrySources[index];
+                if (!moved.Add(source)) continue;
+                var point = index < m_SymmetryHull.Count ? positions[i] : MirrorHullPoint(positions[i]);
+                float center = mesh.frame.width * 0.5f;
+                // Keep handle indices stable throughout a drag: axis vertices stay
+                // single, and paired vertices stop just short of merging on the axis.
+                point.x = m_SymmetryHull[source].x == center ? center :
+                    Mathf.Min(point.x, center - mesh.frame.width * 0.0051f);
+                m_SymmetryHull[source] = SymmetryHullPoint(point);
+            }
+            var selected = indices.Select(i => m_SymmetrySources[i]).Distinct().ToArray();
+            int previousCount = mesh.vertexCount;
+            RebuildSymmetryHull();
+            selection.elements = previousCount == mesh.vertexCount ? indices : selected;
+        }
+
+        internal Vector2? symmetryHullTip => m_SymmetryHull.Count > 0 ? m_SymmetryHull[m_SymmetryHull.Count - 1] : (Vector2?)null;
+
+        void RebuildSymmetryHull()
+        {
+            mesh.Clear();
+            m_SymmetrySources.Clear();
+            for (var i = 0; i < m_SymmetryHull.Count; ++i)
+            {
+                mesh.AddVertex(m_SymmetryHull[i], default);
+                m_SymmetrySources.Add(i);
+            }
+            for (var i = m_SymmetryHull.Count - 1; i >= 0; --i)
+            {
+                var point = MirrorHullPoint(m_SymmetryHull[i]);
+                if (point.Equals(m_SymmetryHull[i])) continue;
+                mesh.AddVertex(point, default);
+                m_SymmetrySources.Add(i);
+            }
+            var controller = new SpriteMeshDataController { spriteMeshData = mesh };
+            for (var i = 1; i < mesh.vertexCount; ++i) controller.CreateEdge(i - 1, i);
+        }
+
+        internal int FindSymmetryVertex(Vector2 position)
+        {
+            float distance = symmetryTolerance * symmetryTolerance;
+            int result = -1;
+            for (var i = 0; i < mesh.vertexCount; ++i)
+            {
+                float candidate = (mesh.vertices[i] - position).sqrMagnitude;
+                if (candidate > distance) continue;
+                distance = candidate;
+                result = i;
+            }
+            return result;
+        }
+
+        internal int[] SymmetrySelection(int[] selected) => selected.Concat(selected
+            .Where(i => i >= 0 && i < mesh.vertexCount).Select(i => FindSymmetryVertex(MirrorHullPoint(mesh.vertices[i])))
+            .Where(i => i >= 0)).Distinct().ToArray();
+
+        internal static EditableBoneWeight SampleGeometryWeight(BaseSpriteMeshData data, Vector2 position, int edgeIndex = -1)
+        {
+            var result = new EditableBoneWeight();
+            void Add(int index, float amount)
+            {
+                foreach (var channel in data.vertexWeights[index])
+                    if (channel.enabled && channel.weight * amount > 0f)
+                        result.AddChannel(channel.boneIndex, channel.weight * amount, true);
+            }
+            if (edgeIndex >= 0)
+            {
+                var edge = data.edges[edgeIndex];
+                var a = data.vertices[edge.x];
+                var direction = data.vertices[edge.y] - a;
+                float t = direction.sqrMagnitude > 0f ? Mathf.Clamp01(Vector2.Dot(position - a, direction) / direction.sqrMagnitude) : 0f;
+                Add(edge.x, 1f - t);
+                Add(edge.y, t);
+            }
+            else if (new SpriteMeshDataController { spriteMeshData = data }.FindTriangle(position, out var triangle, out var barycentric))
+            {
+                Add(triangle.x, barycentric.x);
+                Add(triangle.y, barycentric.y);
+                Add(triangle.z, barycentric.z);
+            }
+            result.UnifyChannelsWithSameBoneIndex();
+            result.FilterChannels(0f);
+            result.Clamp(4, true);
+            return result;
+        }
+
+        int EnsureSymmetryVertex(Vector2 position)
+        {
+            int existing = FindSymmetryVertex(position);
+            if (existing >= 0) return existing;
+            var controller = new SpriteMeshDataController { spriteMeshData = mesh };
+            int edgeIndex = -1;
+            for (var i = 0; i < mesh.edges.Length; ++i)
+            {
+                var edge = mesh.edges[i];
+                var a = mesh.vertices[edge.x];
+                var direction = mesh.vertices[edge.y] - a;
+                float t = direction.sqrMagnitude > 0f ? Vector2.Dot(position - a, direction) / direction.sqrMagnitude : -1f;
+                if (t >= 0f && t <= 1f && (position - a - t * direction).sqrMagnitude <= symmetryTolerance * symmetryTolerance)
+                { edgeIndex = i; break; }
+            }
+            if (edgeIndex < 0 && !controller.FindTriangle(position, out _, out _))
+                throw new InvalidOperationException("The mirrored vertex is outside the mesh. Adjust the outline or disable Symmetry.");
+            var weight = SampleGeometryWeight(mesh, position, edgeIndex).ToBoneWeight(true);
+            int index = mesh.vertexCount;
+            controller.CreateVertex(position, edgeIndex);
+            mesh.vertexWeights[index].SetFromBoneWeight(weight);
+            return index;
+        }
+
+        internal void CreateSymmetricGeometry(Vector2 position, int fromVertex = -1)
+        {
+            var backup = JsonUtility.ToJson(mesh);
+            var selected = selection.elements;
+            try { CreateSymmetricGeometryCore(position, fromVertex); }
+            catch
+            {
+                JsonUtility.FromJsonOverwrite(backup, mesh);
+                selection.elements = selected;
+                throw;
+            }
+        }
+
+        void CreateSymmetricGeometryCore(Vector2 position, int fromVertex)
+        {
+            float center = mesh.frame.width * 0.5f;
+            if (Mathf.Abs(position.x - center) <= mesh.frame.width * 0.005f) position.x = center;
+            var mirrored = MirrorHullPoint(position);
+            BeginUndoOperation("Create Symmetric Sprite Mesh Geometry");
+            int fromMirror = fromVertex >= 0 ? FindSymmetryVertex(MirrorHullPoint(mesh.vertices[fromVertex])) : -1;
+            if (fromVertex >= 0 && fromMirror < 0)
+                fromMirror = EnsureSymmetryVertex(MirrorHullPoint(mesh.vertices[fromVertex]));
+            int primary = EnsureSymmetryVertex(position);
+            int partner = EnsureSymmetryVertex(mirrored);
+            var controller = new SpriteMeshDataController { spriteMeshData = mesh };
+            if (fromVertex >= 0)
+            {
+                if (fromVertex != primary) controller.CreateEdge(fromVertex, primary);
+                if (fromMirror != partner) controller.CreateEdge(fromMirror, partner);
+            }
+            TriangulateSymmetryGeometry();
+            selection.elements = new[] { FindSymmetryVertex(position) };
+        }
+
+        internal bool MoveSymmetricGeometry(int[] selected, Vector2[] positions)
+        {
+            var backup = JsonUtility.ToJson(mesh);
+            var previousSelection = selection.elements;
+            try { return MoveSymmetricGeometryCore(selected, positions); }
+            catch
+            {
+                JsonUtility.FromJsonOverwrite(backup, mesh);
+                selection.elements = previousSelection;
+                throw;
+            }
+        }
+
+        bool MoveSymmetricGeometryCore(int[] selected, Vector2[] positions)
+        {
+            var updates = new System.Collections.Generic.Dictionary<int, Vector2>();
+            float center = mesh.frame.width * 0.5f;
+            for (var i = 0; i < selected.Length; ++i)
+            {
+                int index = selected[i];
+                if (updates.ContainsKey(index)) continue;
+                var original = mesh.vertices[index];
+                int partner = FindSymmetryVertex(MirrorHullPoint(original));
+                var point = positions[i];
+                point.y = Mathf.Clamp(point.y, 0f, mesh.frame.height);
+                if (Mathf.Abs(original.x - center) <= symmetryTolerance) point.x = center;
+                else if (original.x < center) point.x = Mathf.Clamp(point.x, 0f, center - mesh.frame.width * 0.0051f);
+                else point.x = Mathf.Clamp(point.x, center + mesh.frame.width * 0.0051f, mesh.frame.width);
+                updates[index] = point;
+                if (partner >= 0 && partner != index) updates[partner] = MirrorHullPoint(point);
+            }
+            int[] indices = updates.Keys.ToArray();
+            Vector2[] moved = indices.Select(i => updates[i]).ToArray();
+            if (SpriteMeshController.IsMovedEdgeIntersectingWithOtherEdge(indices, moved, mesh.edges, mesh.vertices) ||
+                SpriteMeshController.IsMovedVertexIntersectingWithOutline(indices, moved, mesh.outlineEdges, mesh.vertices)) return false;
+            BeginUndoOperation("Move Symmetric Sprite Mesh Vertices");
+            foreach (var update in updates) mesh.vertices[update.Key] = update.Value;
+            var selectedPositions = selected.Select(i => mesh.vertices[i]).ToArray();
+            TriangulateSymmetryGeometry();
+            selection.elements = selectedPositions.Select(FindSymmetryVertex).ToArray();
+            return true;
+        }
+
+        void TriangulateSymmetryGeometry()
+        {
+            var positions = (Vector2[])mesh.vertices.Clone();
+            var weights = mesh.vertexWeights.Select(w => w.ToBoneWeight(false)).ToArray();
+            var controller = new SpriteMeshDataController { spriteMeshData = mesh };
+            controller.Triangulate(new Triangulator());
+            var used = new System.Collections.Generic.HashSet<int>();
+            for (var i = 0; i < positions.Length; ++i)
+            {
+                int index = FindSymmetryVertex(positions[i]);
+                if (index < 0 || !used.Add(index))
+                    throw new InvalidOperationException("The symmetric geometry could not be triangulated. Previous mesh restored.");
+                mesh.vertices[index] = positions[i];
+                mesh.vertexWeights[index].SetFromBoneWeight(weights[i]);
+            }
+            controller.SortTrianglesByDepth();
+            SceneMeshSource.Validate(mesh);
+        }
 
         public bool dirty => pendingCreation || savedMesh != JsonUtility.ToJson(mesh);
         public bool hasBoneWeights => mesh.vertexWeights.Any(weight => weight != null &&
@@ -26,6 +300,148 @@ namespace UnityEditor.U2D.Animation
                 channel.boneIndex >= 0 && channel.boneIndex < mesh.bones.Count));
         public IUndo undoOverride { get; set; }
         public bool isUndoOperationSet { get; private set; }
+
+        // Version 1 could contain cage vertices; do not paste those older snapshots.
+        const string ClipboardPrefix = "Uniskin.SceneMeshVertices/2:";
+
+        [Serializable]
+        sealed class VertexClipboard
+        {
+            public string assetPath;
+            public string spriteId;
+            public string sourceMesh;
+            public Vector2[] positions;
+            public BoneWeight[] weights;
+            public int2[] edges;
+        }
+
+        internal string CopySelectedVertices()
+        {
+            var cage = new System.Collections.Generic.HashSet<int>(mesh.outlineEdges.SelectMany(e => new[] { e.x, e.y }));
+            var selected = selection.elements.Where(i => i >= 0 && i < mesh.vertexCount && !cage.Contains(i)).Distinct().OrderBy(i => i).ToArray();
+            if (selected.Length == 0) return null;
+            var map = selected.Select((index, offset) => new { index, offset }).ToDictionary(v => v.index, v => v.offset);
+            return ClipboardPrefix + JsonUtility.ToJson(new VertexClipboard
+            {
+                assetPath = assetPath, spriteId = spriteId, sourceMesh = sourceMesh,
+                positions = selected.Select(i => mesh.vertices[i]).ToArray(),
+                weights = selected.Select(i => mesh.vertexWeights[i].ToBoneWeight(false)).ToArray(),
+                edges = mesh.edges.Where(e => map.ContainsKey(e.x) && map.ContainsKey(e.y))
+                    .Select(e => new int2(map[e.x], map[e.y])).ToArray()
+            });
+        }
+
+        internal bool PasteVertices(string clipboard, bool mirror)
+        {
+            if (string.IsNullOrEmpty(clipboard) || !clipboard.StartsWith(ClipboardPrefix, StringComparison.Ordinal)) return false;
+            VertexClipboard data;
+            try { data = JsonUtility.FromJson<VertexClipboard>(clipboard.Substring(ClipboardPrefix.Length)); }
+            catch (ArgumentException) { return false; }
+            if (data?.positions == null || data.positions.Length == 0 || data.weights == null ||
+                data.weights.Length != data.positions.Length || data.edges == null) return false;
+            if (data.positions.Any(p => float.IsNaN(p.x) || float.IsInfinity(p.x) || float.IsNaN(p.y) || float.IsInfinity(p.y)) ||
+                data.edges.Any(e => e.x < 0 || e.y < 0 || e.x >= data.positions.Length || e.y >= data.positions.Length || e.x == e.y)) return false;
+            if (mesh.vertexCount + data.positions.Length > 65535)
+                throw new InvalidOperationException("Paste exceeds the Sprite mesh vertex limit.");
+
+            // Only paste strictly inside the current cage. This also prevents a
+            // mirrored interior point from becoming a new hull point on another mesh.
+            var eligible = data.positions.Select((p, i) => new { p = mirror ? new Vector2(mesh.frame.width - p.x, p.y) : p, i })
+                .Where(v => IsInsideCage(v.p)).ToArray();
+            if (eligible.Length == 0) return false;
+            var eligibleMap = eligible.Select((v, i) => new { v.i, offset = i }).ToDictionary(v => v.i, v => v.offset);
+            data.weights = eligible.Select(v => data.weights[v.i]).ToArray();
+            data.edges = data.edges.Where(e => eligibleMap.ContainsKey(e.x) && eligibleMap.ContainsKey(e.y))
+                .Select(e => new int2(eligibleMap[e.x], eligibleMap[e.y])).ToArray();
+            data.positions = eligible.Select(v => v.p).ToArray();
+
+            var backup = EditorJsonUtility.ToJson(this);
+            BeginUndoOperation(mirror ? "Mirror Paste Sprite Mesh Vertices" : "Paste Sprite Mesh Vertices");
+            try
+            {
+                var map = new int[data.positions.Length];
+                bool sameSource = data.assetPath == assetPath && data.spriteId == spriteId && data.sourceMesh == sourceMesh;
+                for (var i = 0; i < map.Length; ++i)
+                {
+                    var position = data.positions[i];
+                    // Coincident points cannot form distinct triangulated vertices.
+                    map[i] = Array.FindIndex(mesh.vertices, p => p.Equals(position));
+                    if (map[i] >= 0) continue;
+                    map[i] = mesh.vertexCount;
+                    mesh.AddVertex(position, sameSource ? data.weights[i] : default);
+                }
+                var controller = new SpriteMeshDataController { spriteMeshData = mesh };
+                foreach (var edge in data.edges)
+                    if (map[edge.x] != map[edge.y]) controller.CreateEdge(map[edge.x], map[edge.y]);
+                var selectedPositions = map.Select(i => mesh.vertices[i]).Distinct().ToArray();
+                var authoredWeights = mesh.vertices.Select((p, i) => new { p, weight = mesh.vertexWeights[i].ToBoneWeight(false) })
+                    .GroupBy(v => v.p).ToDictionary(g => g.Key, g => g.First().weight);
+                controller.Triangulate(new Triangulator());
+                // Planar validation can round fractional pixel coordinates by a few
+                // float ULPs. Match surviving vertices before restoring exact authored
+                // positions/weights, rather than treating that rounding as deletion.
+                var restored = new System.Collections.Generic.Dictionary<Vector2, int>();
+                var used = new bool[mesh.vertexCount];
+                foreach (var position in authoredWeights.Keys)
+                {
+                    int index = Array.FindIndex(mesh.vertices, p => p.Equals(position));
+                    if (index < 0) continue;
+                    restored.Add(position, index);
+                    used[index] = true;
+                }
+                float tolerance = Mathf.Max(0.0001f, Mathf.Max(mesh.frame.width, mesh.frame.height) * 0.0000005f);
+                foreach (var position in authoredWeights.Keys)
+                {
+                    if (restored.ContainsKey(position)) continue;
+                    int nearest = -1;
+                    float distance = tolerance * tolerance;
+                    for (var i = 0; i < mesh.vertexCount; ++i)
+                    {
+                        float candidate = (mesh.vertices[i] - position).sqrMagnitude;
+                        if (used[i] || candidate > distance) continue;
+                        nearest = i;
+                        distance = candidate;
+                    }
+                    if (nearest < 0)
+                        throw new InvalidOperationException("The pasted geometry could not be triangulated. Existing mesh restored.");
+                    restored.Add(position, nearest);
+                    used[nearest] = true;
+                }
+                foreach (var vertex in restored)
+                {
+                    mesh.vertices[vertex.Value] = vertex.Key;
+                    mesh.vertexWeights[vertex.Value].SetFromBoneWeight(authoredWeights[vertex.Key]);
+                }
+                controller.SortTrianglesByDepth();
+                SceneMeshSource.Validate(mesh);
+                selection.elements = selectedPositions.Select(p => restored[p]).ToArray();
+            }
+            catch
+            {
+                EditorJsonUtility.FromJsonOverwrite(backup, this);
+                throw;
+            }
+            finally { EndUndoOperation(); }
+            return true;
+        }
+
+        bool IsInsideCage(Vector2 position)
+        {
+            bool inside = false;
+            const float boundaryTolerance = 0.0001f;
+            foreach (var edge in mesh.outlineEdges)
+            {
+                var a = mesh.vertices[edge.x];
+                var b = mesh.vertices[edge.y];
+                var segment = b - a;
+                float t = segment.sqrMagnitude > 0f ? Mathf.Clamp01(Vector2.Dot(position - a, segment) / segment.sqrMagnitude) : 0f;
+                if ((position - (a + t * segment)).sqrMagnitude <= boundaryTolerance * boundaryTolerance) return false;
+                if ((a.y > position.y) != (b.y > position.y) &&
+                    position.x < a.x + (position.y - a.y) * segment.x / segment.y)
+                    inside = !inside;
+            }
+            return inside;
+        }
 
         public void BeginUndoOperation(string name)
         {
@@ -48,6 +464,7 @@ namespace UnityEditor.U2D.Animation
             newMeshBackup = null;
             pendingCreation = false;
             mode = 0;
+            symmetry = false;
             selection.Clear();
         }
 
@@ -72,6 +489,8 @@ namespace UnityEditor.U2D.Animation
             mesh.Clear();
             selection.Clear();
             mode = 3;
+            m_SymmetryHull.Clear();
+            m_SymmetrySources.Clear();
             EndUndoOperation();
         }
 
@@ -84,6 +503,16 @@ namespace UnityEditor.U2D.Animation
             mode = 0;
             selection.Clear();
             EndUndoOperation();
+        }
+
+        public void FinishNew()
+        {
+            if (mode != 3) return;
+            // Leaving an unfinished hull must not trap the user in New mode.
+            if (mesh.vertexCount < 3)
+                CancelNew();
+            else
+                CompleteNew();
         }
 
         public void CompleteNew()

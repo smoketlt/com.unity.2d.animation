@@ -12,6 +12,7 @@ namespace UnityEditor.U2D.Animation
     internal sealed partial class SceneEditWeightsWindow
     {
         enum Gesture { None, Select, Piece, Paint }
+        const float k_BrushStrengthScale = .03f;
         Gesture m_Gesture;
         Vector2 m_GestureStart, m_LastStamp;
         int[] m_SelectionBefore;
@@ -24,6 +25,35 @@ namespace UnityEditor.U2D.Animation
         readonly Dictionary<string, (Transform transform, float length)> m_LiveBoneBindings = new Dictionary<string, (Transform, float)>();
         readonly Dictionary<string, (Transform transform, float length)> m_CharacterLiveBindings = new Dictionary<string, (Transform, float)>();
         bool m_CharacterBindingsLoaded;
+        Vector2[] m_FirstBindPositions;
+
+        void SetBindMode(bool enabled)
+        {
+            if (m_Bind == enabled) return;
+            EndGesture();
+            if (enabled)
+            {
+                m_Session.mesh.ClearVertexPositionOverride();
+                m_FirstBindPositions = m_Session.mesh.boneCount == 0 ? (Vector2[])m_Session.mesh.vertices.Clone() : null;
+                m_Bind = true;
+                return;
+            }
+            var firstPositions = m_FirstBindPositions;
+            m_LiveBoneBindings.Clear();
+            m_CharacterLiveBindings.Clear();
+            m_CharacterBindingsLoaded = false;
+            m_RowKey = null;
+            m_Session.mesh.ClearVertexPositionOverride();
+            m_Session.context.RestoreAfterUndo();
+            m_Session.InvalidateDrawOrder();
+            RefreshLiveBoneBindings();
+            ClearSortedPreview();
+            if (firstPositions != null && m_Session.mesh.boneCount > 0)
+                UpdateBindings(firstPositions);
+            m_Session.DrawIndices();
+            m_FirstBindPositions = null;
+            m_Bind = false;
+        }
 
         void RefreshLiveBoneBindings()
         {
@@ -34,19 +64,19 @@ namespace UnityEditor.U2D.Animation
             {
                 m_CharacterBindingsLoaded = true;
                 var characterProvider = m_Source.provider.GetDataProvider<ICharacterDataProvider>();
-                var bones = characterProvider != null ? characterProvider.GetCharacterData().bones : null;
+                var bones = characterProvider != null ? characterProvider.GetCharacterData().bones : m_Renderer.sprite.GetBones();
                 if (bones != null)
                     for (var i = 0; i < bones.Length; ++i)
                     {
                         if (string.IsNullOrEmpty(bones[i].guid)) continue;
                         var transform = SceneBoneInspector.FindCharacterTransform(host, bones, i);
                         if (transform != null)
-                            m_CharacterLiveBindings[bones[i].guid] = (transform, SceneBoneInspector.CharacterBoneLocalLength(m_Source.provider, bones[i].length));
+                            m_CharacterLiveBindings[bones[i].guid] = (transform, characterProvider != null ?
+                                SceneBoneInspector.CharacterBoneLocalLength(m_Source.provider, bones[i].length) : bones[i].length);
                     }
             }
             foreach (var skin in host.GetComponentsInChildren<SpriteSkin>(true))
             {
-                if (!skin.isActiveAndEnabled) continue;
                 var sprite = skin.GetComponent<SpriteRenderer>()?.sprite;
                 if (sprite == null || UniskinRigUtility.SourcePath(sprite) != m_Session.context.assetPath) continue;
                 var bones = sprite.GetBones(); var transforms = skin.boneTransforms;
@@ -77,7 +107,8 @@ namespace UnityEditor.U2D.Animation
         void Cancel()
         {
             ClearBoneDrop();
-            EndGesture(); m_Bind = false;
+            EndGesture();
+            if (m_Bind) Run(() => SetBindMode(false));
             m_Session.vertices.EndSelection(false);
             m_Session.vertices.Clear();
             UpdateUI(); SceneView.RepaintAll();
@@ -105,13 +136,13 @@ namespace UnityEditor.U2D.Animation
             for (var i = 0; i < result.Length; ++i)
             {
                 result[i] = pixelToWorld;
-                if (skin == null || !skin.isActiveAndEnabled) continue;
                 var bone = mesh.bones[i];
                 var binding = m_Session.bindingPose?.FindBone(bone.guid);
                 if (binding.HasValue && m_LiveBoneBindings.TryGetValue(bone.guid, out var live) && live.transform != null)
                     result[i] = live.transform.localToWorldMatrix * Matrix4x4.Scale(Vector3.one / m_Source.provider.pixelsPerUnit) * binding.Value;
                 else
                 {
+                    if (skin == null || !skin.isActiveAndEnabled) continue;
                     var index = Array.FindIndex(bones, item => item.guid == bone.guid);
                     result[i] = transforms != null && index >= 0 && index < transforms.Length && index < poses.Length && transforms[index] != null ?
                         transforms[index].localToWorldMatrix * poses[index] * pixelToLocal :
@@ -145,12 +176,11 @@ namespace UnityEditor.U2D.Animation
             return result;
         }
 
-        void UpdateBindings()
+        void UpdateBindings() => UpdateBindings(null);
+
+        void UpdateBindings(Vector2[] referencePositions)
         {
             RefreshLiveBoneBindings();
-            var skin = m_Renderer.GetComponent<SpriteSkin>();
-            if (skin == null || !skin.isActiveAndEnabled)
-                throw new InvalidOperationException("Update Bindings requires an enabled Sprite Skin.");
             var toWorld = m_Renderer.transform.localToWorldMatrix * SceneMeshBindingPose.PixelsToLocal(m_Renderer.sprite, m_Source.rect.rect);
             var worldToPixels = toWorld.inverse;
             var matrices = m_Session.mesh.bones.Select(bone =>
@@ -162,20 +192,36 @@ namespace UnityEditor.U2D.Animation
                     throw new InvalidOperationException("The bound bones need non-zero scale.");
                 return Matrix4x4.Scale(Vector3.one * m_Source.provider.pixelsPerUnit) * matrix.inverse * toWorld;
             }).ToArray();
-            var positions = WorldVertices(false).Select(point => (Vector2)worldToPixels.MultiplyPoint3x4(point)).ToArray();
+            var positions = referencePositions ?? WorldVertices(false).Select(point => (Vector2)worldToPixels.MultiplyPoint3x4(point)).ToArray();
             m_Session.UpdateBindings(positions, matrices);
         }
 
         void BeforeSceneGUI(SceneView scene)
         {
+            m_EscapeHandledBeforeSceneGUI = false;
+            if (m_Session?.context?.cache == null || m_Renderer == null || Event.current == null)
+            {
+                RestoreTool();
+                return;
+            }
+            if (!m_Saving && BlockReason() == null)
+            {
+                if (!m_HidesRenderer) { m_PreviousForceRenderingOff = m_Renderer.forceRenderingOff; m_HidesRenderer = true; }
+                m_Renderer.forceRenderingOff = true;
+                if (m_Preview && Event.current.type == EventType.Repaint)
+                {
+                    RefreshLiveBoneBindings();
+                    UpdateSortedPreview(WorldVertices());
+                }
+                else if (!m_Preview) ClearSortedPreview();
+            }
             if (!m_Saving)
             {
-                if (BlockReason() != null) toolScope.Restore();
+                if (BlockReason() != null) RestoreTool();
                 else toolScope.Hide();
             }
-            m_EscapeHandledBeforeSceneGUI = false;
             var evt = Event.current;
-            if (m_Saving || m_Session?.cache == null || evt == null ||
+            if (m_Saving ||
                 evt.type != EventType.KeyDown || evt.keyCode != KeyCode.Escape) return;
             // Unimator's duringSceneGui handler clears Unity selection and consumes Escape.
             // Claim the key in the earlier phase, while it is still a KeyDown event.
@@ -186,6 +232,11 @@ namespace UnityEditor.U2D.Animation
         void OnSceneGUI(SceneView scene)
         {
             if (m_Saving) return;
+            if (m_Session?.context?.cache == null || m_Renderer == null || Event.current == null)
+            {
+                RestoreTool();
+                return;
+            }
             // Scene View can consume Escape before duringSceneGui runs. rawType survives Use().
             // Handle it before preview/blocking/control setup so local unselection still works.
             var evt = Event.current;
@@ -206,7 +257,7 @@ namespace UnityEditor.U2D.Animation
             var screen = world.Select(HandleUtility.WorldToGUIPoint).ToArray();
             if (evt.type == EventType.Repaint)
             {
-                DrawPreview(world);
+                if (!m_Preview) DrawPreview(world);
                 if (!m_Preview)
                 {
                     DrawMeshEdges(screen);
@@ -215,6 +266,7 @@ namespace UnityEditor.U2D.Animation
                     if (!m_Bind && !m_Direct && !evt.control && !evt.command) DrawBrush(evt.mousePosition);
                     if (m_Gesture == Gesture.Select) DrawSelectionRect(m_GestureStart, evt.mousePosition);
                 }
+                if (scene.drawGizmos && m_Preview && m_Bind) DrawBones();
             }
             if (m_Direct) EditorGUIUtility.AddCursorRect(new Rect(Vector2.zero, scene.position.size), MouseCursor.Arrow);
             if (evt.rawType == EventType.MouseUp && m_Gesture != Gesture.None)
@@ -272,7 +324,7 @@ namespace UnityEditor.U2D.Animation
                     else if (!m_Bind && !m_Direct && m_Session.selectedBones.Length > 0)
                     {
                         m_Gesture = Gesture.Paint; m_LastStamp = evt.mousePosition;
-                        Stamp(screen, evt.mousePosition, BrushRadius());
+                        Stamp(screen, evt.mousePosition, BrushRadius(), evt.alt);
                     }
                 }
                 if (m_Gesture != Gesture.None) GUIUtility.hotControl = m_Control;
@@ -302,7 +354,7 @@ namespace UnityEditor.U2D.Animation
                     for (var i = 1; i <= count; ++i)
                     {
                         m_LastStamp = Vector2.Lerp(origin, evt.mousePosition, Mathf.Min(1, i * step / distance));
-                        Stamp(screen, m_LastStamp, radius);
+                        Stamp(screen, m_LastStamp, radius, evt.alt);
                     }
                 }
                 evt.Use(); UpdateUI(); scene.Repaint();
@@ -347,7 +399,7 @@ namespace UnityEditor.U2D.Animation
                 HandleUtility.WorldToGUIPoint(matrix.MultiplyPoint3x4(center + Vector2.right * m_Size))));
         }
 
-        void Stamp(Vector2[] points, Vector2 center, float radius)
+        void Stamp(Vector2[] points, Vector2 center, float radius, bool altRemove)
         {
             var selected = m_Session.selectedBones;
             if (selected.Length == 0) return;
@@ -359,7 +411,7 @@ namespace UnityEditor.U2D.Animation
                 var falloff = distance <= inner || radius <= inner ? 1 : (radius - distance) / (radius - inner);
                 if (falloff <= 0 || m_Strength == 0) continue;
                 m_Session.BeginWeightUndo("Paint Mesh Weights");
-                m_Session.Adjust(vertex, selected, m_Strength / 100f * falloff * (m_RemoveMode || Event.current.alt ? -1 : 1));
+                m_Session.Adjust(vertex, selected, m_Strength / 100f * k_BrushStrengthScale * falloff * (m_RemoveMode || altRemove ? -1 : 1));
             }
             m_Session.Changed();
         }
@@ -379,6 +431,8 @@ namespace UnityEditor.U2D.Animation
                 }
         }
 
+        readonly HashSet<int2> m_TriangleEdges = new HashSet<int2>();
+
         void DrawMeshEdges(Vector2[] positions)
         {
             Handles.BeginGUI();
@@ -386,13 +440,31 @@ namespace UnityEditor.U2D.Animation
             {
                 using (new Handles.DrawingScope(Color.white, Matrix4x4.identity))
                 {
-                    // Authored constraints only; automatic interior triangle edges stay hidden.
+                    if (m_Triangles)
+                    {
+                        Handles.color = new Color(.65f, .65f, .65f);
+                        m_TriangleEdges.Clear();
+                        var indices = m_Session.mesh.indices;
+                        for (var i = 0; i + 2 < indices.Length; i += 3)
+                        {
+                            DrawTriangleEdge(indices[i], indices[i + 1]);
+                            DrawTriangleEdge(indices[i + 1], indices[i + 2]);
+                            DrawTriangleEdge(indices[i + 2], indices[i]);
+                        }
+                    }
                     DrawEdges(m_Session.mesh.edges, new Color(1f, .65f, 0f));
                     // Draw last so boundary edges also present in the authored list remain cyan.
                     DrawEdges(m_Session.mesh.outlineEdges, Color.cyan);
                 }
             }
             finally { Handles.EndGUI(); }
+
+            void DrawTriangleEdge(int a, int b)
+            {
+                if (a < 0 || b < 0 || a >= positions.Length || b >= positions.Length || a == b) return;
+                if (!m_TriangleEdges.Add(new int2(Math.Min(a, b), Math.Max(a, b)))) return;
+                Handles.DrawAAPolyLine(1f, positions[a], positions[b]);
+            }
 
             void DrawEdges(int2[] edges, Color color)
             {

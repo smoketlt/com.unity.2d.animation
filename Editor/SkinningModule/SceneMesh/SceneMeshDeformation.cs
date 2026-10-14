@@ -73,28 +73,31 @@ namespace UnityEditor.U2D.Animation
             return result;
         }
 
+        internal Vector2 DisplayPosition(Vector2 position, EditableBoneWeight weight) =>
+            VertexMatrix(weight).MultiplyPoint3x4(position);
+
+        internal Vector2 SourcePosition(Vector2 position, EditableBoneWeight weight)
+        {
+            if (m_OriginalVertices.TryGetValue(weight, out var original) && position.Equals(original.displayed))
+                return original.source;
+            var matrix = VertexMatrix(weight);
+            var determinant = matrix.m00 * matrix.m11 - matrix.m01 * matrix.m10;
+            if (!float.IsFinite(determinant) || Mathf.Abs(determinant) < 0.000001f)
+                throw new InvalidOperationException("This animation pose collapses the vertex plane. Change the frame or disable Deformed to edit it.");
+            var x = position.x - matrix.m03;
+            var y = position.y - matrix.m13;
+            return new Vector2((x * matrix.m11 - y * matrix.m01) / determinant,
+                (y * matrix.m00 - x * matrix.m10) / determinant);
+        }
+
         internal SpriteMeshData ToSourceMesh()
         {
             var result = JsonUtility.FromJson<SpriteMeshData>(JsonUtility.ToJson(mesh));
             for (var i = 0; i < mesh.vertexCount; ++i)
             {
-                var position = mesh.vertices[i];
-                var weight = mesh.vertexWeights[i];
-                if (m_OriginalVertices.TryGetValue(weight, out var original) && position.Equals(original.displayed))
-                {
-                    result.vertices[i] = original.source;
-                    continue;
-                }
-                var matrix = VertexMatrix(weight);
                 // Solve the displayed XY plane explicitly; a 3D inverse is incorrect
                 // after projecting out-of-plane bone rotations into a 2D editor.
-                var determinant = matrix.m00 * matrix.m11 - matrix.m01 * matrix.m10;
-                if (!float.IsFinite(determinant) || Mathf.Abs(determinant) < 0.000001f)
-                    throw new InvalidOperationException("This animation pose collapses the vertex plane. Change the frame or disable Deformed to edit it.");
-                var x = position.x - matrix.m03;
-                var y = position.y - matrix.m13;
-                result.vertices[i] = new Vector2((x * matrix.m11 - y * matrix.m01) / determinant,
-                    (y * matrix.m00 - x * matrix.m10) / determinant);
+                result.vertices[i] = SourcePosition(mesh.vertices[i], mesh.vertexWeights[i]);
             }
             return result;
         }

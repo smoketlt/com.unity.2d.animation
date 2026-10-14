@@ -30,7 +30,7 @@ Do not rename the UXML element unless all C# lookups, USS selectors, and metadat
 
 ## Panels
 
-- `SceneEditMeshWindow.uxml` / `.uss`: floating **Edit Mesh** popup with Deformed, Triangles, Dim and Isolate toggles. Preserve `windowIcon`, `windowTitle` and `deformed` for C# queries. The native title/header icon uses the existing `SceneMeshIcons/CreateMesh.png`; icon size accounts for editor DPI.
+- `SceneEditMeshWindow.uxml` / `.uss`: floating **Edit Mesh** popup with a separate Symmetry row (New/Modify/Create/Delete) and Deformed, Triangles, Dim and Isolate toggles. Preserve `windowIcon`, `windowTitle`, `symmetry` and `deformed` for C# queries. The native title/header icon uses the existing `SceneMeshIcons/CreateMesh.png`; icon size accounts for editor DPI.
 - `GenerateGeometryPanel.uxml` / `.uss`
 - `GenerateWeightsPanel.uxml` / `.uss`
 - `PastePanel.uxml` / `.uss`

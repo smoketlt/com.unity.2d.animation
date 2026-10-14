@@ -23,6 +23,20 @@ namespace UnityEditor.U2D.Animation
         string m_DisplayedNameGuid;
         string m_DisplayedNameValue;
         double m_NextPoseRefresh;
+        BoneCache m_RecreatingBone;
+        Vector3 m_RecreateStart;
+        Vector3 m_RecreateEnd;
+        int m_RecreateControl;
+
+        BoneCache recreateTarget
+        {
+            get
+            {
+                var selection = m_Session?.cache?.skeletonSelection;
+                var bone = selection?.activeElement;
+                return selection?.Count == 1 && bone != null && !bone.IsConstraintParent() ? bone : null;
+            }
+        }
 
         sealed class SceneBoneGUI : GUIWrapper
         {
@@ -156,6 +170,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnDisable()
         {
+            CancelRecreate();
             DisableWindowLifetime();
             if (!isClosingForReload && !isRestoredWindow && !m_DiscardOnClose && !m_Saving && !EditorApplication.isPlaying && m_Source != null &&
                 m_Renderer != null && m_Renderer.sprite != null && m_Session != null && m_Session.cache != null)
@@ -228,7 +243,7 @@ namespace UnityEditor.U2D.Animation
                 name = "commandIcon", pickingMode = PickingMode.Ignore });
             button.Add(label);
             if (name == "setParent") button.AddToClassList("mesh-last-action");
-            button.clicked += () => { m_Controller?.Reset(); m_Mode = m_Mode == mode ? 0 : mode; UpdateUI(); SceneView.RepaintAll(); };
+            button.clicked += () => { CancelRecreate(); m_Controller?.Reset(); m_Mode = m_Mode == mode ? 0 : mode; UpdateUI(); SceneView.RepaintAll(); };
         }
 
         string BlockReason()
@@ -265,8 +280,10 @@ namespace UnityEditor.U2D.Animation
             var blocked = BlockReason();
             rootVisualElement.Q("commands").SetEnabled(blocked == null);
             rootVisualElement.Q("commands").tooltip = blocked ?? m_Error;
+            var recreating = m_RecreatingBone != null || (SkinningEditorInput.altKeyDown && recreateTarget != null);
             foreach (var pair in new[] { ("create", 1), ("split", 2), ("setParent", 3) })
-                rootVisualElement.Q<Button>(pair.Item1).EnableInClassList("mesh-active", m_Mode == pair.Item2);
+                rootVisualElement.Q<Button>(pair.Item1).EnableInClassList("mesh-active", recreating ? pair.Item2 == 1 : m_Mode == pair.Item2);
+            rootVisualElement.Q<Button>("create").tooltip = "Create bones. Hold Alt with one bone selected to redraw it while preserving its weights.";
             var selected = m_Session.cache != null ? m_Session.cache.skeletonSelection.elements.Where(bone => bone != null).ToArray() : Array.Empty<BoneCache>();
             var color = rootVisualElement.Q<ColorField>("boneColor");
             var name = rootVisualElement.Q<TextField>("boneName");
@@ -310,14 +327,19 @@ namespace UnityEditor.U2D.Animation
 
         void OnSceneGUI(SceneView scene)
         {
-            if (m_Saving || BlockReason() != null || m_Controller == null) return;
+            if (m_Saving || BlockReason() != null || m_Controller == null) { CancelRecreate(); return; }
             if (Event.current.type == EventType.Layout) m_Session.RefreshScenePose(m_Renderer, m_Source.rect.rect);
             toolScope.Hide();
             var evt = Event.current;
-            if (evt.alt || evt.button == 1 || evt.button == 2) return;
+            SkinningEditorInput.Update(evt);
+            if (m_RecreatingBone != null && (!SkinningEditorInput.altKeyDown || evt.type == EventType.MouseLeaveWindow ||
+                (evt.type == EventType.MouseDown && evt.button != 0))) CancelRecreate();
             if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Escape) { CancelMode(); evt.Use(); return; }
+            var recreate = m_RecreatingBone != null || (SkinningEditorInput.altKeyDown && recreateTarget != null && GUIUtility.hotControl == 0);
+            if (evt.button == 1 || evt.button == 2 || ((evt.alt || SkinningEditorInput.altKeyDown) && !recreate)) return;
+            if (recreate) evt.modifiers &= ~EventModifiers.Alt;
             if (evt.type == EventType.KeyDown && (evt.keyCode == KeyCode.Delete || evt.keyCode == KeyCode.Backspace))
-            { DeleteSelection(); evt.Use(); return; }
+            { CancelRecreate(); DeleteSelection(); evt.Use(); return; }
             var primaryDown = evt.type == EventType.MouseDown && evt.button == 0;
             var child = m_Session.cache.skeletonSelection.activeElement;
             var control = GUIUtility.GetControlID("UniskinSceneBone".GetHashCode(), FocusType.Passive);
@@ -325,10 +347,11 @@ namespace UnityEditor.U2D.Animation
             using (new Handles.DrawingScope(Color.white, m_Session.SkeletonToWorld(m_Renderer, m_Source.rect.rect)))
             {
                 m_View.defaultControlID = control;
-                m_View.mode = m_Mode == 1 ? SkeletonMode.CreateBone : m_Mode == 2 ? SkeletonMode.SplitBone : m_Mode == 3 ? SkeletonMode.Selection : SkeletonMode.EditJoints;
-                m_Controller.suppressBoneSelection = m_Mode == 3 && child != null;
+                m_View.mode = recreate ? SkeletonMode.Disabled : m_Mode == 1 ? SkeletonMode.CreateBone : m_Mode == 2 ? SkeletonMode.SplitBone : m_Mode == 3 ? SkeletonMode.Selection : SkeletonMode.EditJoints;
+                m_Controller.suppressBoneSelection = recreate || (m_Mode == 3 && child != null);
                 m_Controller.OnGUI();
-                if (primaryDown && m_Mode == 3 && child != null)
+                if (recreate) HandleRecreate(evt, control);
+                else if (primaryDown && m_Mode == 3 && child != null)
                 {
                     var parent = m_Controller.hoveredBone;
                     if (SceneBoneSession.CanSetParent(child, parent)) { m_Session.SetParent(child, parent); m_Mode = 0; m_Error = null; }
@@ -346,9 +369,54 @@ namespace UnityEditor.U2D.Animation
 
         void UpdateScenePose()
         {
+            if (SkinningEditorInput.Update(null))
+            {
+                UpdateUI();
+                SceneView.RepaintAll();
+            }
             if (EditorApplication.timeSinceStartup < m_NextPoseRefresh || m_Saving || BlockReason() != null) return;
             m_NextPoseRefresh = EditorApplication.timeSinceStartup + 1.0 / 30.0;
             if (m_Session.RefreshScenePose(m_Renderer, m_Source.rect.rect)) SceneView.RepaintAll();
+        }
+
+        void HandleRecreate(Event evt, int control)
+        {
+            if (evt.type == EventType.MouseDown && evt.button == 0 && GUIUtility.hotControl == 0)
+            {
+                m_Controller.Reset();
+                m_RecreatingBone = recreateTarget;
+                m_RecreateStart = m_View.GetMouseWorldPosition(m_RecreatingBone.forward, m_RecreatingBone.position);
+                m_RecreateEnd = m_RecreateStart;
+                m_RecreateControl = control;
+                GUIUtility.hotControl = control;
+                evt.Use();
+            }
+            else if (m_RecreatingBone != null && evt.button == 0 &&
+                (evt.type == EventType.MouseDrag || evt.type == EventType.MouseUp))
+            {
+                m_RecreateEnd = m_View.GetMouseWorldPosition(m_RecreatingBone.forward, m_RecreateStart);
+                if (evt.type == EventType.MouseUp)
+                {
+                    var bone = m_RecreatingBone;
+                    CancelRecreate();
+                    Apply(bone, m_RecreateStart, m_RecreateEnd);
+                }
+                evt.Use();
+            }
+            if (evt.type == EventType.Repaint && m_RecreatingBone != null)
+            {
+                var end = (m_RecreateEnd - m_RecreateStart).sqrMagnitude < .0001f ? m_RecreateStart + Vector3.right * .01f : m_RecreateEnd;
+                var color = m_RecreatingBone.bindPoseColor;
+                BoneDrawingUtility.DrawBone(m_RecreateStart, end, m_RecreatingBone.forward, color, color);
+                BoneDrawingUtility.DrawBoneNode(m_RecreateStart, m_RecreatingBone.forward, color);
+            }
+        }
+
+        void CancelRecreate()
+        {
+            if (m_RecreateControl != 0 && GUIUtility.hotControl == m_RecreateControl) GUIUtility.hotControl = 0;
+            m_RecreatingBone = null;
+            m_RecreateControl = 0;
         }
 
         void DeleteSelection()
@@ -367,6 +435,7 @@ namespace UnityEditor.U2D.Animation
 
         void CancelMode()
         {
+            CancelRecreate();
             m_Controller?.Reset(); m_Mode = 0;
             m_Session.cache?.skeletonSelection.Clear();
             UpdateUI(); SceneView.RepaintAll();
@@ -388,7 +457,7 @@ namespace UnityEditor.U2D.Animation
             hasUnsavedChanges = false; Close(); return true;
         }
 
-        bool Apply()
+        bool Apply(BoneCache recreatedBone = null, Vector3 start = default, Vector3 end = default)
         {
             if (m_Saving) return false;
             m_Saving = true; rootVisualElement.SetEnabled(false);
@@ -398,7 +467,8 @@ namespace UnityEditor.U2D.Animation
                 if (blocked != null) throw new InvalidOperationException(blocked);
                 m_Session.cache.EndUndoOperation();
                 var source = new SceneMeshSource(m_Renderer.sprite);
-                m_Session.Save(source);
+                if (recreatedBone != null) m_Session.RecreateBoneAndSave(recreatedBone, start, end, m_Renderer, source);
+                else m_Session.Save(source);
                 m_Source = new SceneMeshSource(m_Renderer.sprite);
                 m_Session.sourceFingerprint = SceneBoneSession.Fingerprint(m_Source);
                 m_Error = null; return true;
@@ -413,6 +483,7 @@ namespace UnityEditor.U2D.Animation
         void OnUndoRedo()
         {
             if (m_Saving || m_Session.cache == null) return;
+            CancelRecreate();
             m_Session.RestoreAfterUndo(); m_Controller?.Reset(); UpdateUI(); SceneView.RepaintAll();
         }
 

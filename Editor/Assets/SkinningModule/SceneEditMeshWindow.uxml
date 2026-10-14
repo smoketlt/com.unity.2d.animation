@@ -21,6 +21,9 @@
             <ui:Button name="trace" text="Trace" />
           </ui:VisualElement>
           <ui:VisualElement class="mesh-row mesh-options">
+            <ui:Toggle name="symmetry" text="Symmetry" tooltip="Mirror New/Create geometry and edit mirrored vertex pairs across the source bounds center. Points near the axis snap to it." class="mesh-option-toggle" />
+          </ui:VisualElement>
+          <ui:VisualElement class="mesh-row mesh-options">
             <ui:Toggle name="deformed" text="Deformed" tooltip="Follow the current scene bone pose while keeping edits in source coordinates." class="mesh-option-toggle" />
             <ui:Toggle name="triangles" text="Triangles" value="true" class="mesh-option-toggle" />
             <ui:Toggle name="dim" text="Dim" class="mesh-option-toggle" />

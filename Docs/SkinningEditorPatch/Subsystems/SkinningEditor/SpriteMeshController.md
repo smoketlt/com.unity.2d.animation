@@ -72,6 +72,10 @@ In `NewGeometry`, normal split/create-edge/create-vertex routing is skipped. The
 
 ## New Geometry Completion
 
+Scene Edit Mesh can install optional `newGeometryPreview`, `newGeometryVertexCreated`, `newGeometryVerticesRemoved` and `newGeometryVerticesMoved` hooks for [mesh symmetry](SceneMeshEditing.md#mesh-symmetry). They replace only the corresponding New operation while set. `newGeometryCompletionRequested` routes Scene hull completion through session validation before triangulation and mode exit; ordinary callers retain default completion. New movement still starts its usual undo operation before invoking its hook.
+
+The optional `geometryVertexCreated`, `geometryEdgeCreated`, `geometryVerticesMoved` and `geometrySymmetryPreview` hooks extend symmetry to normal Create/Modify operations. Scene maps displayed coordinates back to source space and performs both sides in one session edit. The move hook runs before ordinary single-side collision checks because the session validates the entire mirrored selection. The shared intersection helper resolves both endpoints of an edge when both are selected. Callers without hooks retain the existing behavior.
+
 `CompleteNewGeometry()` adds the closing edge, triangulates, clears selection, and signals `newGeometryCompleted`. `MeshTool` defers the public completion event until after `EditorGUI.EndChangeCheck()` has allowed `meshChanged` to fire.
 
 `DoCancelNewGeometry()` signals `newGeometryCanceled`; `MeshTool` records a pending cancel request and `SkinningModuleView` restores the pre-New snapshot before exiting back to `Modify`.

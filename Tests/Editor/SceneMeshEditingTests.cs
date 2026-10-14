@@ -239,6 +239,165 @@ namespace UnityEditor.U2D.Animation.Tests
             }
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SelectedVertexClipboardPastesSourceCoordinatesAndSupportsUndo(bool mirror)
+        {
+            var source = Quad();
+            var target = Quad();
+            try
+            {
+                source.assetPath = target.assetPath = "source";
+                source.spriteId = target.spriteId = "sprite";
+                source.sourceMesh = target.sourceMesh = "matching source fingerprint";
+                source.mesh.bones.Add(new SpriteBoneData());
+                target.mesh.bones.Add(new SpriteBoneData());
+                source.mesh.AddVertex(new Vector2(6, 8), new BoneWeight { boneIndex0 = 0, weight0 = 1f });
+                source.mesh.AddVertex(new Vector2(9, 12), default);
+                new SpriteMeshDataController { spriteMeshData = source.mesh }.CreateEdge(4, 5);
+                source.selection.elements = new[] { 4, 5 };
+                var clipboard = source.CopySelectedVertices();
+                source.mesh.vertices[4] = new Vector2(1, 1); // Clipboard must be a snapshot.
+                var before = JsonUtility.ToJson(target.mesh);
+                Assert.IsTrue(target.PasteVertices(clipboard, mirror));
+                var expected = new[] { new Vector2(mirror ? 26 : 6, 8), new Vector2(mirror ? 23 : 9, 12) };
+                CollectionAssert.AreEquivalent(expected, target.selection.elements.Select(i => target.mesh.vertices[i]));
+                Assert.AreEqual(6, target.mesh.vertexCount);
+                var first = Array.FindIndex(target.mesh.vertices, p => p.Equals(expected[0]));
+                Assert.AreEqual(1f, target.mesh.vertexWeights[first].Sum());
+                Assert.IsTrue(target.mesh.edges.Any(e => target.selection.Contains(e.x) && target.selection.Contains(e.y)));
+                SceneMeshSource.Validate(target.mesh);
+                Undo.FlushUndoRecordObjects();
+                Undo.PerformUndo();
+                Assert.AreEqual(before, JsonUtility.ToJson(target.mesh));
+                Assert.AreEqual(0, target.selection.Count);
+            }
+            finally
+            {
+                Undo.ClearUndo(target);
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(target);
+            }
+        }
+
+        [Test]
+        public void FractionalPixelMirrorPastePreservesAuthoredVerticesAcrossRepeatedPaste()
+        {
+            var session = ScriptableObject.CreateInstance<SceneMeshSession>();
+            try
+            {
+                session.mesh.SetFrame(new Rect(3570, 1633, 454, 429));
+                var controller = new SpriteMeshDataController { spriteMeshData = session.mesh };
+                controller.CreateQuad();
+                var positions = new[]
+                {
+                    new Vector2(140.108139f, 398.430206f), new Vector2(73.9220123f, 370.463898f),
+                    new Vector2(20.7867088f, 294.023468f), new Vector2(17.0579376f, 198.006775f),
+                    new Vector2(31.9731159f, 101.990845f), new Vector2(103.752373f, 39.5335693f),
+                    new Vector2(224.006042f, 14.3641968f), new Vector2(219.345032f, 412.412598f)
+                };
+                foreach (var p in positions) session.mesh.AddVertex(p, default);
+                foreach (var edge in new[] { new Vector2Int(4, 5), new Vector2Int(4, 11), new Vector2Int(5, 6),
+                    new Vector2Int(6, 7), new Vector2Int(7, 8), new Vector2Int(8, 9), new Vector2Int(9, 10) })
+                    controller.CreateEdge(edge.x, edge.y);
+                controller.Triangulate(new Triangulator());
+                session.selection.elements = new[] { 6, 7, 8 };
+                var original = session.mesh.vertices.ToArray();
+                var selected = session.selection.elements.Select(i => session.mesh.vertices[i]).ToArray();
+                var clipboard = session.CopySelectedVertices();
+                var mirrored = selected.Select(p => new Vector2(454 - p.x, p.y)).ToArray();
+                for (var repeat = 0; repeat < 3; ++repeat)
+                {
+                    Assert.IsTrue(session.PasteVertices(clipboard, true));
+                    Assert.AreEqual(original.Length + 3, session.mesh.vertexCount);
+                    foreach (var p in original) Assert.IsTrue(session.mesh.vertices.Any(v => v.Equals(p)), "Existing coordinates must remain exact.");
+                    CollectionAssert.AreEquivalent(mirrored, session.selection.elements.Select(i => session.mesh.vertices[i]));
+                    Assert.IsTrue(session.mesh.edges.Any(e => session.selection.Contains(e.x) && session.selection.Contains(e.y)));
+                }
+                Assert.IsTrue(session.PasteVertices(clipboard, false));
+                Assert.AreEqual(original.Length + 3, session.mesh.vertexCount);
+                CollectionAssert.AreEquivalent(selected, session.selection.elements.Select(i => session.mesh.vertices[i]));
+                SceneMeshSource.Validate(session.mesh);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void VertexClipboardReusesCoincidentVerticesAndClearsForeignWeights()
+        {
+            var source = Quad();
+            var target = Quad();
+            try
+            {
+                Assert.IsNull(source.CopySelectedVertices());
+                source.mesh.AddVertex(new Vector2(6, 8), default);
+                target.mesh.AddVertex(new Vector2(6, 8), default);
+                source.selection.elements = new[] { 4 };
+                Assert.IsTrue(target.PasteVertices(source.CopySelectedVertices(), false));
+                Assert.AreEqual(5, target.mesh.vertexCount);
+                Assert.AreEqual(1, target.selection.Count);
+                source.assetPath = "another source";
+                source.mesh.AddVertex(new Vector2(7, 9), new BoneWeight { boneIndex0 = 3, weight0 = 1f });
+                source.selection.elements = new[] { 5 };
+                Assert.IsTrue(target.PasteVertices(source.CopySelectedVertices(), false));
+                Assert.AreEqual(6, target.mesh.vertexCount);
+                Assert.AreEqual(0f, target.mesh.vertexWeights[target.selection.elements[0]].Sum());
+                var before = EditorJsonUtility.ToJson(target);
+                Assert.IsFalse(target.PasteVertices("ordinary clipboard text", false));
+                Assert.IsFalse(target.PasteVertices("Uniskin.SceneMeshVertices/1:{}", false));
+                Assert.IsFalse(target.PasteVertices("Uniskin.SceneMeshVertices/2:{}", false));
+                Assert.AreEqual(before, EditorJsonUtility.ToJson(target));
+            }
+            finally { Undo.ClearUndo(target); Object.DestroyImmediate(source); Object.DestroyImmediate(target); }
+        }
+
+        [Test]
+        public void VertexClipboardExcludesCageFromMixedSelectionAndRejectsOldSnapshots()
+        {
+            var session = Quad();
+            try
+            {
+                session.selection.elements = new[] { 0, 1, 2, 3 };
+                Assert.IsNull(session.CopySelectedVertices());
+                session.mesh.AddVertex(new Vector2(6, 8), default);
+                session.mesh.AddVertex(new Vector2(9, 12), default);
+                var controller = new SpriteMeshDataController { spriteMeshData = session.mesh };
+                controller.CreateEdge(0, 4);
+                controller.CreateEdge(4, 5);
+                session.selection.elements = new[] { 0, 1, 4, 5 };
+                var clipboard = session.CopySelectedVertices();
+                var before = EditorJsonUtility.ToJson(session);
+                Assert.IsFalse(session.PasteVertices(clipboard.Replace("Vertices/2:", "Vertices/1:"), true));
+                Assert.AreEqual(before, EditorJsonUtility.ToJson(session));
+                Assert.IsTrue(session.PasteVertices(clipboard, true));
+                Assert.AreEqual(8, session.mesh.vertexCount, "Only two interior vertices may be pasted.");
+                Assert.AreEqual(2, session.selection.Count);
+                var cage = session.mesh.outlineEdges.SelectMany(e => new[] { e.x, e.y }).Distinct().ToArray();
+                Assert.IsFalse(session.selection.elements.Any(i => cage.Contains(i)));
+                Assert.IsFalse(session.mesh.edges.Any(e => session.selection.Contains(e.x) && cage.Contains(e.y) ||
+                    session.selection.Contains(e.y) && cage.Contains(e.x)), "Copied cage connections must be excluded.");
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void VertexPasteCannotReuseTargetCageVertex(bool mirror)
+        {
+            var source = Quad();
+            var target = Quad();
+            try
+            {
+                source.mesh.AddVertex(new Vector2(8, 8), default);
+                source.selection.elements = new[] { 4 };
+                target.mesh.vertices[mirror ? 1 : 0] = new Vector2(mirror ? 24 : 8, 8);
+                var before = EditorJsonUtility.ToJson(target);
+                Assert.IsFalse(target.PasteVertices(source.CopySelectedVertices(), mirror));
+                Assert.AreEqual(before, EditorJsonUtility.ToJson(target));
+            }
+            finally { Undo.ClearUndo(target); Object.DestroyImmediate(source); Object.DestroyImmediate(target); }
+        }
+
         [Test]
         public void CreateMeshStagesQuadEvenWhenRuntimeGeometryAlreadyMatches()
         {
@@ -272,6 +431,382 @@ namespace UnityEditor.U2D.Animation.Tests
                 Assert.AreEqual(7, session.mesh.vertexWeights[0].ToBoneWeight(false).boneIndex0);
             }
             finally { Object.DestroyImmediate(session); }
+        }
+
+        [TestCase(0, false)]
+        [TestCase(1, false)]
+        [TestCase(2, false)]
+        [TestCase(3, false)]
+        [TestCase(0, true)]
+        [TestCase(1, true)]
+        [TestCase(2, true)]
+        [TestCase(3, true)]
+        public void NewHullKeepsSourceImageVisibleWithSavedBindings(int vertexCount, bool savedBindings)
+        {
+            var session = Quad();
+            var image = new Mesh();
+            try
+            {
+                var pose = savedBindings ? new SceneMeshBindingPose
+                {
+                    positions = session.mesh.vertices.ToArray(),
+                    texturePositions = session.mesh.vertices.Select(vertex => vertex + new Vector2(4, 8)).ToArray(),
+                    indices = session.mesh.indices.ToArray()
+                } : null;
+                session.BeginNew();
+                for (var i = 0; i < vertexCount; ++i)
+                    session.mesh.AddVertex(new Vector2(i * 8, i % 2 * 8), default);
+                SceneEditMeshWindow.BuildImageMesh(image, session.mesh, null, pose, session.mode == 3, 64, 64);
+                Assert.AreEqual(4, image.vertexCount);
+                CollectionAssert.AreEqual(new[] { 0, 1, 2, 0, 2, 3 }, image.triangles);
+                CollectionAssert.AreEqual(new[] { Vector3.zero, new Vector3(32, 0), new Vector3(32, 32), new Vector3(0, 32) }, image.vertices);
+                var offset = savedBindings ? new Vector2(4, 8) : Vector2.zero;
+                CollectionAssert.AreEqual(new[] { Vector2.zero, new Vector2(32, 0), new Vector2(32, 32), new Vector2(0, 32) }
+                    .Select(vertex => (vertex + offset) / 64).ToArray(), image.uv);
+                Assert.AreEqual(vertexCount, session.mesh.vertexCount, "The image fallback must not add authored geometry.");
+                Assert.IsEmpty(session.mesh.indices);
+                session.CancelNew();
+                SceneEditMeshWindow.BuildImageMesh(image, session.mesh, null, pose, false, 64, 64);
+                Assert.AreEqual(6, image.triangles.Length);
+                if (savedBindings)
+                {
+                    CollectionAssert.AreEqual(session.mesh.indices, image.triangles);
+                    CollectionAssert.AreEqual(pose.texturePositions.Select(vertex => vertex / 64).ToArray(), image.uv);
+                }
+            }
+            finally { Object.DestroyImmediate(image); Object.DestroyImmediate(session); }
+        }
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(3)]
+        public void LeavingNewRestoresIncompleteHullOrCompletesValidHull(int vertexCount)
+        {
+            var session = Quad();
+            try
+            {
+                session.mesh.vertexWeights[0].SetFromBoneWeight(new BoneWeight { boneIndex0 = 7, weight0 = 1f });
+                var original = JsonUtility.ToJson(session.mesh);
+                session.BeginNew();
+                var positions = new[] { Vector2.zero, new Vector2(32, 0), new Vector2(0, 32) };
+                var controller = new SpriteMeshDataController { spriteMeshData = session.mesh };
+                for (var i = 0; i < vertexCount; ++i)
+                {
+                    session.mesh.AddVertex(positions[i], default);
+                    if (i > 0) controller.CreateEdge(i - 1, i);
+                }
+                session.selection.elements = vertexCount > 0 ? new[] { 0 } : new int[0];
+                session.FinishNew();
+                Assert.AreEqual(0, session.mode);
+                Assert.IsNull(session.newMeshBackup);
+                Assert.IsEmpty(session.selection.elements);
+                SceneMeshSource.Validate(session.mesh);
+                if (vertexCount < 3)
+                    Assert.AreEqual(original, JsonUtility.ToJson(session.mesh));
+                else
+                {
+                    Assert.AreEqual(3, session.mesh.vertexCount);
+                    Assert.AreEqual(3, session.mesh.indices.Length);
+                }
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void SymmetricNewHullUsesOneAxisVertexAndClosesInContourOrder()
+        {
+            var session = Quad();
+            try
+            {
+                Assert.IsFalse(session.symmetryActive);
+                session.BeginNew();
+                Assert.IsFalse(session.symmetry);
+                session.SetSymmetry(true);
+                session.AddSymmetryVertex(new Vector2(16.1f, 32));
+                session.AddSymmetryVertex(new Vector2(4, 24));
+                session.AddSymmetryVertex(new Vector2(28, 8));
+                Assert.IsEmpty(session.mesh.indices);
+                session.AddSymmetryVertex(new Vector2(16, 0));
+                CollectionAssert.AreEqual(new[] { new Vector2(16, 32), new Vector2(4, 24),
+                    new Vector2(4, 8), new Vector2(16, 0), new Vector2(28, 8), new Vector2(28, 24) }, session.mesh.vertices);
+                Assert.AreEqual(0, session.mode);
+                session.FinishNew();
+                Assert.AreEqual(0, session.mode);
+                Assert.IsTrue(session.symmetryActive);
+                Assert.AreEqual(12, session.mesh.indices.Length);
+                SceneMeshSource.Validate(session.mesh);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void SymmetricNewHullMovesAndDeletesBothSidesWithUndoAndCancel()
+        {
+            var session = Quad();
+            try
+            {
+                var original = JsonUtility.ToJson(session.mesh);
+                session.BeginNew();
+                session.SetSymmetry(true);
+                session.AddSymmetryVertex(new Vector2(4, 28));
+                session.AddSymmetryVertex(new Vector2(4, 4));
+                session.BeginUndoOperation("Move Symmetry Test");
+                session.MoveSymmetryVertices(new[] { 3 }, new[] { new Vector2(26, 26) });
+                session.EndUndoOperation();
+                Assert.AreEqual(new Vector2(6, 26), session.mesh.vertices[0]);
+                Assert.AreEqual(new Vector2(26, 26), session.mesh.vertices[3]);
+                var beforeDelete = JsonUtility.ToJson(session.mesh);
+                Undo.IncrementCurrentGroup();
+                session.RemoveSymmetryVertices(new[] { 0, 3 });
+                Assert.AreEqual(2, session.mesh.vertexCount);
+                Undo.PerformUndo();
+                Assert.AreEqual(beforeDelete, JsonUtility.ToJson(session.mesh));
+                Assert.IsTrue(session.symmetryActive);
+                session.AddSymmetryVertex(new Vector2(16, 0));
+                Assert.AreEqual(5, session.mesh.vertexCount);
+                session.CancelNew();
+                Assert.AreEqual(original, JsonUtility.ToJson(session.mesh));
+                Assert.IsTrue(session.symmetry);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void SymmetryDragKeepsAxisAndPairHandleIndicesStable()
+        {
+            var session = Quad();
+            try
+            {
+                session.BeginNew();
+                session.mesh.AddVertex(new Vector2(16, 32), default);
+                session.mesh.AddVertex(new Vector2(4, 24), default);
+                session.mesh.AddVertex(new Vector2(16, 0), default);
+                session.SetSymmetry(true);
+                session.BeginUndoOperation("Move Symmetry Test");
+                session.MoveSymmetryVertices(new[] { 0 }, new[] { new Vector2(8, 30) });
+                Assert.AreEqual(new Vector2(16, 30), session.mesh.vertices[0]);
+                session.MoveSymmetryVertices(new[] { 3 }, new[] { new Vector2(12, 20) });
+                Assert.AreEqual(4, session.mesh.vertexCount);
+                Assert.Greater(session.mesh.vertices[3].x, 16);
+                Assert.Less(session.mesh.vertices[1].x, 16);
+                Assert.AreEqual(32, session.mesh.vertices[1].x + session.mesh.vertices[3].x);
+                CollectionAssert.AreEqual(new[] { 3 }, session.selection.elements);
+                session.EndUndoOperation();
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void SymmetryToggleRetainsHullAndStaysActiveAcrossModes()
+        {
+            var session = Quad();
+            try
+            {
+                session.BeginNew();
+                session.mesh.AddVertex(new Vector2(4, 28), default);
+                session.mesh.AddVertex(new Vector2(4, 4), default);
+                session.SetSymmetry(true);
+                Assert.AreEqual(4, session.mesh.vertexCount);
+                var mirrored = JsonUtility.ToJson(session.mesh);
+                session.SetSymmetry(false);
+                Assert.AreEqual(mirrored, JsonUtility.ToJson(session.mesh));
+                session.SetSymmetry(true);
+                Assert.AreEqual(mirrored, JsonUtility.ToJson(session.mesh));
+                session.FinishNew();
+                Assert.IsTrue(session.symmetryActive);
+                session.BeginNew();
+                Assert.IsTrue(session.symmetryActive);
+                session.AddSymmetryVertex(new Vector2(4, 4));
+                session.FinishNew();
+                Assert.AreEqual(0, session.mode);
+                Assert.IsTrue(session.symmetry);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void SymmetricCreateUsesLocalWeightsSplitsBothEdgesAndReusesAxisVertices()
+        {
+            var session = Quad();
+            try
+            {
+                session.SetSymmetry(true);
+                for (var i = 0; i < session.mesh.vertexCount; ++i)
+                    session.mesh.vertexWeights[i].SetFromBoneWeight(new BoneWeight {
+                        boneIndex0 = session.mesh.vertices[i].x < 16 ? 0 : 1, weight0 = 1f });
+                var originalWeights = session.mesh.vertexWeights.Take(4).Select(w => w.ToBoneWeight(false)).ToArray();
+                session.CreateSymmetricGeometry(new Vector2(8, 12));
+                int left = session.FindSymmetryVertex(new Vector2(8, 12));
+                int right = session.FindSymmetryVertex(new Vector2(24, 12));
+                Assert.AreEqual(6, session.mesh.vertexCount);
+                Assert.AreNotEqual(session.mesh.vertexWeights[left].ToBoneWeight(false), session.mesh.vertexWeights[right].ToBoneWeight(false));
+                session.CreateSymmetricGeometry(new Vector2(8, 12));
+                Assert.AreEqual(6, session.mesh.vertexCount);
+                session.CreateSymmetricGeometry(new Vector2(16.1f, 16));
+                Assert.AreEqual(7, session.mesh.vertexCount);
+                Assert.GreaterOrEqual(session.FindSymmetryVertex(new Vector2(16, 16)), 0);
+                session.CreateSymmetricGeometry(new Vector2(0, 16));
+                Assert.AreEqual(9, session.mesh.vertexCount);
+                foreach (var point in new[] { new Vector2(0, 16), new Vector2(32, 16) })
+                {
+                    int vertex = session.FindSymmetryVertex(point);
+                    Assert.AreEqual(2, session.mesh.outlineEdges.Count(e => e.x == vertex || e.y == vertex));
+                }
+                for (var i = 0; i < 4; ++i)
+                    Assert.AreEqual(originalWeights[i], session.mesh.vertexWeights[i].ToBoneWeight(false));
+                SceneMeshSource.Validate(session.mesh);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void SymmetricModifyMovesPairsOnceKeepsAxisAndSupportsUndo()
+        {
+            var session = Quad();
+            try
+            {
+                session.SetSymmetry(true);
+                session.CreateSymmetricGeometry(new Vector2(8, 12));
+                session.CreateSymmetricGeometry(new Vector2(16, 20));
+                session.EndUndoOperation();
+                int left = session.FindSymmetryVertex(new Vector2(8, 12));
+                int right = session.FindSymmetryVertex(new Vector2(24, 12));
+                int axis = session.FindSymmetryVertex(new Vector2(16, 20));
+                var before = JsonUtility.ToJson(session.mesh);
+                Undo.IncrementCurrentGroup();
+                Assert.IsTrue(session.MoveSymmetricGeometry(new[] { right, left }, new[] { new Vector2(22, 14), new Vector2(6, 14) }));
+                session.EndUndoOperation();
+                Assert.GreaterOrEqual(session.FindSymmetryVertex(new Vector2(10, 14)), 0);
+                Assert.GreaterOrEqual(session.FindSymmetryVertex(new Vector2(22, 14)), 0);
+                Undo.PerformUndo();
+                Assert.AreEqual(before, JsonUtility.ToJson(session.mesh));
+                Assert.IsTrue(session.MoveSymmetricGeometry(new[] { axis }, new[] { new Vector2(10, 22) }));
+                session.EndUndoOperation();
+                Assert.AreEqual(new Vector2(16, 22), session.mesh.vertices[axis]);
+                CollectionAssert.AreEquivalent(new[] { left, right }, session.SymmetrySelection(new[] { right }));
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void SymmetricEdgeCreationMirrorsEdgesAndFailedCreationRollsBack()
+        {
+            var session = Quad();
+            try
+            {
+                session.SetSymmetry(true);
+                session.CreateSymmetricGeometry(new Vector2(8, 8));
+                int left = session.FindSymmetryVertex(new Vector2(8, 8));
+                int right = session.FindSymmetryVertex(new Vector2(24, 8));
+                session.CreateSymmetricGeometry(new Vector2(8, 24), left);
+                int leftEnd = session.FindSymmetryVertex(new Vector2(8, 24));
+                int rightEnd = session.FindSymmetryVertex(new Vector2(24, 24));
+                Assert.IsTrue(session.mesh.edges.ContainsAny(new Unity.Mathematics.int2(left, leftEnd)));
+                Assert.IsTrue(session.mesh.edges.ContainsAny(new Unity.Mathematics.int2(right, rightEnd)));
+                session.EndUndoOperation();
+                // Trim the right boundary so the first point is legal and its mirror isn't.
+                for (var i = 0; i < session.mesh.vertexCount; ++i)
+                    if (session.mesh.vertices[i].x == 32) session.mesh.vertices[i].x = 28;
+                new SpriteMeshDataController { spriteMeshData = session.mesh }.Triangulate(new Triangulator());
+                var before = JsonUtility.ToJson(session.mesh);
+                var selection = session.selection.elements;
+                Assert.Throws<InvalidOperationException>(() => session.CreateSymmetricGeometry(new Vector2(2, 16)));
+                Assert.AreEqual(before, JsonUtility.ToJson(session.mesh));
+                CollectionAssert.AreEqual(selection, session.selection.elements);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void MovingBothEdgeEndpointsTestsTheEntireMovedSegment()
+        {
+            var vertices = new[] { new Vector2(8, 8), new Vector2(8, 24), new Vector2(24, 8), new Vector2(24, 24) };
+            var edges = new[] { new Unity.Mathematics.int2(0, 1), new Unity.Mathematics.int2(2, 3) };
+            Assert.IsFalse(SpriteMeshController.IsMovedEdgeIntersectingWithOtherEdge(new[] { 0, 1 },
+                new[] { new Vector2(26, 8), new Vector2(26, 24) }, edges, vertices));
+        }
+
+        [Test]
+        public void SymmetricEditingMapsThroughEachSidesDeformation()
+        {
+            var session = Quad();
+            try
+            {
+                session.SetSymmetry(true);
+                session.CreateSymmetricGeometry(new Vector2(8, 12));
+                int left = session.FindSymmetryVertex(new Vector2(8, 12));
+                int right = session.FindSymmetryVertex(new Vector2(24, 12));
+                session.mesh.vertexWeights[left].SetFromBoneWeight(new BoneWeight { boneIndex0 = 0, weight0 = 1 });
+                session.mesh.vertexWeights[right].SetFromBoneWeight(new BoneWeight { boneIndex0 = 1, weight0 = 1 });
+                var deformation = new SceneMeshDeformation(session.mesh, new[] {
+                    Matrix4x4.Translate(new Vector3(2, 3)), Matrix4x4.Translate(new Vector3(-4, 5)) });
+                var source = deformation.SourcePosition(new Vector2(12, 17), deformation.mesh.vertexWeights[left]);
+                Assert.AreEqual(new Vector2(10, 14), source);
+                Assert.IsTrue(session.MoveSymmetricGeometry(new[] { left }, new[] { source }));
+                Assert.AreEqual(new Vector2(22, 14), session.mesh.vertices[right]);
+                Assert.AreEqual(new Vector2(18, 19), deformation.DisplayPosition(session.mesh.vertices[right], session.mesh.vertexWeights[right]));
+                SceneMeshSource.Validate(session.mesh);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void SymmetricNewCanCloseAtEitherStartHandleUsingFreshHitTesting()
+        {
+            var session = Quad();
+            try
+            {
+                session.BeginNew();
+                session.SetSymmetry(true);
+                session.AddSymmetryVertex(new Vector2(4, 28));
+                session.AddSymmetryVertex(new Vector2(4, 4));
+                int mirrorStart = session.mesh.vertexCount - 1;
+                var gui = new DragGUI();
+                var view = new SpriteMeshView(gui) { mode = SpriteMeshViewMode.NewGeometry,
+                    selection = session.selection, defaultControlID = 99, frame = new Rect(0, 0, 32, 32),
+                    newGeometryClosureVertex = session.IsNewHullClosureVertex };
+                var point = session.mesh.vertices[mirrorStart];
+                gui.Event(EventType.Layout, point);
+                view.BeginLayout(); view.LayoutVertex(point, mirrorStart); view.EndLayout();
+                gui.Event(EventType.MouseDown, point);
+                view.BeginLayout(); view.EndLayout();
+                Assert.IsTrue(view.DoCompleteNewGeometry());
+                var controller = new SpriteMeshController { newGeometryCompletionRequested = session.CompleteNew };
+                typeof(SpriteMeshController).GetMethod("CompleteNewGeometry", System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic).Invoke(controller, null);
+                Assert.AreEqual(0, session.mode);
+                Assert.IsTrue(session.symmetryActive);
+                Assert.AreEqual(6, session.mesh.indices.Length);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void EscapeInMeshPopupCancelsNewAndRestoresGeometry()
+        {
+            var original = Quad();
+            var window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            try
+            {
+                var session = (SceneMeshSession)typeof(SceneEditMeshWindow).GetField("m_Session", flags).GetValue(window);
+                EditorJsonUtility.FromJsonOverwrite(EditorJsonUtility.ToJson(original), session);
+                var before = JsonUtility.ToJson(session.mesh);
+                window.CreateGUI();
+                window.ShowPopup(); // UI Toolkit dispatch requires an attached panel.
+                session.BeginNew();
+                session.mesh.AddVertex(new Vector2(4, 4), default);
+                using (var evt = KeyDownEvent.GetPooled(new Event { type = EventType.KeyDown, keyCode = KeyCode.Escape }))
+                {
+                    evt.target = window.rootVisualElement;
+                    window.rootVisualElement.SendEvent(evt);
+                }
+                Assert.AreEqual(0, session.mode);
+                Assert.IsNull(session.newMeshBackup);
+                Assert.AreEqual(before, JsonUtility.ToJson(session.mesh));
+            }
+            finally { Object.DestroyImmediate(window); Undo.ClearUndo(original); Object.DestroyImmediate(original); }
         }
 
         [Test]
@@ -701,6 +1236,8 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.IsNotNull(ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/CreateMesh.png"));
             Assert.IsNotNull(root.Q<Toggle>("deformed"));
             Assert.IsFalse(root.Q<Toggle>("deformed").value);
+            Assert.IsNotNull(root.Q<Toggle>("symmetry"));
+            Assert.IsFalse(root.Q<Toggle>("symmetry").value);
             foreach (var name in new[] { "apply", "revert", "frame" }) Assert.IsNull(root.Q<Button>(name));
             var window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
             try
@@ -709,6 +1246,7 @@ namespace UnityEditor.U2D.Animation.Tests
                 Assert.AreSame(ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/CreateMesh.png"), window.titleContent.image);
                 Assert.AreSame(window.titleContent.image, window.rootVisualElement.Q<Image>("windowIcon").image);
                 Assert.IsFalse(window.rootVisualElement.Q<Toggle>("deformed").value);
+                Assert.IsFalse(window.rootVisualElement.Q<Toggle>("symmetry").value);
             }
             finally { Object.DestroyImmediate(window); }
         }

@@ -28,7 +28,7 @@ The selected GameObject's native transform handles are automatically hidden whil
 
 Open **Edit Bones** from the SpriteRenderer Inspector for mesh entry, or from the character root/bone Inspector for skeleton-only entry. Play or scrub the animation driving that character's scene Transforms in Edit Mode. The displayed bones and their hit targets follow the current scene pose while the popup remains open. Keep the entry selection: changing Unity's object selection retains the existing automatic-save-and-close behavior.
 
-Bone gestures and property controls remain available at the displayed pose. Edits stay staged in source-skeleton coordinates and are projected into subsequent frames. New children and split segments inherit their parent's current conversion. Saving converts the edits back to the source Sprite/PSB skeleton; animation poses are not baked into that skeleton, and scene Transforms and clip curves are unchanged by pose refresh.
+Bone gestures and property controls remain available at the displayed pose. Edits stay staged in source-skeleton coordinates and are projected into subsequent frames; a completed Alt redraw immediately saves and refreshes the session as described below. New children and split segments inherit their parent's current conversion. Saving converts the edits back to the source Sprite/PSB skeleton; animation poses are not baked into that skeleton, and scene Transforms and clip curves are unchanged by pose refresh.
 
 `SceneEditBoneWindow.UpdateScenePose` refreshes at 30 Hz through `EditorApplication.update`, and `OnSceneGUI` refreshes before handle layout. `SceneBoneSession.RefreshScenePose` reads bound SpriteSkin Transforms and uniquely resolved unbound character Transforms. It captures authored positions, rotations and lengths through the previous conversion before projecting them through the new conversion. Exact source/displayed pose pairs prevent round-trip drift, and source-space snapshots ensure that playback alone never creates pending changes. Refresh does not create Undo records; an authored edit records the matching pose conversion with the session, so Undo can restore it after the animation advances.
 
@@ -44,6 +44,7 @@ Root/unbound resolution searches the enclosing prefab/root for one character sou
 | --- | --- |
 | No active command | Existing Edit Joints interaction: select bones, move their bodies/joints, and adjust endpoints. Ctrl/Cmd adds/removes bones from selection. |
 | Create | Reuse Skinning Editor click/drag/release creation, including chained creation from an existing tail and normal bone selection on a simple bone click. |
+| Alt + primary drag with one bone selected | Temporarily redraw the selected bone: press at its new start, drag to its new endpoint, then release the mouse while holding Alt. Preserve its GUID, name, color, depth, parent, children, influence slots and all vertex weights. |
 | Split | Click a bone body to divide it at the cursor; repeat to create more segments. The original bone retains its GUID and existing weights. New segments initially have no weights. |
 | Set Parent | Select the child, then click a parent bone. If no child is selected on entry, the first bone click selects it. Clicking empty space detaches it to the skeleton root. Preserve world position and rotation; reject self-parenting, descendant-parenting and service constraint parents. A successful operation returns to normal editing. |
 | Color | Set one or several selected bones' serialized color; mixed colors are indicated. |
@@ -53,9 +54,27 @@ Root/unbound resolution searches the enclosing prefab/root for one character sou
 | Esc | Cancel the current gesture, return to normal editing and clear bone selection. |
 | Empty primary click | Clear selection outside Create; in Set Parent with a selected child, detach instead. |
 | Delete/Backspace | Delete selected bones, preserve surviving child positions and update affected influences/weights. Staged Undo/Redo remains available. |
-| Alt/right/middle mouse | Retain Scene navigation. |
+| Right/middle mouse, or Alt without exactly one editable selected bone | Retain Scene navigation. |
 
 Property fields refresh after viewport changes and Undo without replacing unfinished text/numeric input. Name and Length are disabled for multiple selections; Color supports bulk editing. There is no extra Modify or Delete button.
+
+### Redrawing a selected bone with Alt
+
+Select exactly one bone in either mesh-entry or skeleton-only **Edit Bones**, then hold Alt and draw its new start/end with the primary mouse button. This temporarily overrides the active command; the Create tile highlights while Alt is held and the previous command resumes on release. Starting over another bone still redraws the selected bone. The preview leaves the skeleton untouched until mouse-up; a click without a drag produces the same short right-facing minimum bone as Create. Esc, releasing Alt before mouse-up, leaving the Scene window, Undo/Redo, changing commands or closing the popup cancels the preview. Right/middle mouse navigation remains available.
+
+Mouse-up automatically saves the current bone session and runs the same source/scene synchronization as closing the window, while retaining the popup, selection and active command. Other pending bone edits in that session are saved together. Enabled rigs refresh their generated Sprite bind poses and loaded scene bone Transforms; native sources use their normal importer save/reimport. The animation pivot therefore updates immediately, without closing Edit Bones. Existing position tracks are retargeted as described below so subsequent animation cannot write the old joint coordinates back.
+
+`SceneEditBoneWindow` captures the gesture with its Scene control and uses shared `SkinningEditorInput` Alt tracking. `SceneBoneSession.RecreateBone` rewrites the existing bone pose, emits bind-pose and mesh events and preserves child world poses. Parenting stays intact; a chained endpoint marker is cleared when the redrawn endpoints no longer meet. It does not remove/create a bone or change the influence arrays. `RecreateBoneAndSave` commits that edit, recaptures source/displayed pose offsets and scene bone lengths from the refreshed source, and updates the source fingerprint. The existing cache objects are retained. Redraw, source/scene save and recapture collapse into one Undo step; recapture has its own cache Undo scope because the save path advances Unity's Undo group. This prevents Redo from restoring the old pivot conversion. Subsequent animation and repeated redraws use the new baseline, avoiding double application of the movement.
+
+Saving edits to existing bones preserves zero-weight vertices as well as positive weights. Automatic initialization of missing weights in mesh-entry sessions runs only when new bone identities join that mesh; skeleton-only sessions continue to skip initialization entirely.
+
+### Animation position tracks after redraw
+
+Animation clips store absolute local Transform positions. Source save and SpriteSkin refresh alone cannot move a joint with keyed position channels: starting animation restores the old key values. `SceneBoneAnimationPositionPlan` captures matching scene Transforms by source asset/GUID before the redraw save, and shifts their existing `m_LocalPosition.x/y/z` curves afterwards. It includes the redrawn bone and its direct bone children, whose local coordinates can change when their world poses are preserved.
+
+The plan discovers clips from ancestor Animator controllers (including effective override clips) and legacy Animation components in loaded instances. Paths must resolve to the captured bone Transform. Constant or nearly constant tracks, including recording noise within `0.00001` Unity units, are anchored to the new local joint position. Moving tracks receive the local position delta, preserving their motion. Key times, tangents, weights and curve wrapping are retained; rotation, scale, other bone tracks, object curves and events are unaffected. Repeated redraws shift from the latest state. A pending rename uses the resulting Transform path after save.
+
+Clip edits participate in the same single Undo/Redo group as the source, scene Transforms and pose recapture. A position clip must be an editable `.anim` asset; incompatible offsets for the same binding in a shared clip reject the operation rather than applying two different changes. The feature updates existing used clips in place, without scanning unused animation assets or adding position channels that were absent.
 
 Name refresh tracks the displayed bone GUID and model name. The 200 ms UI poll does not write the same model value back into the delayed TextField, so pending input such as `bone_32` cannot be reset to `bone_3` even when UI Toolkit reports focus on the field itself. Selection changes and model changes (including Undo/Redo) refresh the displayed name. Length's focus guard accepts both the field and its focused descendants.
 
@@ -88,6 +107,7 @@ Shared `CharacterData.bones` lengths are source pixels, while runtime `Sprite.Ge
 - `Editor/SkinningModule/SceneMesh/SceneEditBoneWindow.cs`: popup title/header icon, Scene host, live pose refresh scheduling, selection and close lifecycle.
 - `Editor/SkinningModule/SceneMesh/SceneBoneSession.cs`: private state/cache, live pose projection, source-space dirty detection, topology synchronization, coordinates, source conflict checks and saving.
 - `Editor/SkinningModule/SceneMesh/SceneBoneRenamePlan.cs`: pre-save scene bone matching, animation path validation and curve/GameObject rename application.
+- `Editor/SkinningModule/SceneMesh/SceneBoneAnimationPositionPlan.cs`: GUID/Transform matching and position-key retargeting after Alt redraw.
 - `Editor/SkinningModule/SceneMesh/UniskinSpriteRendererEditor.cs`: explicit Inspector entry.
 - `Editor/SkinningModule/SceneMesh/SceneBoneInspector.cs`: native GameObject header entry and GUID resolution for bound scene bones.
 - `Editor/SkinningModule/SkinningModule.cs`: shared save ordering, GUID weight mapping and Scene bone provider payload.
@@ -97,6 +117,8 @@ Shared `CharacterData.bones` lengths are source pixels, while runtime `Sprite.Ge
 - `Tests/Editor/SceneBoneEditingTests.cs`: importer round-trips, hierarchy, weights, animated pose projection, staged edits/Undo across frames, coordinates and resources.
 
 ## Verification
+
+On 2026-10-13, Alt redraw and its immediate source/scene/animation-position synchronization compiled in the connected **Unity 6000.0.81f1** editor. Temporary checks covered exact weights, source saves, animation startup, constant/moving/stale/noisy position tracks, actual Animator playback, repeated redraw and Undo/Redo. An exact disposable copy of the then-current user clip retained the new joint across 31 sampled frames without changing the original clip. The user subsequently confirmed normal behavior and requested removal of the added tests. All task-added tests and temporary verification scripts were removed; existing repository tests retain their original contents. No one-time manual repair of the user's changed clip was applied. Unity 6000.0.7 and 6000.5+ execution was not performed; no new version-sensitive API was introduced.
 
 On 2026-10-12, live animated Scene bone editing and the Edit Bones title/header icon compiled in the connected **Unity 6000.0.81f1** editor consuming this checkout through a local `file:` dependency. Six regression cases were directly invoked with Setup/Cleanup in a temporary editor runner: **6 passing / 0 failing**. This was not a full Test Runner suite. The runner and its temporary assets were removed.
 

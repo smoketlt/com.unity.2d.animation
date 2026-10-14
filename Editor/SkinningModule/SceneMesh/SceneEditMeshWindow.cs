@@ -27,6 +27,7 @@ namespace UnityEditor.U2D.Animation
         bool m_SelectionRestoreQueued;
         SceneMeshSource m_Source;
         bool m_DiscardOnClose;
+        bool m_SymmetrySourceMutated;
         SpriteMeshView m_View;
         SpriteMeshController m_Controller;
         SpriteRenderer m_PreviewRenderer;
@@ -143,12 +144,14 @@ namespace UnityEditor.U2D.Animation
             }
             if (m_TraceActive && string.IsNullOrEmpty(m_TraceBackup)) m_TraceActive = false;
             m_View = new SpriteMeshView(new SceneGUIWrapper()) { useSceneHandles = true };
+            m_View.newGeometryClosureVertex = index => m_Session.IsNewHullClosureVertex(index);
             m_Controller = new SpriteMeshController
             {
                 spriteMeshView = m_View, selection = m_Session.selection,
                 cacheUndo = m_Session, triangulator = new Triangulator(),
                 newGeometryCanceled = () => m_Session.CancelNew(),
-                newGeometryCompleted = () => { m_Session.mode = 0; m_Session.newMeshBackup = null; }
+                newGeometryCompleted = () => { m_Session.mode = 0; m_Session.newMeshBackup = null; },
+                newGeometryCompletionRequested = () => { m_Session.CompleteNew(); m_View.mode = SpriteMeshViewMode.EditGeometry; }
             };
             Selection.selectionChanged += OnSelectionChanged;
             SceneView.beforeSceneGui += BeforeSceneGUI;
@@ -172,7 +175,7 @@ namespace UnityEditor.U2D.Animation
                 {
                     if (m_Session.dirty)
                     {
-                        if (m_Session.mode == 3) m_Session.CompleteNew();
+                        if (m_Session.mode == 3) m_Session.FinishNew();
                         var source = new SceneMeshSource(m_Renderer.sprite);
                         if (source.Fingerprint() != m_Session.sourceMesh)
                             throw new InvalidOperationException("The source changed before the mesh window closed.");
@@ -233,14 +236,30 @@ namespace UnityEditor.U2D.Animation
             Bind("traceCancel", CancelTrace);
             rootVisualElement.RegisterCallback<KeyDownEvent>(evt =>
             {
-                if (!m_TraceActive || evt.keyCode != KeyCode.Escape) return;
-                CancelTrace();
+                if (!(evt.target is TextInputBaseField<string>) &&
+                    HandleVertexClipboard(evt.keyCode, evt.ctrlKey || evt.commandKey, evt.shiftKey, evt.altKey))
+                {
+                    evt.StopImmediatePropagation();
+                    return;
+                }
+                if (evt.keyCode != KeyCode.Escape) return;
+                if (m_TraceActive)
+                    CancelTrace();
+                else if (m_Session.mode == 3)
+                {
+                    m_Session.CancelNew();
+                    m_Error = null;
+                    SceneView.RepaintAll();
+                    UpdateUI();
+                }
+                else return;
                 evt.StopPropagation();
             }, TrickleDown.TrickleDown);
             BindToggle("triangles", m_Triangles, value => m_Triangles = value);
             BindToggle("dim", m_Dim, value => m_Dim = value);
             BindToggle("isolate", m_Isolate, value => { m_Isolate = value; RestoreVisibility(); });
             BindToggle("deformed", m_Deformed, value => m_Deformed = value);
+            BindToggle("symmetry", m_Session.symmetryActive, value => { m_Session.SetSymmetry(value); UpdateUI(); });
             var detail = rootVisualElement.Q<Slider>("detail");
             detail.SetValueWithoutNotify(m_Detail);
             detail.RegisterValueChangedCallback(evt => { m_Detail = evt.newValue; Trace(true); });
@@ -305,6 +324,11 @@ namespace UnityEditor.U2D.Animation
             rootVisualElement.Q("traceSettings").EnableInClassList("mesh-hidden", !m_TraceActive);
             rootVisualElement.Q<Label>("windowTitle").text = m_TraceActive ? "Edit Mesh: Trace" : "Edit Mesh";
             var effectiveMode = EffectiveMode();
+            var symmetry = rootVisualElement.Q<Toggle>("symmetry");
+            symmetry.SetValueWithoutNotify(m_Session.symmetryActive);
+            var symmetryTick = symmetry.Q<Label>(className: "mesh-tick");
+            if (symmetryTick != null) symmetryTick.text = symmetry.value ? "\u2713" : string.Empty;
+            symmetry.SetEnabled(blocked == null && !m_TraceActive);
             foreach (var pair in new[] { ("modify", 0), ("create", 1), ("delete", 2), ("newMesh", 3) })
                 rootVisualElement.Q<Button>(pair.Item1).EnableInClassList("mesh-active", !m_TraceActive && effectiveMode == pair.Item2);
             rootVisualElement.Q<Button>("trace").EnableInClassList("mesh-active", m_TraceActive);
@@ -404,7 +428,7 @@ namespace UnityEditor.U2D.Animation
             try
             {
                 if (BlockReason() != null) throw new InvalidOperationException(BlockReason());
-                if (m_Session.mode == 3) m_Session.CompleteNew();
+                if (m_Session.mode == 3) m_Session.FinishNew();
                 var source = new SceneMeshSource(m_Renderer.sprite);
                 if (source.Fingerprint() != m_Session.sourceMesh)
                     throw new InvalidOperationException("The Sprite asset changed since editing began. Restore the source or undo the pending edits before closing, then reopen the mesh to load the current asset.");
@@ -605,7 +629,7 @@ namespace UnityEditor.U2D.Animation
             m_MeshMutationInProgress = true;
             try
             {
-                if (m_Session.mode == 3) m_Session.CompleteNew();
+                if (m_Session.mode == 3) m_Session.FinishNew();
                 action();
                 SceneMeshSource.Validate(m_Session.mesh);
                 m_Session.selection.Clear();
@@ -687,6 +711,24 @@ namespace UnityEditor.U2D.Animation
             if (m_TraceInProgress || m_MeshMutationInProgress || m_SaveInProgress) return;
             if (BlockReason() != null) return;
             var evt = Event.current;
+            if (!EditorGUIUtility.editingTextField && GUIUtility.hotControl == 0)
+            {
+                bool command = evt.type == EventType.ValidateCommand || evt.type == EventType.ExecuteCommand;
+                bool copy = command && evt.commandName == "Copy";
+                bool paste = command && evt.commandName == "Paste";
+                if ((copy || paste) && !m_TraceActive && m_Session.mode != 3)
+                {
+                    if (evt.type == EventType.ExecuteCommand)
+                        HandleVertexClipboard(copy ? KeyCode.C : KeyCode.V, true, evt.shift, false);
+                    evt.Use();
+                    return;
+                }
+                if (evt.type == EventType.KeyDown && HandleVertexClipboard(evt.keyCode, evt.control || evt.command, evt.shift, evt.alt))
+                {
+                    evt.Use();
+                    return;
+                }
+            }
             if (m_TraceActive && evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Escape)
             {
                 CancelTrace();
@@ -751,6 +793,21 @@ namespace UnityEditor.U2D.Animation
             using (new Handles.DrawingScope(Color.white, matrix))
             {
                 if (evt.type == EventType.Repaint && m_Triangles) DrawTriangles(displayedMesh);
+                if (evt.type == EventType.Repaint && !m_TraceActive && m_Session.symmetryActive)
+                {
+                    var size = m_Session.mesh.frame.size;
+                    Handles.color = new Color(0.3f, 0.8f, 1f, 0.9f);
+                    Handles.DrawDottedLine(new Vector3(size.x * 0.5f, 0f), new Vector3(size.x * 0.5f, size.y), 4f);
+                    Handles.color = Color.white;
+                }
+                m_Controller.newGeometryVertexCreated = m_Session.symmetryHullActive ? point =>
+                {
+                    m_Session.AddSymmetryVertex(point);
+                    if (m_Session.mode != 3) m_View.mode = SpriteMeshViewMode.EditGeometry;
+                } : (Action<Vector2>)null;
+                m_Controller.newGeometryVerticesRemoved = m_Session.symmetryHullActive ? m_Session.RemoveSymmetryVertices : (Action<int[]>)null;
+                m_Controller.newGeometryVerticesMoved = m_Session.symmetryHullActive ? m_Session.MoveSymmetryVertices : (Action<int[], Vector2[]>)null;
+                m_Controller.newGeometryPreview = m_Session.symmetryHullActive ? PreviewSymmetryHull : (Action)null;
                 m_View.mode = m_TraceActive ? SpriteMeshViewMode.EditGeometry :
                     effectiveMode == 3 ? SpriteMeshViewMode.NewGeometry :
                     effectiveMode == 1 ? SpriteMeshViewMode.CreateVertex : SpriteMeshViewMode.EditGeometry;
@@ -761,11 +818,6 @@ namespace UnityEditor.U2D.Animation
                 EditorGUI.BeginDisabledGroup(m_TraceActive);
                 try
                 {
-                    if (!m_TraceActive && m_Session.mode == 3 && evt.type == EventType.MouseDown && evt.button == 0 && m_View.hoveredVertex == 0 && m_Session.mesh.vertexCount >= 3)
-                    {
-                        Mutate("Complete Sprite Mesh Hull", () => { }, false);
-                        evt.Use();
-                    }
                     if (!m_TraceActive) HandleDelete(effectiveMode);
                     // Delete operates on the staged source. Rebuild the transient pose
                     // before handing it to the shared controller for this event.
@@ -773,6 +825,7 @@ namespace UnityEditor.U2D.Animation
                     displayedMesh = deformation?.mesh ?? m_Session.mesh;
                     m_Controller.spriteMeshData = displayedMesh;
                     m_Controller.frame = deformation?.editingFrame ?? new Rect(Vector2.zero, m_Session.mesh.frame.size);
+                    ConfigureSymmetryEditing(deformation);
                     // Controller edits also triangulate and may pump nested Scene GUI events.
                     // Keep partial vertices/indices private until the controller returns.
                     m_MeshMutationInProgress = true;
@@ -780,7 +833,7 @@ namespace UnityEditor.U2D.Animation
                     {
                         m_Controller.OnGUI();
                         if (evt.type != EventType.Repaint && evt.type != EventType.Layout && evt.type != EventType.MouseMove)
-                            deformation?.Commit(m_Session);
+                            if (!m_SymmetrySourceMutated) deformation?.Commit(m_Session);
                     }
                     finally { m_MeshMutationInProgress = false; }
                     if (m_View.isCreateEdgeDragActive && evt.type == EventType.MouseDown && evt.button == 0) evt.Use();
@@ -807,6 +860,92 @@ namespace UnityEditor.U2D.Animation
             if (evt.type != EventType.Repaint && evt.type != EventType.Layout) { scene.Repaint(); UpdateUI(); }
         }
 
+        Vector2 SourceGeometryPoint(Vector2 position, int edge, SceneMeshDeformation deformation) =>
+            deformation == null ? position : deformation.SourcePosition(position,
+                SceneMeshSession.SampleGeometryWeight(deformation.mesh, position, edge));
+
+        void ConfigureSymmetryEditing(SceneMeshDeformation deformation)
+        {
+            m_SymmetrySourceMutated = false;
+            bool active = !m_TraceActive && m_Session.symmetryActive && m_Session.mode != 3;
+            m_Controller.geometryVertexCreated = active ? (position, edge) =>
+            {
+                m_SymmetrySourceMutated = true;
+                m_Session.CreateSymmetricGeometry(SourceGeometryPoint(position, edge, deformation));
+            } : (Action<Vector2, int>)null;
+            m_Controller.geometryEdgeCreated = active ? (from, position, to, edge) =>
+            {
+                m_SymmetrySourceMutated = true;
+                var source = to >= 0 ? m_Session.mesh.vertices[to] : SourceGeometryPoint(position, edge, deformation);
+                m_Session.CreateSymmetricGeometry(source, from);
+            } : (Action<int, Vector2, int, int>)null;
+            m_Controller.geometryVerticesMoved = active ? (indices, positions) =>
+            {
+                m_SymmetrySourceMutated = true;
+                var source = positions.Select((p, i) => deformation == null ? p :
+                    deformation.SourcePosition(p, deformation.mesh.vertexWeights[indices[i]])).ToArray();
+                m_Session.MoveSymmetricGeometry(indices, source);
+            } : (Action<int[], Vector2[]>)null;
+            m_Controller.geometrySymmetryPreview = active ? () => PreviewSymmetricGeometry(deformation) : (Action)null;
+        }
+
+        void PreviewSymmetricGeometry(SceneMeshDeformation deformation)
+        {
+            if (!m_View.IsActionActive(MeshEditorAction.CreateVertex) && !m_View.isCreateEdgeDragActive) return;
+            if (m_View.hoveredVertex >= 0 && !m_View.isCreateEdgeDragActive) return;
+            var source = SourceGeometryPoint(m_View.mouseWorldPosition, m_View.hoveredEdge, deformation);
+            if (m_View.isCreateEdgeDragActive)
+            {
+                var preview = m_Controller.createEdgePreview;
+                source = preview.vertex >= 0 ? m_Session.mesh.vertices[preview.vertex] :
+                    SourceGeometryPoint(preview.position, preview.edge, deformation);
+            }
+            float center = m_Session.mesh.frame.width * 0.5f;
+            if (Mathf.Abs(source.x - center) <= m_Session.mesh.frame.width * 0.005f) source.x = center;
+            var mirrored = m_Session.MirrorHullPoint(source);
+            if (mirrored.Equals(source)) return;
+            var weight = SceneMeshSession.SampleGeometryWeight(m_Session.mesh, mirrored);
+            var displayed = deformation?.DisplayPosition(mirrored, weight) ?? mirrored;
+            if (m_View.isCreateEdgeDragActive && m_Session.selection.Count > 0)
+            {
+                int partner = m_Session.FindSymmetryVertex(m_Session.MirrorHullPoint(m_Session.mesh.vertices[m_Session.selection.activeElement]));
+                if (partner >= 0)
+                {
+                    var start = deformation?.mesh.vertices[partner] ?? m_Session.mesh.vertices[partner];
+                    m_View.BeginDrawEdges();
+                    m_View.DrawEdge(start, displayed);
+                    m_View.EndDrawEdges();
+                }
+            }
+            m_View.DrawVertex(displayed);
+        }
+
+        bool HandleVertexClipboard(KeyCode key, bool action, bool shift, bool alt)
+        {
+            if (!action || alt || (key != KeyCode.C && key != KeyCode.V) || m_TraceActive ||
+                GUIUtility.hotControl != 0 || m_SaveInProgress || m_MeshMutationInProgress ||
+                m_Session == null || m_Session.mode == 3 || BlockReason() != null)
+                return false;
+            if (key == KeyCode.C)
+            {
+                var clipboard = m_Session.CopySelectedVertices();
+                if (clipboard != null) EditorGUIUtility.systemCopyBuffer = clipboard;
+            }
+            else
+            {
+                m_MeshMutationInProgress = true;
+                try
+                {
+                    if (m_Session.PasteVertices(EditorGUIUtility.systemCopyBuffer, shift)) m_Error = null;
+                }
+                catch (Exception ex) { m_Error = ex.Message; }
+                finally { m_MeshMutationInProgress = false; }
+            }
+            SceneView.RepaintAll();
+            UpdateUI();
+            return true;
+        }
+
         void HandleDelete(int effectiveMode)
         {
             var evt = Event.current;
@@ -830,7 +969,7 @@ namespace UnityEditor.U2D.Animation
                 else
                 {
                     var edge = m_Session.mesh.edges[m_View.hoveredEdge];
-                    Mutate("Delete Sprite Mesh Edge", () => { DataController().RemoveEdge(edge); Triangulate(); }, false, keepMode: true);
+                    Mutate("Delete Sprite Mesh Edge", () => { RemoveGeometryEdge(edge); Triangulate(); }, false, keepMode: true);
                     evt.Use();
                     return;
                 }
@@ -841,17 +980,30 @@ namespace UnityEditor.U2D.Animation
                 Mutate("Delete Sprite Mesh Selection", () =>
                 {
                     if (!direct && selected.Length == 2 && m_Session.mesh.edges.ContainsAny(new Unity.Mathematics.int2(selected[0], selected[1])))
-                        DataController().RemoveEdge(new Unity.Mathematics.int2(selected[0], selected[1]));
+                        RemoveGeometryEdge(new Unity.Mathematics.int2(selected[0], selected[1]));
                     else
                     {
-                        if (m_Session.mesh.vertexCount - selected.Length < 3)
+                        var vertices = m_Session.symmetryActive ? m_Session.SymmetrySelection(selected) : selected;
+                        if (m_Session.mesh.vertexCount - vertices.Length < 3)
                             throw new InvalidOperationException("Keep at least three vertices. Use New or Reset to replace the mesh.");
-                        DataController().RemoveVertex(selected);
+                        DataController().RemoveVertex(vertices);
                     }
                     Triangulate();
                 }, false, keepMode: true);
             }
             evt.Use();
+        }
+
+        void RemoveGeometryEdge(Unity.Mathematics.int2 edge)
+        {
+            var controller = DataController();
+            if (m_Session.symmetryActive)
+            {
+                int a = m_Session.FindSymmetryVertex(m_Session.MirrorHullPoint(m_Session.mesh.vertices[edge.x]));
+                int b = m_Session.FindSymmetryVertex(m_Session.MirrorHullPoint(m_Session.mesh.vertices[edge.y]));
+                if (a >= 0 && b >= 0) controller.RemoveEdge(new Unity.Mathematics.int2(a, b));
+            }
+            controller.RemoveEdge(edge);
         }
 
         void HandleBoxSelection(SpriteMeshData displayedMesh)
@@ -882,6 +1034,22 @@ namespace UnityEditor.U2D.Animation
             {
                 Handles.BeginGUI(); GUI.Box(rect, GUIContent.none, "SelectionRect"); Handles.EndGUI();
             }
+        }
+
+        void PreviewSymmetryHull()
+        {
+            if (m_View.hoveredVertex >= 0) return;
+            var point = m_Session.SymmetryHullPoint(m_View.mouseWorldPosition);
+            var mirrored = m_Session.MirrorHullPoint(point);
+            m_View.BeginDrawEdges();
+            if (m_Session.symmetryHullTip is Vector2 tip)
+            {
+                m_View.DrawEdge(tip, point);
+                m_View.DrawEdge(m_Session.MirrorHullPoint(tip), mirrored);
+            }
+            m_View.EndDrawEdges();
+            m_View.DrawVertex(point);
+            if (!point.Equals(mirrored)) m_View.DrawVertex(mirrored);
         }
 
         void DrawTriangles(SpriteMeshData mesh)
@@ -982,36 +1150,49 @@ namespace UnityEditor.U2D.Animation
                 m_ImageMaterial.SetInt("_Cull", (int)CullMode.Off);
             }
             if (m_ImageMesh == null) m_ImageMesh = new Mesh { name = "Uniskin Sprite Preview", hideFlags = HideFlags.HideAndDontSave };
-            var frame = m_Session.mesh.frame;
-            var size = frame.size;
             textureProvider.GetTextureActualWidthAndHeight(out var width, out var height);
-            Vector2 UV(float x, float y) => new Vector2((frame.x + x) / width, (frame.y + y) / height);
-            m_ImageMesh.Clear();
-            var bindingPose = m_Source.bindingPose;
-            if (deformedMesh != null || bindingPose != null)
-            {
-                var displayed = deformedMesh ?? m_Session.mesh;
-                m_ImageMesh.vertices = Array.ConvertAll(displayed.vertices, vertex => (Vector3)vertex);
-                m_ImageMesh.uv = m_Session.mesh.vertices.Select((vertex, i) =>
-                {
-                    var pixel = bindingPose?.TexturePosition(vertex, i) ?? vertex;
-                    return UV(pixel.x, pixel.y);
-                }).ToArray();
-                m_ImageMesh.triangles = displayed.indices;
-            }
-            else
-            {
-                m_ImageMesh.vertices = new[] { Vector3.zero, new Vector3(size.x, 0), new Vector3(size.x, size.y), new Vector3(0, size.y) };
-                m_ImageMesh.uv = new[] { UV(0, 0), UV(size.x, 0), UV(size.x, size.y), UV(0, size.y) };
-                m_ImageMesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
-            }
-            m_ImageMesh.colors = Enumerable.Repeat(Color.white, m_ImageMesh.vertexCount).ToArray();
+            BuildImageMesh(m_ImageMesh, m_Session.mesh, deformedMesh, m_Source.bindingPose,
+                m_Session.mode == 3 || m_TraceActive, width, height);
             var color = m_Renderer.color;
             if (m_Dim) { color.r *= 0.35f; color.g *= 0.35f; color.b *= 0.35f; }
             m_ImageMaterial.mainTexture = textureProvider.texture;
             m_ImageMaterial.color = color;
             m_ImageMaterial.SetPass(0);
             Graphics.DrawMeshNow(m_ImageMesh, matrix);
+        }
+
+        internal static void BuildImageMesh(Mesh imageMesh, SpriteMeshData sourceMesh, SpriteMeshData deformedMesh,
+            SceneMeshBindingPose bindingPose, bool authoringHull, int width, int height)
+        {
+            var frame = sourceMesh.frame;
+            var size = frame.size;
+            Vector2 UV(float x, float y) => new Vector2((frame.x + x) / width, (frame.y + y) / height);
+            imageMesh.Clear();
+            var displayed = deformedMesh ?? sourceMesh;
+            // New has no triangles until the hull closes. Keep a drawable source image
+            // even when Update Bindings saved a custom texture mapping.
+            if (!authoringHull && displayed.indices.Length >= 3 && (deformedMesh != null || bindingPose != null))
+            {
+                imageMesh.vertices = Array.ConvertAll(displayed.vertices, vertex => (Vector3)vertex);
+                imageMesh.uv = sourceMesh.vertices.Select((vertex, i) =>
+                {
+                    var pixel = bindingPose?.TexturePosition(vertex, i) ?? vertex;
+                    return UV(pixel.x, pixel.y);
+                }).ToArray();
+                imageMesh.triangles = displayed.indices;
+            }
+            else
+            {
+                var corners = new[] { Vector2.zero, new Vector2(size.x, 0), size, new Vector2(0, size.y) };
+                imageMesh.vertices = Array.ConvertAll(corners, vertex => (Vector3)vertex);
+                imageMesh.uv = corners.Select(vertex =>
+                {
+                    var pixel = bindingPose?.TexturePosition(vertex) ?? vertex;
+                    return UV(pixel.x, pixel.y);
+                }).ToArray();
+                imageMesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
+            }
+            imageMesh.colors = Enumerable.Repeat(Color.white, imageMesh.vertexCount).ToArray();
         }
     }
 }

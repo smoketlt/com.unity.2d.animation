@@ -154,6 +154,18 @@ namespace UnityEditor.U2D.Animation
             root.Query(className: "mesh-tick").ForEach(tick => tick.style.fontSize = Px(11));
             options?.Query(className: "unity-toggle__checkmark").ForEach(check => check.style.width = check.style.height = Px(14));
             options?.Query(className: "unity-toggle__text").ForEach(label => label.style.marginLeft = Px(4));
+            var weightStep = root.Q<FloatField>("weightStep");
+            if (weightStep != null)
+            {
+                weightStep.style.width = Px(90); weightStep.style.height = Px(20);
+                weightStep.Q(className: "unity-base-field__label").style.marginRight = Px(4);
+                foreach (var name in new[] { "weightDecrease", "weightIncrease" })
+                {
+                    var button = root.Q<Button>(name);
+                    button.style.width = button.style.minWidth = Px(24); button.style.height = Px(20);
+                    button.style.marginLeft = button.style.marginRight = Px(4);
+                }
+            }
             foreach (var slider in new VisualElement[] { detail, alpha })
             {
                 if (slider == null) continue;

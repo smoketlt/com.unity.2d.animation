@@ -362,6 +362,75 @@ namespace UnityEditor.U2D.Animation
             cache.events.skeletonBindPoseChanged.Invoke(skeleton);
         }
 
+        internal void RecreateBone(BoneCache bone, Vector3 start, Vector3 end)
+        {
+            if (bone == null || bone.IsConstraintParent() || !skeleton.Contains(bone)) return;
+            if (!float.IsFinite(start.x) || !float.IsFinite(start.y) || !float.IsFinite(start.z) ||
+                !float.IsFinite(end.x) || !float.IsFinite(end.y) || !float.IsFinite(end.z)) return;
+            // Redraw the existing identity so every mesh retains its influence slot
+            // and exact weights. Children keep their world poses and hierarchy.
+            var direction = end - start;
+            if (direction.sqrMagnitude < .0001f) direction = Vector3.right * .01f;
+            using (cache.UndoScope("Recreate Bone"))
+            {
+                var children = bone.GetChildrenWoldPose();
+                bone.worldPose = BonePose.Create(Pose.Create(start,
+                    Quaternion.Euler(0, 0, Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg)), direction.magnitude);
+                bone.SetChildrenWorldPose(children);
+                if (bone.parentBone != null && bone.parentBone.chainedChild == bone &&
+                    (bone.parentBone.endPosition - start).sqrMagnitude >= .001f)
+                    bone.parentBone.chainedChild = null;
+                if (bone.chainedChild != null && (bone.endPosition - bone.chainedChild.position).sqrMagnitude >= .001f)
+                    bone.chainedChild = null;
+                Changed();
+                foreach (var sprite in cache.GetSprites()) cache.events.meshChanged.Invoke(sprite.GetMesh());
+            }
+        }
+
+        internal void RecreateBoneAndSave(BoneCache bone, Vector3 start, Vector3 end,
+            SpriteRenderer renderer, SceneMeshSource source)
+        {
+            cache.EndUndoOperation();
+            Undo.IncrementCurrentGroup();
+            var group = Undo.GetCurrentGroup();
+            try
+            {
+                // Moving the joint also changes its children's local coordinates.
+                var positions = SceneBoneAnimationPositionPlan.Create(source,
+                    new[] { bone }.Concat(bone.children.OfType<BoneCache>()));
+                RecreateBone(bone, start, end);
+                Save(source);
+                positions.Apply();
+                // Saving refreshes runtime bind poses and scene bone Transforms.
+                // Keep the same cache objects for Undo, but capture the new source
+                // baseline so live animation no longer rotates about the old joint
+                // or projects the authored movement a second time.
+                // Save advances Unity's Undo group. Record this later baseline in
+                // that group too, before collapsing the whole gesture into one step.
+                using (cache.UndoScope("Refresh Recreated Bone Pose"))
+                {
+                    var savedPose = skeleton.bones.Select(SourcePose).ToArray();
+                    skeleton.SetWorldPose(savedPose);
+                    skeleton.SetDefaultPose();
+                    if (cache.hasCharacter) cache.SyncSpriteSheetSkeletons();
+                    scenePoseCaptured = false;
+                    m_SceneBindings = null;
+                    var refreshed = new SceneMeshSource(renderer.sprite);
+                    CaptureScenePose(renderer, refreshed.rect.rect);
+                    sourceFingerprint = Fingerprint(refreshed);
+                }
+                Undo.FlushUndoRecordObjects();
+                Undo.SetCurrentGroupName("Recreate Bone");
+                Undo.CollapseUndoOperations(group);
+            }
+            catch
+            {
+                Undo.RevertAllDownToGroup(group);
+                RestoreAfterUndo();
+                throw;
+            }
+        }
+
         internal static bool CanSetParent(BoneCache child, BoneCache parent)
         {
             if (child == null || child.IsConstraintParent() || (parent != null && parent.skeleton != child.skeleton)) return false;

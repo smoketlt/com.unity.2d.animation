@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This page documents the fork-specific Alt behavior in Geometry mode.
+This page documents the fork-specific Alt behavior in Geometry mode and Scene Edit Bones.
 
 ## User-Facing Behavior
 
@@ -48,6 +48,12 @@ On non-Windows editor builds, it falls back to IMGUI event tracking.
 Scene Edit Mesh shares the same Alt state and swaps only its selected Modify/Create modes. Session mode stays unchanged; Scene handles, direct double-click deletion and toolbar highlighting use the effective mode. Alt is latched before event modifiers are cleared for primary-button mesh input; unhandled primary mouse down/drag/up is consumed after the mesh controller. Right/middle mouse navigation remains available. New, Delete and active Trace do not swap.
 
 On Windows, Scene's editor-update callback calls `SkinningEditorInput.Update(null)` for physical-key polling and repaints when the state changes, including when focus moves to the popup. Non-Windows null updates do nothing and original Scene IMGUI events drive the existing fallback. The callback is unsubscribed when the window disables. Scene uses the existing physical-key implementation rather than a second Alt tracker.
+
+## Scene bone editor
+
+With exactly one editable bone selected, Scene **Edit Bones** temporarily uses Alt + primary click/drag/release to redraw that bone while preserving its identity, hierarchy and exact weights. Its Create tile highlights during the temporary gesture; releasing Alt restores the prior command. The preview commits only on mouse-up with Alt still held, automatically saving the bone session and refreshing scene bindings/pivots without closing the popup. Alt release, Esc or window/gesture cancellation discards it. Right/middle mouse navigation remains available; Alt with no single editable selection retains Scene navigation. See [Scene Bone Editing](SceneBoneEditing.md#redrawing-a-selected-bone-with-alt).
+
+The host latches shared `SkinningEditorInput` before suppressing Alt for the replacement gesture. Its editor-update callback polls the physical key on Windows and repaints mode feedback, following Scene Edit Mesh's existing tracking convention. Bone selection/transform handles are disabled during replacement so an Alt drag over another bone cannot move or select it. No shared `SkeletonController` creation behavior is changed.
 
 ## Known Failure Modes
 

@@ -99,6 +99,7 @@ namespace UnityEditor.U2D.Animation
 
 
         public SpriteMeshViewMode mode { get; set; }
+        internal Func<int, bool> newGeometryClosureVertex;
         public bool useSceneHandles { get; set; }
         public ISelection<int> selection { get; set; }
         public int defaultControlID { get; set; }
@@ -270,7 +271,7 @@ namespace UnityEditor.U2D.Animation
             if (mode != SpriteMeshViewMode.NewGeometry)
                 return false;
 
-            if (hoveredVertex != 0 ||
+            if (!(newGeometryClosureVertex?.Invoke(hoveredVertex) ?? (hoveredVertex == 0)) ||
                 !guiWrapper.IsMouseDown(0) ||
                 guiWrapper.clickCount > 1)
                 return false;

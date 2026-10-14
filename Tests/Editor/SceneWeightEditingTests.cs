@@ -1,10 +1,12 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
 using UnityEngine.U2D;
+using UnityEngine.U2D.Animation;
 using UnityEngine.UIElements;
 using Object = UnityEngine.Object;
 
@@ -48,6 +50,330 @@ namespace UnityEditor.U2D.Animation.Tests
             if (m_Session != null) Object.DestroyImmediate(m_Session);
             if (!string.IsNullOrEmpty(m_Path)) AssetDatabase.DeleteAsset(m_Path);
             if (m_Texture != null) Object.DestroyImmediate(m_Texture);
+        }
+
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        public void BindCompletionRefreshesCachesAndOnlyFirstBindUpdatesReference(bool firstBind, bool escape)
+        {
+            const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+            var type = typeof(SceneEditWeightsWindow);
+            var host = new GameObject("Weight Bind Test");
+            var window = ScriptableObject.CreateInstance<SceneEditWeightsWindow>();
+            var sessionField = type.GetField("m_Session", fields);
+            Object.DestroyImmediate((SceneWeightSession)sessionField.GetValue(window));
+            sessionField.SetValue(window, m_Session);
+            type.GetField("m_DiscardOnClose", fields).SetValue(window, true);
+            try
+            {
+                var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                var renderer = host.AddComponent<SpriteRenderer>(); renderer.sprite = sprite;
+                var bones = sprite.GetBones();
+                var transforms = bones.Select((bone, i) =>
+                {
+                    var transform = new GameObject(bone.name).transform;
+                    transform.SetParent(host.transform, false);
+                    transform.localPosition = new Vector3(1 + i * .2f, .5f);
+                    transform.localRotation = Quaternion.Euler(0, 0, 20 + i * 10);
+                    return transform;
+                }).ToArray();
+                var skin = host.AddComponent<SpriteSkin>(); skin.SetRootBone(host.transform); skin.SetBoneTransforms(transforms);
+                type.GetField("m_Renderer", fields).SetValue(window, renderer);
+                type.GetField("m_Source", fields).SetValue(window, Source());
+                type.GetField("m_Preview", fields).SetValue(window, true);
+                var target = m_Session.mesh.bones.Last();
+                m_Session.mesh.bones = firstBind ? Array.Empty<BoneCache>() : m_Session.mesh.bones.Where(bone => bone != target).ToArray();
+                var positions = (Vector2[])m_Session.mesh.vertices.Clone();
+                var sourceFingerprint = Source().Fingerprint();
+                type.GetMethod("SetBindMode", fields).Invoke(window, new object[] { true });
+                Assert.IsTrue((bool)type.GetField("m_Bind", fields).GetValue(window));
+                m_Session.Bind(target);
+                type.GetField("m_RowKey", fields).SetValue(window, "stale rows");
+                var liveBindings = (System.Collections.IDictionary)type.GetField("m_LiveBoneBindings", fields).GetValue(window);
+                var characterBindings = (System.Collections.IDictionary)type.GetField("m_CharacterLiveBindings", fields).GetValue(window);
+                liveBindings["stale"] = (host.transform, 99f);
+                characterBindings["stale"] = (host.transform, 99f);
+                type.GetField("m_CharacterBindingsLoaded", fields).SetValue(window, true);
+                if (escape) type.GetMethod("Cancel", fields).Invoke(window, null);
+                else type.GetMethod("SetBindMode", fields).Invoke(window, new object[] { false });
+                Assert.IsFalse((bool)type.GetField("m_Bind", fields).GetValue(window));
+                Assert.IsTrue((bool)type.GetField("m_Preview", fields).GetValue(window), "Bind must not toggle Preview.");
+                Assert.IsNull(type.GetField("m_RowKey", fields).GetValue(window));
+                Assert.IsFalse(liveBindings.Contains("stale"));
+                Assert.IsFalse(characterBindings.Contains("stale"));
+                Assert.IsTrue(liveBindings.Contains(target.guid), "Refresh must resolve the bound scene Transform.");
+                Assert.IsTrue(m_Session.mesh.ContainsBone(target));
+                Assert.AreEqual(firstBind, m_Session.bindingPose != null);
+                CollectionAssert.AreEqual(positions, m_Session.mesh.vertices);
+                if (firstBind)
+                {
+                    CollectionAssert.AreEqual(positions, m_Session.bindingPose.texturePositions);
+                    var world = (Vector3[])type.GetMethod("WorldVertices", fields).Invoke(window, new object[] { false });
+                    var toWorld = renderer.transform.localToWorldMatrix * SceneMeshBindingPose.PixelsToLocal(sprite, Source().rect.rect);
+                    for (var i = 0; i < world.Length; ++i)
+                        Assert.That(Vector3.Distance(world[i], toWorld.MultiplyPoint3x4(positions[i])), Is.LessThan(.0001f));
+                }
+                Assert.AreEqual(sourceFingerprint, Source().Fingerprint(), "Bind completion must remain staged.");
+            }
+            finally
+            {
+                sessionField.SetValue(window, null);
+                Object.DestroyImmediate(window);
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ManualUpdateBindingsUsesSceneBonesWithoutAnEnabledSpriteSkin(bool disabledSkin)
+        {
+            const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+            var type = typeof(SceneEditWeightsWindow);
+            var host = new GameObject("Weight Binding Without Skin Test");
+            var window = ScriptableObject.CreateInstance<SceneEditWeightsWindow>();
+            var sessionField = type.GetField("m_Session", fields);
+            Object.DestroyImmediate((SceneWeightSession)sessionField.GetValue(window));
+            sessionField.SetValue(window, m_Session);
+            type.GetField("m_DiscardOnClose", fields).SetValue(window, true);
+            try
+            {
+                var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                var renderer = host.AddComponent<SpriteRenderer>(); renderer.sprite = sprite;
+                var transforms = sprite.GetBones().Select((bone, i) =>
+                {
+                    var transform = new GameObject(bone.name).transform;
+                    transform.SetParent(host.transform, false);
+                    transform.localPosition = new Vector3(1 + i * .2f, .5f);
+                    return transform;
+                }).ToArray();
+                if (disabledSkin)
+                {
+                    var skin = host.AddComponent<SpriteSkin>(); skin.enabled = false;
+                    skin.SetRootBone(host.transform); skin.SetBoneTransforms(transforms);
+                }
+                type.GetField("m_Renderer", fields).SetValue(window, renderer);
+                type.GetField("m_Source", fields).SetValue(window, Source());
+                var positions = (Vector2[])m_Session.mesh.vertices.Clone();
+                var weights = m_Session.mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)).ToArray();
+                var fingerprint = Source().Fingerprint();
+                type.GetMethod("UpdateBindings", fields, null, Type.EmptyTypes, null).Invoke(window, null);
+                Assert.IsNotNull(m_Session.bindingPose);
+                for (var i = 0; i < positions.Length; ++i)
+                    Assert.That(Vector2.Distance(positions[i], m_Session.mesh.vertices[i]), Is.LessThan(.0001f));
+                CollectionAssert.AreEqual(positions, m_Session.bindingPose.texturePositions);
+                CollectionAssert.AreEqual(weights, m_Session.mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)).ToArray());
+                Assert.AreEqual(fingerprint, Source().Fingerprint());
+                Object.DestroyImmediate(transforms[0].gameObject);
+                var snapshot = JsonUtility.ToJson(m_Session);
+                var error = Assert.Throws<TargetInvocationException>(() =>
+                    type.GetMethod("UpdateBindings", fields, null, Type.EmptyTypes, null).Invoke(window, null));
+                Assert.IsInstanceOf<InvalidOperationException>(error.InnerException);
+                StringAssert.Contains("No scene Transform", error.InnerException.Message);
+                Assert.AreEqual(snapshot, JsonUtility.ToJson(m_Session));
+            }
+            finally
+            {
+                sessionField.SetValue(window, null);
+                Object.DestroyImmediate(window);
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [TestCase(-.05f)]
+        [TestCase(.05f)]
+        [TestCase(.0125f)]
+        public void WeightStepPreservesMixedValuesAndUnselectedVerticesAndSupportsUndo(float amount)
+        {
+            m_Session.vertices.elements = new[] { 0 }; m_Session.SetRow(0, .2f);
+            m_Session.vertices.elements = new[] { 1 }; m_Session.SetRow(0, .6f);
+            m_Session.vertices.elements = new[] { 0, 1 };
+            m_Session.SelectBone(m_Session.mesh.bones[0], false);
+            var untouched = m_Session.mesh.vertexWeights.Skip(2).Select(weight => JsonUtility.ToJson(weight)).ToArray();
+            var fingerprint = Source().Fingerprint();
+            Undo.FlushUndoRecordObjects(); Undo.IncrementCurrentGroup();
+            m_Session.OffsetSelectedWeights(m_Session.selectedBones, amount);
+            Assert.That(m_Session.Values(0)[0], Is.EqualTo(.2f + amount).Within(.00001f));
+            Assert.That(m_Session.Values(1)[0], Is.EqualTo(.6f + amount).Within(.00001f));
+            foreach (var vertex in new[] { 0, 1 })
+            {
+                Assert.That(m_Session.Values(vertex).Sum(), Is.EqualTo(1).Within(.00001f));
+                Assert.That(m_Session.mesh.vertexWeights[vertex].Count(channel => channel.enabled && channel.weight > 0), Is.LessThanOrEqualTo(4));
+            }
+            CollectionAssert.AreEqual(untouched, m_Session.mesh.vertexWeights.Skip(2).Select(weight => JsonUtility.ToJson(weight)).ToArray());
+            Assert.AreEqual(fingerprint, Source().Fingerprint());
+            Undo.FlushUndoRecordObjects(); Undo.PerformUndo(); m_Session.context.RestoreAfterUndo();
+            Assert.That(m_Session.Values(0)[0], Is.EqualTo(.2f).Within(.00001f));
+            Assert.That(m_Session.Values(1)[0], Is.EqualTo(.6f).Within(.00001f));
+        }
+
+        [Test]
+        public void WeightStepHonorsLocksClampsAndEmptySelection()
+        {
+            m_Session.vertices.elements = new[] { 0, 1 };
+            m_Session.ToggleLock(m_Session.mesh.bones[1]);
+            m_Session.OffsetSelectedWeights(new[] { 0 }, 1);
+            Assert.That(m_Session.Values(0)[0], Is.EqualTo(.7f).Within(.00001f));
+            Assert.That(m_Session.Values(0)[1], Is.EqualTo(.3f).Within(.00001f));
+            m_Session.OffsetSelectedWeights(new[] { 0 }, -1);
+            Assert.That(m_Session.Values(0)[0], Is.Zero.Within(.00001f));
+            Assert.That(m_Session.Values(0)[1], Is.EqualTo(.3f).Within(.00001f));
+            var before = JsonUtility.ToJson(m_Session.mesh);
+            m_Session.OffsetSelectedWeights(new[] { 1 }, .1f);
+            m_Session.OffsetSelectedWeights(new[] { 0 }, float.NaN);
+            m_Session.OffsetSelectedWeights(new[] { 0 }, 0);
+            Assert.AreEqual(before, JsonUtility.ToJson(m_Session.mesh));
+            m_Session.vertices.Clear();
+            m_Session.OffsetSelectedWeights(new[] { 0 }, .1f);
+            Assert.AreEqual(before, JsonUtility.ToJson(m_Session.mesh), "No vertex selection must not edit the whole mesh.");
+        }
+
+        [Test]
+        public void WeightStepControlsRequireOneUnlockedBoneAndSelectedVertices()
+        {
+            const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+            var type = typeof(SceneEditWeightsWindow);
+            var host = new GameObject("Weight Step Controls Test");
+            var window = ScriptableObject.CreateInstance<SceneEditWeightsWindow>();
+            var sessionField = type.GetField("m_Session", fields);
+            Object.DestroyImmediate((SceneWeightSession)sessionField.GetValue(window));
+            sessionField.SetValue(window, m_Session);
+            type.GetField("m_DiscardOnClose", fields).SetValue(window, true);
+            type.GetField("m_SettingsLoaded", fields).SetValue(window, false);
+            type.GetField("m_WeightStep", fields).SetValue(window, 5f);
+            try
+            {
+                var renderer = host.AddComponent<SpriteRenderer>(); renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                type.GetField("m_Renderer", fields).SetValue(window, renderer);
+                type.GetField("m_Source", fields).SetValue(window, Source());
+                window.CreateGUI();
+                window.ShowPopup();
+                var minus = window.rootVisualElement.Q<Button>("weightDecrease");
+                var plus = window.rootVisualElement.Q<Button>("weightIncrease");
+                var step = window.rootVisualElement.Q<FloatField>("weightStep");
+                Assert.IsFalse(minus.enabledSelf, "Initial minus"); Assert.IsFalse(plus.enabledSelf, "Initial plus");
+                m_Session.vertices.elements = new[] { 0, 1 };
+                m_Session.SelectBone(m_Session.mesh.bones[0], false);
+                type.GetMethod("UpdateUI", fields).Invoke(window, null);
+                Assert.IsTrue(minus.enabledSelf); Assert.IsTrue(plus.enabledSelf);
+                step.value = 12.5f;
+                type.GetMethod("OffsetSelectedWeights", fields).Invoke(window, new object[] { -1f });
+                Assert.That(m_Session.Values(0)[0], Is.EqualTo(.275f).Within(.00001f));
+                Assert.That(m_Session.Values(1)[0], Is.EqualTo(.275f).Within(.00001f));
+                Assert.That(m_Session.Values(2)[0], Is.EqualTo(.4f).Within(.00001f));
+                m_Session.SelectBone(m_Session.mesh.bones[1], true);
+                type.GetMethod("UpdateUI", fields).Invoke(window, null);
+                Assert.IsFalse(plus.enabledSelf, "Multiple selected bones");
+                m_Session.SelectBone(m_Session.mesh.bones[0], false, false);
+                m_Session.ToggleLock(m_Session.mesh.bones[0]);
+                type.GetMethod("UpdateUI", fields).Invoke(window, null);
+                Assert.IsFalse(plus.enabledSelf, "Locked selected bone");
+                m_Session.ToggleLock(m_Session.mesh.bones[0]);
+                step.value = -1;
+                Assert.AreEqual(0, step.value); Assert.IsFalse(plus.enabledSelf, "Zero step");
+                step.value = float.NaN;
+                Assert.AreEqual(0, step.value);
+            }
+            finally
+            {
+                sessionField.SetValue(window, null);
+                Object.DestroyImmediate(window);
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [TestCase(50f, false, false, 0f, .015f)]
+        [TestCase(50f, true, false, 0f, -.015f)]
+        [TestCase(50f, false, true, 0f, -.015f)]
+        [TestCase(100f, false, false, 0f, .03f)]
+        [TestCase(.5f, false, false, 0f, .00015f)]
+        [TestCase(50f, false, false, 75f, .0075f)]
+        [TestCase(0f, false, false, 0f, 0f)]
+        public void BrushStampsUseGentleStrengthWithRemoveAltAndFeather(float strength, bool remove, bool alt, float distance, float expected)
+        {
+            const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+            var type = typeof(SceneEditWeightsWindow);
+            var window = ScriptableObject.CreateInstance<SceneEditWeightsWindow>();
+            var sessionField = type.GetField("m_Session", fields);
+            Object.DestroyImmediate((SceneWeightSession)sessionField.GetValue(window));
+            sessionField.SetValue(window, m_Session);
+            type.GetField("m_DiscardOnClose", fields).SetValue(window, true);
+            type.GetField("m_SettingsLoaded", fields).SetValue(window, false);
+            try
+            {
+                type.GetField("m_Strength", fields).SetValue(window, strength);
+                type.GetField("m_RemoveMode", fields).SetValue(window, remove);
+                type.GetField("m_Feather", fields).SetValue(window, 50f);
+                m_Session.vertices.elements = new[] { 0 };
+                m_Session.SelectBone(m_Session.mesh.bones[0], false);
+                var points = Enumerable.Repeat(new Vector2(1000, 1000), m_Session.mesh.vertexCount).ToArray(); points[0] = new Vector2(distance, 0);
+                type.GetMethod("Stamp", fields).Invoke(window, new object[] { points, Vector2.zero, 100f, alt });
+                Assert.That(m_Session.Values(0)[0], Is.EqualTo(.4f + expected).Within(.000001f));
+                Assert.That(m_Session.Values(1)[0], Is.EqualTo(.4f).Within(.000001f));
+                Assert.That(m_Session.Values(0).Sum(), Is.EqualTo(1).Within(.000001f));
+            }
+            finally
+            {
+                m_Session.cache.EndUndoOperation();
+                sessionField.SetValue(window, null);
+                Object.DestroyImmediate(window);
+            }
+        }
+
+        [Test]
+        public void EachWeightModeRemembersStrengthAndMigratesLegacyBrushStrength()
+        {
+            const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+            var type = typeof(SceneEditWeightsWindow);
+            var key = (string)type.GetProperty("PreferencesKey", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            var hadPreferences = EditorPrefs.HasKey(key); var previousPreferences = EditorPrefs.GetString(key);
+            var host = new GameObject("Weight Mode Strength Test");
+            var window = ScriptableObject.CreateInstance<SceneEditWeightsWindow>();
+            var sessionField = type.GetField("m_Session", fields);
+            Object.DestroyImmediate((SceneWeightSession)sessionField.GetValue(window));
+            sessionField.SetValue(window, m_Session);
+            type.GetField("m_DiscardOnClose", fields).SetValue(window, true);
+            type.GetField("m_SettingsLoaded", fields).SetValue(window, false);
+            try
+            {
+                var renderer = host.AddComponent<SpriteRenderer>(); renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                type.GetField("m_Renderer", fields).SetValue(window, renderer); type.GetField("m_Source", fields).SetValue(window, Source());
+                type.GetField("m_Direct", fields).SetValue(window, false); type.GetField("m_RemoveMode", fields).SetValue(window, false);
+                type.GetField("m_Strength", fields).SetValue(window, 50f);
+                type.GetField("m_DirectStrength", fields).SetValue(window, 100f);
+                type.GetField("m_AddStrength", fields).SetValue(window, 50f); type.GetField("m_RemoveStrength", fields).SetValue(window, 50f);
+                window.CreateGUI(); window.ShowPopup();
+                var mode = window.rootVisualElement.Q<PopupField<string>>("weightMode"); var strength = window.rootVisualElement.Q<Slider>("strength");
+                mode.value = "Direct"; strength.value = 33.25f;
+                mode.value = "Remove"; strength.value = 12.5f;
+                mode.value = "Add"; strength.value = 27.75f;
+                mode.value = "Direct"; Assert.AreEqual(33.25f, strength.value);
+                mode.value = "Remove"; Assert.AreEqual(12.5f, strength.value);
+                mode.value = "Add"; Assert.AreEqual(27.75f, strength.value);
+                window.position = new Rect(100, 100, 400, 450);
+                type.GetField("m_SettingsLoaded", fields).SetValue(window, true);
+                type.GetMethod("SaveWindowPreferences", fields).Invoke(window, null);
+                type.GetField("m_SettingsLoaded", fields).SetValue(window, false);
+                type.GetField("m_AddStrength", fields).SetValue(window, 0f);
+                type.GetMethod("LoadWindowPreferences", fields).Invoke(window, null);
+                Assert.AreEqual(33.25f, type.GetField("m_DirectStrength", fields).GetValue(window));
+                Assert.AreEqual(12.5f, type.GetField("m_RemoveStrength", fields).GetValue(window));
+                Assert.AreEqual(27.75f, type.GetField("m_AddStrength", fields).GetValue(window));
+                EditorPrefs.SetString(key, "{\"strength\":0.5,\"direct\":false,\"remove\":false}");
+                type.GetMethod("LoadWindowPreferences", fields).Invoke(window, null);
+                Assert.AreEqual(.5f, type.GetField("m_DirectStrength", fields).GetValue(window));
+                Assert.AreEqual(50f, type.GetField("m_AddStrength", fields).GetValue(window));
+                Assert.AreEqual(50f, type.GetField("m_RemoveStrength", fields).GetValue(window));
+                Assert.AreEqual(50f, type.GetField("m_Strength", fields).GetValue(window));
+            }
+            finally
+            {
+                type.GetField("m_SettingsLoaded", fields).SetValue(window, false);
+                sessionField.SetValue(window, null);
+                Object.DestroyImmediate(window); Object.DestroyImmediate(host);
+                if (hadPreferences) EditorPrefs.SetString(key, previousPreferences); else EditorPrefs.DeleteKey(key);
+            }
         }
 
         [Test]
@@ -489,7 +815,8 @@ namespace UnityEditor.U2D.Animation.Tests
         public void WindowResourcesMatchRequestedControls()
         {
             var tree = ResourceLoader.Load<VisualTreeAsset>("SkinningModule/SceneEditWeightsWindow.uxml").CloneTree();
-            foreach (var name in new[] { "strength", "size", "feather", "pieces", "overlay", "selected", "bind", "swap", "remove", "smooth", "auto", "weld", "bones", "updateBindings" }) Assert.IsNotNull(tree.Q(name), name);
+            foreach (var name in new[] { "strength", "size", "feather", "pieces", "overlay", "selected", "bind", "swap", "remove", "smooth", "auto", "weld", "bones", "updateBindings", "weightDecrease", "weightIncrease", "weightStep" }) Assert.IsNotNull(tree.Q(name), name);
+            Assert.AreEqual(5, tree.Q<FloatField>("weightStep").value);
             foreach (var name in new[] { "strength", "size", "feather" }) Assert.IsInstanceOf<Slider>(tree.Q(name), name);
             Assert.IsNull(tree.Q("influence")); Assert.IsNull(tree.Q("update"));
             foreach (var icon in new[] { "Weights", "Bind", "Smooth", "UpdateBind" }) Assert.IsNotNull(ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/" + icon + ".png"));

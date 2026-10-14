@@ -372,6 +372,21 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
+        internal void OffsetSelectedWeights(int[] bones, float amount)
+        {
+            if (!float.IsFinite(amount) || amount == 0 || vertices.Count == 0 || bones == null) return;
+            var locked = lockedBones;
+            var edited = bones.Where(i => i >= 0 && i < mesh.boneCount && !locked.Contains(i)).Distinct().ToArray();
+            var selected = targets;
+            if (edited.Length == 0 || selected.Length == 0) return;
+            using (cache.UndoScope("Offset Selected Bone Weights"))
+            {
+                Undo.RegisterCompleteObjectUndo(this, "Offset Selected Bone Weights");
+                foreach (var vertex in selected) Adjust(vertex, edited, amount);
+                Changed();
+            }
+        }
+
         internal void Adjust(int vertex, int[] bones, float amount, bool absolute = false)
         {
             if (!float.IsFinite(amount) || (!absolute && amount == 0)) return;
