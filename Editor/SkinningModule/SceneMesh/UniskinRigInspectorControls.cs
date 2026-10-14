@@ -42,7 +42,7 @@ namespace UnityEditor.U2D.Animation
         }
 
         static Texture2D LoadIcon(string name) => ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/" + name + ".png");
-        static bool IsPsb(Sprite sprite) => sprite != null &&
+        static bool IsPsb(Sprite sprite) => sprite != null && UniskinClippingMaskUtility.Find(sprite) == null &&
             UniskinRigUtility.SourcePath(sprite).EndsWith(".psb", StringComparison.OrdinalIgnoreCase);
 
         internal void Refresh(Sprite sprite, bool canEdit)

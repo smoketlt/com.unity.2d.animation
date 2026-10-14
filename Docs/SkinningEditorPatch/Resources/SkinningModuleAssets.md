@@ -30,6 +30,12 @@ Do not rename the UXML element unless all C# lookups, USS selectors, and metadat
 
 ## Panels
 
+Geometry selected/hovered dots use a shared neutral procedural texture cached by `SpriteMeshView.Styles`; drawing tints it with the live [Uniskin preference colors](../Subsystems/SkinningEditor/GeometryEditing.md#uniskin-preferences). Normal dots still use `dotCyan.png`. Existing `dotYellow.png` is retained for other consumers; no new imported bitmap is required.
+
+- `SceneMeshInspector.uss`: SpriteRenderer and Clipping Mask buttons reuse action heights, spacing and icon sizing. Background/state colors are left to each native Inspector host. Mask buttons intentionally retain their darker default appearance: attempts to force matching backgrounds and periodically clear inline colors were removed because they caused flicker. The mask editor does not write background colors or install pointer/focus color callbacks.
+
+- `SceneEditClippingMaskWindow.uxml`: dedicated vector contour popup with Modify/Create/Delete, New/Reset and one Symmetry/Deformed/Triangles/Masked row. Clipping-specific toggle margins keep the row compact. Masked switches staged stencil preview without saving geometry. It reuses `SceneEditMeshWindow.uss` for consistent colors and sizing; no Copy/Paste/Generate/Trace elements are included. Its separate `SceneEditClippingMaskWindow` host shares the mesh editing engine. See [Masking](../Subsystems/SkinningEditor/Masking.md).
+
 - `BoneIcons/*.png`: the user's 29 original transparent icon textures. `BoneIconPicker` presents 35 choices with four cardinal rotations each for Arrow and Direction, using `SceneEditBoneWindow.uss` for the compact seven-column popup matching Edit Bones dark colors and teal current tile. Preserve `boneIcon` and `boneIconImage` in the Edit Bones properties row. See [Bone Icons](../Subsystems/SkinningEditor/BoneIcons.md).
 
 - `SceneMeshIcons/Copy.png` and `Paste.png`: user-supplied icons for whole-mesh clipboard commands in Scene Edit Mesh. `SceneEditMeshWindow.uxml` adds `copy`, `paste` and a separate `pasteSettings` preview panel with a mirror toggle, English Scene placement/Enter/Escape instructions, Cancel and Apply controls. Scene handles provide translation and corner rotation; numeric transform fields have been removed.

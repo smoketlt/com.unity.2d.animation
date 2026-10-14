@@ -76,6 +76,8 @@ Scene Edit Mesh can install optional `newGeometryPreview`, `newGeometryVertexCre
 
 The optional `geometryVertexCreated`, `geometryEdgeCreated`, `geometryVerticesMoved` and `geometrySymmetryPreview` hooks extend symmetry to normal Create/Modify operations. Scene maps displayed coordinates back to source space and performs both sides in one session edit. The move hook runs before ordinary single-side collision checks because the session validates the entire mirrored selection. The shared intersection helper resolves both endpoints of an edge when both are selected. Callers without hooks retain the existing behavior.
 
+`geometryHoveredVertexPartner` supplies the source-mesh partner index for the fresh hovered vertex during drawing. Scene installs it for active non-New Symmetry and clears it otherwise. The controller draws both displayed vertex positions with the hover style, keeping selected vertices in the selection style. Matching is shared with paired edits, works with Deformed positions and does not alter selection or staged mesh data.
+
 `CompleteNewGeometry()` adds the closing edge, triangulates, clears selection, and signals `newGeometryCompleted`. `MeshTool` defers the public completion event until after `EditorGUI.EndChangeCheck()` has allowed `meshChanged` to fire.
 
 `DoCancelNewGeometry()` signals `newGeometryCanceled`; `MeshTool` records a pending cancel request and `SkinningModuleView` restores the pre-New snapshot before exiting back to `Modify`.

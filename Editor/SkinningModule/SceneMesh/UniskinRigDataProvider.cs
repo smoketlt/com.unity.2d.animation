@@ -59,6 +59,7 @@ namespace UnityEditor.U2D.Animation
     internal sealed class UniskinRigDataProvider : ISpriteEditorDataProvider, ISpriteMeshDataProvider, ISpriteBoneDataProvider
     {
         internal readonly UniskinRig rig;
+        internal readonly UniskinClippingMaskData clipping;
         readonly ISpriteEditorDataProvider m_Source;
         internal UniskinRigData data;
         readonly CharacterProvider m_Character;
@@ -73,9 +74,24 @@ namespace UnityEditor.U2D.Animation
             m_Character = data.hasCharacter ? new CharacterProvider(this) : null;
         }
 
+        internal UniskinRigDataProvider(UniskinClippingMaskData clipping, ISpriteEditorDataProvider source)
+        {
+            this.clipping = clipping;
+            rig = clipping.rig;
+            m_Source = source;
+            data = JsonUtility.FromJson<UniskinRigData>(clipping.authoringData);
+            if (data?.sprites == null || !data.hasCharacter) throw new InvalidOperationException("The clipping contour data is incomplete.");
+            // Contours not loaded during a domain reload still need corrected
+            // pixel-space skeleton coordinates when first opened for editing.
+            var borrowed = UniskinClippingMaskUtility.BorrowedBones(clipping, data.pixelsPerUnit, data.sprites[0].rect);
+            if (data.character.bones.Select(bone => bone.guid).SequenceEqual(borrowed.Select(bone => bone.guid)))
+                data.character.bones = borrowed;
+            m_Character = new CharacterProvider(this);
+        }
+
         public SpriteImportMode spriteImportMode => m_Source.spriteImportMode;
         public float pixelsPerUnit => data.pixelsPerUnit;
-        public UnityEngine.Object targetObject => rig;
+        public UnityEngine.Object targetObject => clipping != null ? (UnityEngine.Object)clipping : rig;
         public void InitSpriteEditorDataProvider() { }
         public SpriteRect[] GetSpriteRects() => UniskinRigData.Clone(data.sprites.Select(sprite => sprite.rect).ToArray());
         public void SetSpriteRects(SpriteRect[] rects)
@@ -92,7 +108,11 @@ namespace UnityEditor.U2D.Animation
         }
         public bool HasDataProvider(Type type) => type == typeof(ICharacterDataProvider) ? m_Character != null :
             type.IsInstanceOfType(this) || m_Source.HasDataProvider(type);
-        public void Apply() => UniskinRigUtility.Save(this);
+        public void Apply()
+        {
+            if (clipping != null) UniskinClippingMaskUtility.Save(this);
+            else UniskinRigUtility.Save(this);
+        }
         UniskinRigSpriteData Find(GUID id) => data.sprites.First(sprite => sprite.rect.spriteID == id);
         public List<SpriteBone> GetBones(GUID id) => UniskinRigData.Clone(Find(id).bones).ToList();
         public void SetBones(GUID id, List<SpriteBone> bones) => Find(id).bones = UniskinRigData.Clone(bones.ToArray());

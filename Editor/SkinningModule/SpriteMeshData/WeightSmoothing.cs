@@ -18,25 +18,32 @@ namespace UnityEditor.U2D.Animation
 
             AddWeightSliderSmoothEdges(neighbors, mesh.edges, mesh.vertices);
             AddWeightSliderSmoothEdges(neighbors, mesh.outlineEdges, mesh.vertices);
+            // Authored edges and outline edges need not contain interior triangle connections.
+            for (int i = 0; i + 2 < mesh.indices.Length; i += 3)
+            {
+                AddWeightSliderSmoothEdge(neighbors, mesh.indices[i], mesh.indices[i + 1], mesh.vertices);
+                AddWeightSliderSmoothEdge(neighbors, mesh.indices[i + 1], mesh.indices[i + 2], mesh.vertices);
+                AddWeightSliderSmoothEdge(neighbors, mesh.indices[i + 2], mesh.indices[i], mesh.vertices);
+            }
             return neighbors;
         }
 
         private static void AddWeightSliderSmoothEdges(List<Neighbor>[] neighbors, int2[] edges, Vector2[] vertices)
         {
             for (int i = 0; i < edges.Length; ++i)
-            {
-                int a = edges[i].x;
-                int b = edges[i].y;
+                AddWeightSliderSmoothEdge(neighbors, edges[i].x, edges[i].y, vertices);
+        }
 
-                if (a < 0 || b < 0 || a >= neighbors.Length || b >= neighbors.Length || a == b)
-                    continue;
+        private static void AddWeightSliderSmoothEdge(List<Neighbor>[] neighbors, int a, int b, Vector2[] vertices)
+        {
+            if (a < 0 || b < 0 || a >= neighbors.Length || b >= neighbors.Length || a == b)
+                return;
 
-                float distance = Vector2.Distance(vertices[a], vertices[b]);
-                float weight = 1f / Mathf.Max(distance, kWeightSliderSmoothEdgeMinDistance);
+            float distance = Vector2.Distance(vertices[a], vertices[b]);
+            float weight = 1f / Mathf.Max(distance, kWeightSliderSmoothEdgeMinDistance);
 
-                AddNeighbor(neighbors[a], b, weight);
-                AddNeighbor(neighbors[b], a, weight);
-            }
+            AddNeighbor(neighbors[a], b, weight);
+            AddNeighbor(neighbors[b], a, weight);
         }
 
         private static void AddNeighbor(List<Neighbor> neighbors, int vertexIndex, float weight)

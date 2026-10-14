@@ -11,9 +11,6 @@ namespace UnityEditor.U2D.Animation
         readonly int m_CreateEdgeDragHashCode = "CreateEdgeDrag".GetHashCode();
         const string kDeleteCommandName = "Delete";
         const string kSoftDeleteCommandName = "SoftDelete";
-        static readonly Color kEdgeColor = Color.cyan;
-        static readonly Color kEdgeHoveredColor = Color.yellow;
-        static readonly Color kEdgeSelectedColor = Color.yellow;
         const float kEdgeWidth = 2f;
         const float kVertexHitRadius = 16f;
         const float kScenePickDistance = 5f;
@@ -27,6 +24,7 @@ namespace UnityEditor.U2D.Animation
 
         private class Styles
         {
+            static Texture2D s_PointTexture;
             public readonly GUIStyle pointNormalStyle;
             public readonly GUIStyle pointHoveredStyle;
             public readonly GUIStyle pointSelectedStyle;
@@ -34,8 +32,8 @@ namespace UnityEditor.U2D.Animation
             public Styles()
             {
                 Texture2D pointNormal = ResourceLoader.Load<Texture2D>("SkinningModule/dotCyan.png");
-                Texture2D pointHovered = ResourceLoader.Load<Texture2D>("SkinningModule/dotYellow.png");
-                Texture2D pointSelected = ResourceLoader.Load<Texture2D>("SkinningModule/dotYellow.png");
+                Texture2D pointHovered = PointTexture();
+                Texture2D pointSelected = PointTexture();
 
                 pointNormalStyle = new GUIStyle();
                 pointNormalStyle.normal.background = pointNormal;
@@ -51,6 +49,31 @@ namespace UnityEditor.U2D.Animation
                 pointSelectedStyle.normal.background = pointSelected;
                 pointSelectedStyle.fixedWidth = 20f;
                 pointSelectedStyle.fixedHeight = 20f;
+            }
+
+            static Texture2D PointTexture()
+            {
+                if (s_PointTexture != null) return s_PointTexture;
+                const int size = 32;
+                s_PointTexture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+                {
+                    name = "Mesh vertex color mask",
+                    hideFlags = HideFlags.HideAndDontSave,
+                    filterMode = FilterMode.Bilinear,
+                    wrapMode = TextureWrapMode.Clamp
+                };
+                var pixels = new Color[size * size];
+                for (var y = 0; y < size; ++y)
+                    for (var x = 0; x < size; ++x)
+                    {
+                        float radius = new Vector2(x - 15.5f, y - 15.5f).magnitude;
+                        var color = Color.Lerp(Color.white, new Color(0.35f, 0.35f, 0.35f), Mathf.Clamp01(radius - 11.5f));
+                        color.a = Mathf.Clamp01(15.5f - radius);
+                        pixels[y * size + x] = color;
+                    }
+                s_PointTexture.SetPixels(pixels);
+                s_PointTexture.Apply(false, true);
+                return s_PointTexture;
             }
         }
 
@@ -450,7 +473,7 @@ namespace UnityEditor.U2D.Animation
 
         public void DrawVertexHovered(Vector2 position)
         {
-            DrawVertexHandle(position, styles.pointHoveredStyle);
+            DrawVertexHandle(position, styles.pointHoveredStyle, MeshEditorSettings.hoveredVertexColor);
         }
 
         public void DrawVertexHovered(Vector2 position, EditableBoneWeight weight)
@@ -466,7 +489,7 @@ namespace UnityEditor.U2D.Animation
 
         public void DrawVertexSelected(Vector2 position)
         {
-            DrawVertexHandle(position, styles.pointSelectedStyle);
+            DrawVertexHandle(position, styles.pointSelectedStyle, MeshEditorSettings.selectedVertexColor);
         }
 
         public void DrawVertexSelected(Vector2 position, EditableBoneWeight weight)
@@ -481,6 +504,19 @@ namespace UnityEditor.U2D.Animation
         }
 
         void DrawVertexHandle(Vector2 position, GUIStyle style)
+        {
+            DrawVertexHandle(position, style, Color.white);
+        }
+
+        void DrawVertexHandle(Vector2 position, GUIStyle style, Color color)
+        {
+            var previous = GUI.color;
+            GUI.color = previous * color;
+            try { DrawVertexHandleGUI(position, style); }
+            finally { GUI.color = previous; }
+        }
+
+        void DrawVertexHandleGUI(Vector2 position, GUIStyle style)
         {
             if (!useSceneHandles)
             {
@@ -521,17 +557,17 @@ namespace UnityEditor.U2D.Animation
 
         public void DrawEdge(Vector2 startPosition, Vector2 endPosition)
         {
-            DrawEdge(startPosition, endPosition, kEdgeColor);
+            DrawEdge(startPosition, endPosition, MeshEditorSettings.meshLineColor);
         }
 
         public void DrawEdgeHovered(Vector2 startPosition, Vector2 endPosition)
         {
-            DrawEdge(startPosition, endPosition, kEdgeHoveredColor);
+            DrawEdge(startPosition, endPosition, MeshEditorSettings.hoveredVertexColor);
         }
 
         public void DrawEdgeSelected(Vector2 startPosition, Vector2 endPosition)
         {
-            DrawEdge(startPosition, endPosition, kEdgeSelectedColor);
+            DrawEdge(startPosition, endPosition, MeshEditorSettings.selectedVertexColor);
         }
 
         public bool IsActionActive(MeshEditorAction action)

@@ -16,6 +16,27 @@ namespace UnityEditor.U2D.Animation.Tests
 {
     internal class SceneMeshEditingTests
     {
+        sealed class MeshPreferencesScope : IDisposable
+        {
+            readonly string[] m_Keys = { MeshEditorSettings.kSelectedVertexColorKey, MeshEditorSettings.kHoveredVertexColorKey, MeshEditorSettings.kMeshLineColorKey };
+            readonly string[] m_Colors;
+            readonly bool m_HadThreshold = EditorPrefs.HasKey(MeshEditorSettings.kSymmetryThresholdKey);
+            readonly float m_Threshold = EditorPrefs.GetFloat(MeshEditorSettings.kSymmetryThresholdKey);
+            public MeshPreferencesScope()
+            {
+                m_Colors = m_Keys.Select(key => EditorPrefs.HasKey(key) ? EditorPrefs.GetString(key) : null).ToArray();
+                MeshEditorSettings.ResetDefaults();
+            }
+            public void Dispose()
+            {
+                for (int i = 0; i < m_Keys.Length; ++i)
+                    if (m_Colors[i] == null) EditorPrefs.DeleteKey(m_Keys[i]);
+                    else EditorPrefs.SetString(m_Keys[i], m_Colors[i]);
+                if (m_HadThreshold) EditorPrefs.SetFloat(MeshEditorSettings.kSymmetryThresholdKey, m_Threshold);
+                else EditorPrefs.DeleteKey(MeshEditorSettings.kSymmetryThresholdKey);
+            }
+        }
+
         sealed class DragGUI : IGUIWrapper
         {
             readonly Dictionary<int, int> m_Ids = new Dictionary<int, int>();
@@ -668,6 +689,139 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void EscapeDuringAxisDragRestoresNewHullWithoutCancelingNew()
+        {
+            var window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(SceneEditMeshWindow);
+            var session = (SceneMeshSession)type.GetField("m_Session", flags).GetValue(window);
+            try
+            {
+                session.mesh.SetFrame(new Rect(0, 0, 32, 32));
+                session.BeginNew();
+                session.SetSymmetry(true);
+                session.AddSymmetryVertex(new Vector2(16, 32));
+                session.AddSymmetryVertex(new Vector2(4, 24));
+                var mesh = JsonUtility.ToJson(session.mesh);
+                var backup = EditorJsonUtility.ToJson(session);
+                Undo.IncrementCurrentGroup();
+                type.GetField("m_SymmetryAxisUndoGroup", flags).SetValue(window, Undo.GetCurrentGroup());
+                type.GetField("m_SymmetryAxisBackup", flags).SetValue(window, backup);
+                type.GetField("m_SymmetryAxisControl", flags).SetValue(window, 12345);
+                session.SetSymmetryAxis(18);
+                Assert.IsTrue(window.HandleSceneEscape(new Event { type = EventType.KeyDown, keyCode = KeyCode.Escape }));
+                Assert.AreEqual(16, session.symmetryAxis);
+                Assert.AreEqual(mesh, JsonUtility.ToJson(session.mesh));
+                Assert.AreEqual(3, session.mode);
+                Assert.IsFalse(session.isUndoOperationSet);
+                Assert.AreEqual(0, type.GetField("m_SymmetryAxisControl", flags).GetValue(window));
+                // A subsequent drag must use the restored authored half, not the canceled preview.
+                session.SetSymmetryAxis(17);
+                Assert.AreEqual(new Vector2(30, 24), session.mesh.vertices[2]);
+            }
+            finally
+            {
+                Undo.ClearUndo(session);
+                Object.DestroyImmediate(window);
+            }
+        }
+
+        [Test]
+        public void MovingSymmetryAxisPreservesExistingGeometryAndUsesNewPairsWithUndo()
+        {
+            var session = Quad();
+            try
+            {
+                session.SetSymmetry(true);
+                var original = JsonUtility.ToJson(session.mesh);
+                bool dirty = session.dirty;
+                Undo.IncrementCurrentGroup();
+                session.SetSymmetryAxis(12);
+                session.SetSymmetryAxis(10);
+                session.EndUndoOperation();
+                Assert.AreEqual(original, JsonUtility.ToJson(session.mesh));
+                Assert.AreEqual(dirty, session.dirty);
+                Assert.AreEqual(new Vector2(16, 8), session.MirrorHullPoint(new Vector2(4, 8)));
+                Undo.PerformUndo();
+                Assert.AreEqual(16, session.symmetryAxis);
+                Undo.PerformRedo();
+                Assert.AreEqual(10, session.symmetryAxis);
+                session.CreateSymmetricGeometry(new Vector2(6, 12));
+                Assert.GreaterOrEqual(session.FindSymmetryVertex(new Vector2(14, 12)), 0);
+                session.EndUndoOperation();
+                session.SetSymmetryAxis(20);
+                session.EndUndoOperation();
+                session.CreateSymmetricGeometry(new Vector2(14, 12));
+                int left = session.FindSymmetryVertex(new Vector2(14, 12));
+                // Reaching the unsplit outline is still rejected by the shared collision check.
+                var beforeMove = JsonUtility.ToJson(session.mesh);
+                Assert.IsFalse(session.MoveSymmetricGeometry(new[] { left }, new[] { new Vector2(0, 12) }));
+                Assert.AreEqual(beforeMove, JsonUtility.ToJson(session.mesh));
+                Assert.IsTrue(session.MoveSymmetricGeometry(new[] { left }, new[] { new Vector2(9, 12) }));
+                Assert.GreaterOrEqual(session.FindSymmetryVertex(new Vector2(9, 12)), 0);
+                Assert.GreaterOrEqual(session.FindSymmetryVertex(new Vector2(31, 12)), 0);
+                SceneMeshSource.Validate(session.mesh);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void MovingNewSymmetryAxisPreservesAuthoredSideAndKeepsMirrorsInsideFrame()
+        {
+            var session = Quad();
+            try
+            {
+                session.BeginNew();
+                session.SetSymmetry(true);
+                session.AddSymmetryVertex(new Vector2(16, 32));
+                session.AddSymmetryVertex(new Vector2(4, 24));
+                session.AddSymmetryVertex(new Vector2(4, 8));
+                var before = JsonUtility.ToJson(session.mesh);
+                Undo.IncrementCurrentGroup();
+                session.SetSymmetryAxis(30);
+                session.EndUndoOperation();
+                Assert.AreEqual(18, session.symmetryAxis);
+                CollectionAssert.AreEqual(new[] { new Vector2(18, 32), new Vector2(4, 24),
+                    new Vector2(4, 8), new Vector2(32, 8), new Vector2(32, 24) }, session.mesh.vertices);
+                Assert.IsEmpty(session.mesh.indices);
+                Undo.PerformUndo();
+                Assert.AreEqual(before, JsonUtility.ToJson(session.mesh));
+                Assert.AreEqual(16, session.symmetryAxis);
+                Undo.PerformRedo();
+                session.SetSymmetryAxis(18);
+                session.AddSymmetryVertex(new Vector2(18, 0));
+                Assert.AreEqual(0, session.mode);
+                SceneMeshSource.Validate(session.mesh);
+                session.SetSymmetryAxis(float.NaN);
+                Assert.AreEqual(18, session.symmetryAxis);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void OffsetSymmetryNewClampsClicksToReflectableBoundsAndRetainsAxisAcrossModes()
+        {
+            var session = Quad();
+            try
+            {
+                session.SetSymmetryAxis(24);
+                session.EndUndoOperation();
+                session.BeginNew();
+                session.SetSymmetry(true);
+                session.AddSymmetryVertex(new Vector2(0, 28));
+                CollectionAssert.AreEqual(new[] { new Vector2(16, 28), new Vector2(32, 28) }, session.mesh.vertices);
+                session.SetSymmetry(false);
+                Assert.AreEqual(24, session.symmetryAxis);
+                session.CancelNew();
+                Assert.AreEqual(24, session.symmetryAxis);
+                session.SetSymmetryAxis(16);
+                session.EndUndoOperation();
+                Assert.AreEqual(16, session.symmetryAxis);
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
         public void SymmetricNewHullUsesOneAxisVertexAndClosesInContourOrder()
         {
             var session = Quad();
@@ -812,6 +966,145 @@ namespace UnityEditor.U2D.Animation.Tests
                 SceneMeshSource.Validate(session.mesh);
             }
             finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void UniskinMeshPreferencesPersistValidateAndResetWithoutChangingGeometry()
+        {
+            using var preferences = new MeshPreferencesScope();
+            Assert.AreEqual("Preferences/Uniskin", new UserSettings().settingsPath);
+            Assert.AreEqual(2f, MeshEditorSettings.symmetryThreshold);
+            Assert.AreEqual(Color.white, MeshEditorSettings.selectedVertexColor);
+            Assert.AreEqual(new Color(1f, 1f, 0f), MeshEditorSettings.hoveredVertexColor);
+            Assert.AreEqual(Color.cyan, MeshEditorSettings.meshLineColor);
+            MeshEditorSettings.symmetryThreshold = 3.5f;
+            Assert.AreEqual(3.5f, EditorPrefs.GetFloat(MeshEditorSettings.kSymmetryThresholdKey));
+            MeshEditorSettings.selectedVertexColor = Color.red;
+            MeshEditorSettings.hoveredVertexColor = Color.green;
+            MeshEditorSettings.meshLineColor = Color.blue;
+            Assert.AreEqual(Color.red, MeshEditorSettings.selectedVertexColor);
+            Assert.AreEqual(Color.green, MeshEditorSettings.hoveredVertexColor);
+            Assert.AreEqual(Color.blue, MeshEditorSettings.meshLineColor);
+            MeshEditorSettings.symmetryThreshold = -1f;
+            Assert.AreEqual(0f, MeshEditorSettings.symmetryThreshold);
+            MeshEditorSettings.symmetryThreshold = float.NaN;
+            Assert.AreEqual(2f, MeshEditorSettings.symmetryThreshold);
+            EditorPrefs.SetFloat(MeshEditorSettings.kSymmetryThresholdKey, float.PositiveInfinity);
+            Assert.AreEqual(2f, MeshEditorSettings.symmetryThreshold);
+            EditorPrefs.SetString(MeshEditorSettings.kMeshLineColorKey, "invalid");
+            Assert.AreEqual(Color.cyan, MeshEditorSettings.meshLineColor);
+            MeshEditorSettings.ResetDefaults();
+            Assert.AreEqual(Color.white, MeshEditorSettings.selectedVertexColor);
+            Assert.AreEqual(new Color(1f, 1f, 0f), MeshEditorSettings.hoveredVertexColor);
+            Assert.AreEqual(Color.cyan, MeshEditorSettings.meshLineColor);
+            Assert.AreEqual(2f, MeshEditorSettings.symmetryThreshold);
+        }
+
+        [Test]
+        public void SymmetricModifyMatchesApproximatePartnersWithoutRelaxingCreationPrecision()
+        {
+            using var preferences = new MeshPreferencesScope();
+            var session = Quad();
+            try
+            {
+                session.SetSymmetry(true);
+                session.CreateSymmetricGeometry(new Vector2(8, 12));
+                int left = session.FindSymmetryVertex(new Vector2(8, 12));
+                int right = session.FindSymmetryVertex(new Vector2(24, 12));
+                session.mesh.vertices[right] = new Vector2(24.6f, 12.4f);
+                Assert.AreEqual(-1, session.FindSymmetryVertex(new Vector2(24, 12)), "Creation lookup remains precise.");
+                Assert.AreEqual(right, session.FindSymmetryPartner(left));
+                Assert.AreEqual(left, session.FindSymmetryPartner(right));
+                Assert.AreEqual(-1, session.FindSymmetryPartner(-1));
+                CollectionAssert.AreEquivalent(new[] { left, right }, session.SymmetrySelection(new[] { left }));
+                session.EndUndoOperation();
+                var before = JsonUtility.ToJson(session.mesh);
+                Undo.IncrementCurrentGroup();
+                Assert.IsTrue(session.MoveSymmetricGeometry(new[] { left, right },
+                    new[] { new Vector2(10, 14), new Vector2(26.6f, 14.4f) }));
+                session.EndUndoOperation();
+                Assert.AreEqual(new Vector2(10, 14), session.mesh.vertices[left]);
+                Assert.AreEqual(new Vector2(22, 14), session.mesh.vertices[right]);
+                Undo.PerformUndo();
+                Assert.AreEqual(before, JsonUtility.ToJson(session.mesh));
+            }
+            finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
+        }
+
+        [TestCase(32f)]
+        [TestCase(1000f)]
+        public void SymmetryPartnersRespectConfiguredThresholdAndRejectUnmatchedOrAmbiguousVertices(float width)
+        {
+            using var preferences = new MeshPreferencesScope();
+            var session = ScriptableObject.CreateInstance<SceneMeshSession>();
+            try
+            {
+                session.mesh.SetFrame(new Rect(0, 0, width, width));
+                float tolerance = Mathf.Max(1f, width * 0.01f);
+                MeshEditorSettings.symmetryThreshold = tolerance;
+                var left = new Vector2(width * 0.25f, width * 0.4f);
+                var right = new Vector2(width * 0.75f, left.y);
+                session.mesh.AddVertex(left, default);
+                session.mesh.AddVertex(right + new Vector2(0, tolerance * 0.75f), default);
+                Assert.AreEqual(1, session.FindSymmetryPartner(0));
+                MeshEditorSettings.symmetryThreshold = 0f;
+                Assert.AreEqual(-1, session.FindSymmetryPartner(0), "Zero threshold uses precise matching.");
+                MeshEditorSettings.symmetryThreshold = tolerance;
+                session.mesh.vertices[1] = right + new Vector2(0, tolerance * 1.25f);
+                Assert.AreEqual(-1, session.FindSymmetryPartner(0));
+                session.mesh.vertices[1] = right;
+                session.mesh.AddVertex(left + new Vector2(0, tolerance * 0.25f), default);
+                Assert.AreEqual(1, session.FindSymmetryPartner(0));
+                Assert.AreEqual(0, session.FindSymmetryPartner(1));
+                Assert.AreEqual(-1, session.FindSymmetryPartner(2), "A second nearby handle cannot share the partner.");
+                session.mesh.AddVertex(new Vector2(width * 0.5f - 0.1f, width * 0.8f), default);
+                Assert.AreEqual(-1, session.FindSymmetryPartner(3), "A near-axis vertex cannot pair with itself.");
+                session.mesh.AddVertex(new Vector2(width * 0.5f, width * 0.9f), default);
+                Assert.AreEqual(4, session.FindSymmetryPartner(4));
+            }
+            finally { Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void SymmetryHoverUsesSourcePartnersAndClearsWhenDisabledOrInNew()
+        {
+            using var preferences = new MeshPreferencesScope();
+            var session = Quad();
+            var window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
+            try
+            {
+                session.SetSymmetry(true);
+                session.CreateSymmetricGeometry(new Vector2(8, 12));
+                int left = session.FindSymmetryVertex(new Vector2(8, 12));
+                int right = session.FindSymmetryVertex(new Vector2(24, 12));
+                session.mesh.vertices[right] += new Vector2(0.5f, 0.25f);
+                session.mesh.vertexWeights[left].SetFromBoneWeight(new BoneWeight { boneIndex0 = 0, weight0 = 1 });
+                session.mesh.vertexWeights[right].SetFromBoneWeight(new BoneWeight { boneIndex0 = 1, weight0 = 1 });
+                var deformation = new SceneMeshDeformation(session.mesh, new[] {
+                    Matrix4x4.Translate(new Vector3(2, 3)), Matrix4x4.Translate(new Vector3(-4, 5)) });
+                var controller = new SpriteMeshController();
+                const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                typeof(SceneEditMeshWindow).GetField("m_Session", flags).SetValue(window, session);
+                typeof(SceneEditMeshWindow).GetField("m_Controller", flags).SetValue(window, controller);
+                var configure = typeof(SceneEditMeshWindow).GetMethod("ConfigureSymmetryEditing", flags);
+                configure.Invoke(window, new object[] { deformation });
+                Assert.AreEqual(right, controller.geometryHoveredVertexPartner(left));
+                Assert.AreEqual(left, controller.geometryHoveredVertexPartner(right));
+                Assert.AreNotEqual(session.mesh.vertices[right], deformation.mesh.vertices[right]);
+                session.symmetry = false;
+                configure.Invoke(window, new object[] { deformation });
+                Assert.IsNull(controller.geometryHoveredVertexPartner);
+                session.symmetry = true;
+                session.mode = 3;
+                configure.Invoke(window, new object[] { null });
+                Assert.IsNull(controller.geometryHoveredVertexPartner);
+            }
+            finally
+            {
+                typeof(SceneEditMeshWindow).GetField("m_Session", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, null);
+                Object.DestroyImmediate(window);
+                Undo.ClearUndo(session); Object.DestroyImmediate(session);
+            }
         }
 
         [Test]

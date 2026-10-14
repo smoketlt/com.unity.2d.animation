@@ -3,6 +3,7 @@ using System.Linq;
 using UnityEditor.UIElements;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
+using UnityEngine.U2D.Animation;
 using UnityEngine.UIElements;
 
 namespace UnityEditor.U2D.Animation
@@ -76,6 +77,13 @@ namespace UnityEditor.U2D.Animation
                     throw new InvalidOperationException("Select a SpriteRenderer with an imported Sprite in the scene.");
                 if (EditorApplication.isPlayingOrWillChangePlaymode)
                     throw new InvalidOperationException("Bone editing is available in Edit Mode.");
+                if (UniskinClippingMaskUtility.Find(renderer.sprite) != null)
+                {
+                    var clipping = renderer.GetComponentInParent<UniskinClippingMask>();
+                    renderer = clipping != null && clipping.character != null ? clipping.character.renderers.FirstOrDefault(item => item != null && item.sprite != null) : null;
+                    if (renderer == null) throw new InvalidOperationException("Edit bones on the contour's character root.");
+                    skeletonOnly = new SceneMeshSource(renderer.sprite).provider.GetDataProvider<ICharacterDataProvider>() != null;
+                }
                 var path = UniskinRigUtility.SourcePath(renderer.sprite);
                 if (SkinningModule.IsEditingAsset(path))
                     throw new InvalidOperationException("Close Skinning Editor for this asset before opening Edit Bones.");

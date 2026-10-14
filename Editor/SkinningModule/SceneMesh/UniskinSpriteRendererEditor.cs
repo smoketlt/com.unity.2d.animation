@@ -97,7 +97,8 @@ namespace Fedorov.Uniskin
                 var path = sprite != null ? AssetDatabase.GetAssetPath(sprite) : null;
                 var hash = !string.IsNullOrEmpty(path) ? AssetDatabase.GetAssetDependencyHash(path) : default;
                 var rig = UniskinRigUtility.Find(sprite);
-                var revision = rig != null ? rig.revision : -1;
+                var clipping = UniskinClippingMaskUtility.Find(sprite);
+                var revision = clipping != null ? clipping.revision : rig != null ? rig.revision : -1;
                 if (sprite != m_CachedSprite || hash != m_CachedHash || revision != m_CachedRigRevision)
                 {
                     m_CachedRigRevision = revision;
@@ -111,7 +112,7 @@ namespace Fedorov.Uniskin
                 var edit = m_HasMesh || SceneEditMeshWindow.IsEditingRenderer(renderer);
                 label.text = edit ? "Edit Mesh" : "Create Mesh";
                 button.SetEnabled(targets.Length == 1 && m_Supported && !EditorApplication.isPlayingOrWillChangePlaymode);
-                boneButton.SetEnabled(targets.Length == 1 && m_Supported && !EditorApplication.isPlayingOrWillChangePlaymode);
+                boneButton.SetEnabled(targets.Length == 1 && m_Supported && clipping == null && !EditorApplication.isPlayingOrWillChangePlaymode);
                 weightsButton.SetEnabled(targets.Length == 1 && m_Supported && m_HasMesh && !EditorApplication.isPlayingOrWillChangePlaymode);
                 rigControls.Refresh(sprite, targets.Length == 1 && m_Supported);
                 icon.image = ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/" + (edit ? "EditMesh" : "CreateMesh") + ".png");

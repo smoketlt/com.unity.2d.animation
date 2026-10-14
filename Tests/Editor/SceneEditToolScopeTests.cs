@@ -62,6 +62,17 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void CustomToolCategoryRestoresAGlobalTool()
+        {
+            UnityEditor.Tools.current = Tool.Move;
+            m_Scope.Hide();
+            typeof(SceneEditToolScope).GetField("m_PreviousTool", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(m_Scope, Tool.Custom);
+            m_Scope.Restore();
+            Assert.AreEqual(Tool.Move, UnityEditor.Tools.current);
+        }
+
+        [Test]
         public void ReleasedScopeCapturesFreshStateWhenEditingResumes()
         {
             UnityEditor.Tools.current = Tool.Rotate;

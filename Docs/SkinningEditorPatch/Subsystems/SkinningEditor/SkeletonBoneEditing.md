@@ -80,7 +80,7 @@ The toolbar icon is a separate UI resource:
 
 ## Bone Display Size
 
-`Preferences > 2D > Animation > Bone Size` controls the screen-space size of Skinning Editor bones and Sprite Skin Scene view gizmos. The user preference defaults to `1.0` and is clamped to `0.25-2.0`.
+`Preferences > Uniskin > Bone Size` controls the screen-space size of Skinning Editor bones and Sprite Skin Scene view gizmos. The user preference defaults to `1.0` and is clamped to `0.25-2.0`. Existing values from the former `2D > Animation` page are retained.
 
 The scale applies immediately to joint circles, textured body widths, fixed head/end-cap lengths, and the minimum projected length required to draw the textured body. It does not modify skeleton geometry, serialized bone data, or picking areas, so small displayed bones remain easy to select.
 
@@ -94,7 +94,7 @@ Scene view Sprite Skin bone gizmos use `SpriteBone.color` for the normal bone bo
 
 Scene bone gizmos additionally collect uniquely resolved unbound bones from the selected character's full source skeleton, including characters whose meshes do not yet have SpriteSkin bindings. Their local lengths are source pixels divided by the source data provider's PPU, matching generated bone Transforms. Do not use runtime Sprite PPU: texture downscaling can reduce it without changing the character hierarchy. Existing bound SpriteSkin gizmos keep their runtime lengths and take precedence, so bones are not drawn twice. The unbound cache refreshes on selection/source reimport, reads live Transforms and respects the Scene View Gizmos toggle. Scene Edit Bone/Weights hosts continue to suppress these native gizmos while their own drawing is active. This display support does not bind bones or modify saved weights.
 
-`Preferences > 2D > Animation` exposes two user-specific color preferences stored in `EditorPrefs`:
+`Preferences > Uniskin` exposes two user-specific color preferences stored in `EditorPrefs`:
 
 - `Default Bone Color` controls the color assigned to newly created bones and defaults to `#5B729A`. Changing it does not recolor existing bones.
 - `Selected Bone Color` controls the fill color of selected Sprite Skin bones in the Scene view and defaults to white.

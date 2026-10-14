@@ -24,7 +24,15 @@ namespace UnityEditor.U2D.Animation
         {
             if (!m_Active) return false;
             UnityEditor.Tools.hidden = m_PreviousHidden;
-            if (UnityEditor.Tools.current == Tool.None) UnityEditor.Tools.current = m_PreviousTool;
+            if (UnityEditor.Tools.current == Tool.None)
+            {
+                // Tool.Custom is a category, not the identity of the entry tool.
+                // Assigning it can revive a stale component tool (e.g. Light Probes)
+                // whose target was destroyed while the popup was open.
+                if (m_PreviousTool == Tool.Custom)
+                    EditorTools.ToolManager.RestorePreviousPersistentTool();
+                else UnityEditor.Tools.current = m_PreviousTool;
+            }
             m_Active = false;
             return true;
         }

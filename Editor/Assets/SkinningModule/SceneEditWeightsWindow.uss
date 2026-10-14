@@ -35,5 +35,5 @@
 .weight-bone-row .unity-base-slider__dragger { visibility: hidden; }
 .weight-bone-row .unity-base-slider__text-field { height: 20px; }
 .uniskin-weights-window #status { white-space: normal; color: #9099A4; font-size: 10px; margin-top: 2px; }
-.uniskin-weights-window #bindPulse { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background-color: rgba(40, 220, 190, 0.35); }
+.uniskin-weights-window #bindPulse, .uniskin-weights-window #weldPulse { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background-color: rgba(40, 220, 190, 0.35); }
 .uniskin-weights-window #updateBindings { height: 30px; min-height: 30px; }

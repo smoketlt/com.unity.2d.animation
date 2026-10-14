@@ -10,6 +10,8 @@ namespace UnityEditor.U2D.Animation
     internal sealed class SceneWeightSession : ScriptableObject
     {
         [SerializeField] SceneBoneSession m_Context;
+        [SerializeField] SceneBoneSession m_WeldContext;
+        [SerializeField] Matrix4x4 m_WeldTargetMatrix;
         [SerializeField] string m_Saved;
         [SerializeField] string m_Fingerprint;
         [SerializeField] List<string> m_Locked = new List<string>();
@@ -88,6 +90,21 @@ namespace UnityEditor.U2D.Animation
             m_Context = CreateInstance<SceneBoneSession>();
             m_Context.hideFlags = HideFlags.HideAndDontSave;
             m_Context.Load(sprite, source);
+            if (m_WeldContext != null) DestroyImmediate(m_WeldContext);
+            m_WeldContext = null;
+            if (source.clipping != null)
+            {
+                var contour = source.clipping;
+                var rigSource = new SceneMeshSource(contour.source);
+                m_WeldContext = CreateInstance<SceneBoneSession>();
+                m_WeldContext.hideFlags = HideFlags.HideAndDontSave;
+                m_WeldContext.Load(contour.source, rigSource);
+                // Contour pixels -> contour plane -> rig plane -> character pixels.
+                m_WeldTargetMatrix = Matrix4x4.Scale(Vector3.one * contour.rig.pixelsPerUnit) *
+                    Matrix4x4.Translate(-contour.rig.rootOffset) * contour.rigToContour.inverse *
+                    Matrix4x4.Scale(Vector3.one / source.provider.pixelsPerUnit) *
+                    Matrix4x4.Translate(-Vector2.Scale(source.rect.rect.size, source.rect.pivot));
+            }
             m_BindingPose = SceneMeshBindingPose.Read(source.userData, m_Context.spriteId);
             m_HasBindingPose = m_BindingPose != null;
             var saved = ReadBindings(source.userData).sprites.FirstOrDefault(item => item.id == m_Context.spriteId);
@@ -228,8 +245,15 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        internal SpriteCache[] weldSources => !cache.hasCharacter ? Array.Empty<SpriteCache>() : cache.character.parts
-            .Select(part => part.sprite).Where(sprite => sprite != cache.selectedSprite && CanWeld(sprite)).ToArray();
+        internal SpriteCache[] weldSources
+        {
+            get
+            {
+                var donorCache = m_WeldContext != null ? m_WeldContext.cache : cache;
+                return !donorCache.hasCharacter ? Array.Empty<SpriteCache>() : donorCache.character.parts
+                    .Select(part => part.sprite).Where(sprite => sprite != cache.selectedSprite && CanWeld(sprite)).ToArray();
+            }
+        }
 
         bool CanWeld(SpriteCache source)
         {
@@ -251,7 +275,7 @@ namespace UnityEditor.U2D.Animation
             sourceMesh.ClearVertexPositionOverride();
             mesh.ClearVertexPositionOverride();
             var sourceMatrix = source.GetCharacterPart().localToWorldMatrix;
-            var targetMatrix = cache.selectedSprite.GetCharacterPart().localToWorldMatrix;
+            var targetMatrix = m_WeldContext != null ? m_WeldTargetMatrix : cache.selectedSprite.GetCharacterPart().localToWorldMatrix;
             var positions = sourceMesh.vertices.Select(position => (Vector2)sourceMatrix.MultiplyPoint3x4(position)).ToArray();
             var updates = new List<(int vertex, float[] values)>();
             var locked = lockedBones;
@@ -491,6 +515,10 @@ namespace UnityEditor.U2D.Animation
             catch (Exception) { return new Bindings(); }
         }
 
-        void OnDestroy() { if (m_Context != null) DestroyImmediate(m_Context); }
+        void OnDestroy()
+        {
+            if (m_WeldContext != null) DestroyImmediate(m_WeldContext);
+            if (m_Context != null) DestroyImmediate(m_Context);
+        }
     }
 }

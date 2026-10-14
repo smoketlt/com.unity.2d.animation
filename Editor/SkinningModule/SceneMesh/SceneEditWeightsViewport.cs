@@ -106,6 +106,11 @@ namespace UnityEditor.U2D.Animation
 
         void Cancel()
         {
+            if (m_Weld)
+            {
+                m_Weld = false; m_Error = null;
+                EndGesture(); UpdateUI(); SceneView.RepaintAll(); return;
+            }
             ClearBoneDrop();
             EndGesture();
             if (m_Bind) Run(() => SetBindMode(false));
@@ -221,6 +226,11 @@ namespace UnityEditor.U2D.Animation
                 else toolScope.Hide();
             }
             var evt = Event.current;
+            if (m_Weld && !m_Saving && BlockReason() == null && evt.type == EventType.MouseDown && evt.button == 0 && !evt.alt)
+            {
+                PickWeldSource(evt.mousePosition);
+                evt.Use(); scene.Repaint(); return;
+            }
             if (m_Saving ||
                 evt.type != EventType.KeyDown || evt.keyCode != KeyCode.Escape) return;
             // Unimator's duringSceneGui handler clears Unity selection and consumes Escape.
@@ -263,12 +273,18 @@ namespace UnityEditor.U2D.Animation
                     DrawMeshEdges(screen);
                     if (scene.drawGizmos) DrawBones();
                     DrawPieces(screen);
-                    if (!m_Bind && !m_Direct && !evt.control && !evt.command) DrawBrush(evt.mousePosition);
+                    if (!m_Weld && !m_Bind && !m_Direct && !evt.control && !evt.command) DrawBrush(evt.mousePosition);
                     if (m_Gesture == Gesture.Select) DrawSelectionRect(m_GestureStart, evt.mousePosition);
                 }
                 if (scene.drawGizmos && m_Preview && m_Bind) DrawBones();
             }
             if (m_Direct) EditorGUIUtility.AddCursorRect(new Rect(Vector2.zero, scene.position.size), MouseCursor.Arrow);
+            if (m_Weld)
+            {
+                EditorGUIUtility.AddCursorRect(new Rect(Vector2.zero, scene.position.size), MouseCursor.Link);
+                if (evt.type == EventType.MouseMove) scene.Repaint();
+                return;
+            }
             if (evt.rawType == EventType.MouseUp && m_Gesture != Gesture.None)
             { EndGesture(); UpdateUI(); scene.Repaint(); evt.Use(); return; }
             if (evt.button != 0 && evt.type != EventType.MouseMove) return;
@@ -514,6 +530,7 @@ namespace UnityEditor.U2D.Animation
 
         void DrawPreview(Vector3[] vertices)
         {
+            if (m_Source?.clipping != null && !m_Overlay) return;
             if (m_OverlayMesh == null) m_OverlayMesh = new Mesh { hideFlags = HideFlags.HideAndDontSave };
             if (m_OverlayMaterial == null)
             {
@@ -523,7 +540,8 @@ namespace UnityEditor.U2D.Animation
             }
             var mesh = m_Session.mesh; var bones = mesh.bones; var selected = m_Session.selectedBones;
             var colors = new Color[vertices.Length]; var uv = new Vector2[vertices.Length];
-            var textureRect = m_Renderer.sprite.textureRect; var texture = m_Renderer.sprite.texture;
+            var textureRect = m_Renderer.sprite.textureRect;
+            var texture = m_Source.clipping != null ? Texture2D.whiteTexture : m_Renderer.sprite.texture;
             for (var vertex = 0; vertex < vertices.Length; ++vertex)
             {
                 var color = Color.black;

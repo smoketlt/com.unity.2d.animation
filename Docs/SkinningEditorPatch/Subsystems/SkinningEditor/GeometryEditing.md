@@ -71,6 +71,21 @@ This page documents the Geometry editing workflow: selection, vertex creation, e
 - In `New`, clicking the first vertex with three or more vertices closes and triangulates the hull.
 - Pressing `New` again, or selecting another mesh tool, also closes and triangulates the hull when at least three vertices exist; after completion the active tool is always `Modify`.
 
+## Uniskin Preferences
+
+`Edit > Preferences > Uniskin` contains the existing animation/bone/selection-outline preferences and a **Mesh Editing** section. The former `2D > Animation` page has moved here; existing EditorPrefs keys and saved bone settings are retained.
+
+| Setting | Default | Behavior |
+| --- | --- | --- |
+| Symmetry Threshold (px) | 2 | Maximum source-image pixel distance for matching existing mirrored vertices in Scene Edit Mesh. Independent of viewport zoom, transforms and Deformed display. Nonnegative; 0 retains only numerical matching precision. |
+| Selected Vertex Color | White | Geometry selection color in Scene Edit Mesh and Skinning Editor. |
+| Hovered Vertex Color | Yellow | Hover color, including the existing mirrored partner while Scene Symmetry is active. |
+| Mesh Line Color | Cyan | Unselected geometry edges and Scene's dotted triangle overlay (60% opacity). |
+
+Selected and hovered edges follow the corresponding vertex colors. Selection takes precedence over hover: a selected vertex remains white by default even when it or its mirrored partner is hovered. Ordinary vertex dots remain cyan. Weight-colored vertex dots retain their weight visualization.
+
+Preferences are user-specific, persisted in EditorPrefs and applied immediately with a viewport repaint. **Reset Mesh Editing Defaults** resets only these four controls. Matching is read from the source mesh; hovering does not modify selection, geometry, weights or Undo. The configurable threshold does not change New's center snapping, Create's precise vertex reuse, edge splitting tolerance or triangulation restoration. See [mesh symmetry](SceneMeshEditing.md#mesh-symmetry) for partner safeguards and movement.
+
 ## Create Edge From Create Mode
 
 The fork adds `m_CreateEdgeDragActive` in `SpriteMeshView`.

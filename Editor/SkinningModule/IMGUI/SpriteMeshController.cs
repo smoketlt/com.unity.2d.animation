@@ -32,6 +32,7 @@ namespace UnityEditor.U2D.Animation
         public Action<int, Vector2, int, int> geometryEdgeCreated;
         public Action<int[], Vector2[]> geometryVerticesMoved;
         public Action geometrySymmetryPreview;
+        public Func<int, int> geometryHoveredVertexPartner;
         public ISpriteMeshView spriteMeshView { get; set; }
         public BaseSpriteMeshData spriteMeshData { get; set; }
         public ISelection<int> selection { get; set; }
@@ -279,6 +280,8 @@ namespace UnityEditor.U2D.Animation
 
         void DrawVertices()
         {
+            int hovered = spriteMeshView.IsActionHot(MeshEditorAction.None) ? spriteMeshView.hoveredVertex : -1;
+            int partner = hovered >= 0 ? geometryHoveredVertexPartner?.Invoke(hovered) ?? -1 : -1;
             for (int i = 0; i < spriteMeshData.vertexCount; i++)
             {
                 Vector2 position = spriteMeshData.vertices[i];
@@ -286,7 +289,7 @@ namespace UnityEditor.U2D.Animation
 
                 if (selection.Contains(i))
                     spriteMeshView.DrawVertexSelected(position, weight);
-                else if (i == spriteMeshView.hoveredVertex && spriteMeshView.IsActionHot(MeshEditorAction.None))
+                else if (i == hovered || i == partner)
                     spriteMeshView.DrawVertexHovered(position, weight);
                 else
                     spriteMeshView.DrawVertex(position, weight);

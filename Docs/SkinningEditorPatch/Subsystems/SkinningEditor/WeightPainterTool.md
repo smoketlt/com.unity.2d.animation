@@ -52,7 +52,7 @@ Weight Slider also exposes a `Smooth` button under the `Amount` slider. Each cli
 
 - If vertices are selected, only those vertices are rewritten. If no vertices are selected, all mesh vertices are smoothed.
 - If two or more bones are selected, only those selected bones that belong to the current mesh are smoothed. If zero or one bone is selected, all mesh bones are smoothed.
-- Neighbor vertices come from both authored mesh edges and triangulated outline edges, matching Spine's hull/internal-edge neighborhood concept as closely as the Unity mesh data allows.
+- Neighbor vertices come from all three edges of every mesh triangle, plus authored mesh edges and outline edges. Shared/repeated connections count once. This reaches interior vertices even when only the hull has authored edges, while retaining authored connections for vertices outside the triangle set.
 - The operation snapshots all weights before the pass, so every target vertex averages the same pre-click neighbor state rather than being affected by vertices already processed earlier in the pass.
 - Neighbor values use inverse-edge-length weighting, so close connected vertices influence the result more than long edges.
 - A click blends partway from the current weight to the neighbor average instead of replacing the current value outright. This keeps the result stable and makes repeated clicks the intended way to increase smoothing strength.

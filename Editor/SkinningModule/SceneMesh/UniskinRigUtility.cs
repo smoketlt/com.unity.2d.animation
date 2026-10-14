@@ -29,6 +29,8 @@ namespace UnityEditor.U2D.Animation
         internal static string SourcePath(Sprite sprite)
         {
             var path = AssetDatabase.GetAssetPath(sprite);
+            var clipping = AssetDatabase.LoadMainAssetAtPath(path) as UniskinClippingMaskData;
+            if (clipping != null) return clipping.rig != null ? AssetDatabase.GUIDToAssetPath(clipping.rig.sourceGuid) : string.Empty;
             var owner = AssetDatabase.LoadMainAssetAtPath(path) as UniskinRig;
             return owner != null ? AssetDatabase.GUIDToAssetPath(owner.sourceGuid) : path;
         }
@@ -145,6 +147,7 @@ namespace UnityEditor.U2D.Animation
             {
                 rig.authoringData = serialized;
                 RefreshSprites(rig, provider);
+                UniskinClippingMaskUtility.Synchronize(rig, true);
                 RefreshInstances(rig);
                 EditorUtility.SetDirty(rig);
                 AssetDatabase.SaveAssetIfDirty(rig);
@@ -421,7 +424,8 @@ namespace UnityEditor.U2D.Animation
                         var skin = renderer.GetComponent<SpriteSkin>();
                         if (skin != null) RecordSceneObject(skin);
                     }
-                Undo.DestroyObjectImmediate(binding);
+                if (!binding.GetComponentsInChildren<UniskinClippingMask>(true).Any(mask => mask.character == binding))
+                    Undo.DestroyObjectImmediate(binding);
             }
             EditorUtility.SetDirty(rig);
             AssetDatabase.SaveAssetIfDirty(rig);
@@ -483,6 +487,7 @@ namespace UnityEditor.U2D.Animation
             rig.authoringData = rig.bakedData = rig.sourceBaseline = data.Serialize();
             rig.sourceDependencyHash = AssetDatabase.GetAssetDependencyHash(path).ToString();
             RefreshSprites(rig, new UniskinRigDataProvider(rig, provider));
+            UniskinClippingMaskUtility.Synchronize(rig, true);
             // Native prefab regeneration already applies pose changes to unmodified
             // imported Transforms. Advance their baseline so refresh does not add the
             // same delta twice; scene overrides still receive the authored delta.
@@ -655,6 +660,7 @@ namespace UnityEditor.U2D.Animation
             foreach (var rig in s_Rigs.Values.Where(rig => rig != null && rig.editingEnabled))
             {
                 RefreshSprites(rig, new UniskinRigDataProvider(rig, NativeProvider(AssetDatabase.GUIDToAssetPath(rig.sourceGuid))));
+                UniskinClippingMaskUtility.Synchronize(rig, false);
                 foreach (var binding in Resources.FindObjectsOfTypeAll<UniskinRigBinding>().Where(binding => binding.rig == rig)) binding.Apply();
             }
         }

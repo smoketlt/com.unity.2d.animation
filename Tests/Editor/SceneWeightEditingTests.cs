@@ -591,6 +591,46 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.AreEqual(untouched, JsonUtility.ToJson(mesh.vertexWeights[1]));
         }
 
+        [TestCase(false, false)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void SmoothReachesTriangleOnlyInteriorVertices(bool selectedOnly, bool lockBone)
+        {
+            var mesh = m_Session.mesh;
+            var lockedWeight = lockBone ? .2f : 0f;
+            mesh.SetVertices(new[] { new Vector2(0, 0), new Vector2(32, 0),
+                new Vector2(32, 32), new Vector2(0, 32), new Vector2(16, 16) },
+                Enumerable.Range(0, 5).Select(i => EditableBoneWeightUtility.CreateFromBoneWeight(new BoneWeight
+                { boneIndex0 = i == 4 ? 1 : 0, weight0 = 1 - lockedWeight, boneIndex1 = 2, weight1 = lockedWeight })).ToArray());
+            mesh.SetEdges(new[] { new Unity.Mathematics.int2(0, 1), new Unity.Mathematics.int2(1, 2),
+                new Unity.Mathematics.int2(2, 3), new Unity.Mathematics.int2(3, 0) });
+            mesh.SetIndices(new[] { 0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4 });
+            if (selectedOnly) m_Session.vertices.elements = new[] { 4 };
+            if (lockBone) m_Session.ToggleLock(mesh.bones[2]);
+            var before = mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)).ToArray();
+            var positions = mesh.vertices.ToArray();
+            var indices = mesh.indices.ToArray();
+            var edges = mesh.edges.ToArray();
+            var sourceFingerprint = Source().Fingerprint();
+
+            m_Session.Smooth();
+
+            Assert.That(mesh.vertexWeights[4].Single(w => w.boneIndex == 0).weight,
+                Is.EqualTo(.45f * (1 - lockedWeight)).Within(.00001f));
+            Assert.That(mesh.vertexWeights[4].Single(w => w.boneIndex == 1).weight,
+                Is.EqualTo(.55f * (1 - lockedWeight)).Within(.00001f));
+            if (lockBone) Assert.That(mesh.vertexWeights[4].Single(w => w.boneIndex == 2).weight, Is.EqualTo(lockedWeight));
+            for (int i = 0; i < 4; ++i)
+                if (selectedOnly) Assert.AreEqual(before[i], JsonUtility.ToJson(mesh.vertexWeights[i]));
+                else Assert.AreNotEqual(before[i], JsonUtility.ToJson(mesh.vertexWeights[i]));
+            CollectionAssert.AreEqual(positions, mesh.vertices);
+            CollectionAssert.AreEqual(indices, mesh.indices);
+            CollectionAssert.AreEqual(edges, mesh.edges);
+            Assert.AreEqual(sourceFingerprint, Source().Fingerprint(), "Smooth must remain staged.");
+            Undo.FlushUndoRecordObjects(); Undo.PerformUndo(); m_Session.context.RestoreAfterUndo();
+            CollectionAssert.AreEqual(before, m_Session.mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)));
+        }
+
         [Test]
         public void PsbBindingsAndWeightsPreserveOtherLayersAndCharacterSkeleton()
         {

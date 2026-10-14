@@ -1,0 +1,33 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+  <ui:Style src="SceneEditMeshWindow.uss" />
+  <ui:VisualElement class="uniskin-mesh-window">
+    <ui:VisualElement name="windowHeader" class="mesh-header">
+      <ui:Image name="windowIcon" picking-mode="Ignore" />
+      <ui:Label text="Edit Clipping Mask" name="windowTitle" class="mesh-window-title" picking-mode="Ignore" />
+      <ui:Button name="closeWindow" text="×" tooltip="Close Edit Clipping Mask" />
+    </ui:VisualElement>
+    <ui:VisualElement name="commands" class="mesh-body">
+      <ui:VisualElement class="mesh-block">
+        <ui:VisualElement name="mainControls">
+          <ui:VisualElement class="mesh-row">
+            <ui:Button name="modify" text="Modify" />
+            <ui:Button name="create" text="Create" />
+            <ui:Button name="delete" text="Delete" />
+          </ui:VisualElement>
+          <ui:VisualElement class="mesh-row">
+            <ui:Button name="newMesh" text="New" />
+            <ui:Button name="reset" text="Reset" />
+          </ui:VisualElement>
+          <ui:VisualElement name="contourOptions" class="mesh-row mesh-options">
+            <ui:Toggle name="symmetry" text="Symmetry" class="mesh-option-toggle" />
+            <ui:Toggle name="deformed" text="Deformed" tooltip="Follow the current scene bone pose." class="mesh-option-toggle" />
+            <ui:Toggle name="triangles" text="Triangles" value="true" class="mesh-option-toggle" />
+            <ui:Toggle name="masked" text="Masked" tooltip="Preview the sprite clipped by the current contour." class="mesh-option-toggle" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:Label name="meshClipboardError" class="mesh-paste-note mesh-hidden" />
+        <ui:Label name="vertexCount" class="mesh-count" />
+      </ui:VisualElement>
+    </ui:VisualElement>
+  </ui:VisualElement>
+</ui:UXML>

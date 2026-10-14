@@ -103,6 +103,88 @@ namespace UnityEditor.U2D.Animation
         }
     }
 
+    internal static class MeshEditorSettings
+    {
+        public const string kSymmetryThresholdKey = UserSettings.kSettingsUniqueKey + "MeshEditor.symmetryThreshold";
+        public const string kSelectedVertexColorKey = UserSettings.kSettingsUniqueKey + "MeshEditor.selectedVertexColor";
+        public const string kHoveredVertexColorKey = UserSettings.kSettingsUniqueKey + "MeshEditor.hoveredVertexColor";
+        public const string kMeshLineColorKey = UserSettings.kSettingsUniqueKey + "MeshEditor.meshLineColor";
+        public const float kDefaultSymmetryThreshold = 2f;
+        static readonly GUIContent s_ThresholdLabel = new GUIContent("Symmetry Threshold (px)",
+            "Maximum distance from the reflected source-image position when matching existing vertices. Independent of zoom; 0 requires a precise match.");
+        static readonly GUIContent s_SelectedLabel = new GUIContent("Selected Vertex Color");
+        static readonly GUIContent s_HoveredLabel = new GUIContent("Hovered Vertex Color", "Also used for the mirrored partner under Symmetry.");
+        static readonly GUIContent s_LineLabel = new GUIContent("Mesh Line Color", "Color of unselected mesh edges and the Scene triangle overlay.");
+
+        public static float symmetryThreshold
+        {
+            get => SanitizeThreshold(EditorPrefs.GetFloat(kSymmetryThresholdKey, kDefaultSymmetryThreshold));
+            set => EditorPrefs.SetFloat(kSymmetryThresholdKey, SanitizeThreshold(value));
+        }
+
+        static float SanitizeThreshold(float value) => float.IsNaN(value) || float.IsInfinity(value) ?
+            kDefaultSymmetryThreshold : Mathf.Max(0f, value);
+
+        public static Color selectedVertexColor
+        {
+            get => ReadColor(kSelectedVertexColorKey, "#FFFFFF");
+            set => WriteColor(kSelectedVertexColorKey, value);
+        }
+
+        public static Color hoveredVertexColor
+        {
+            get => ReadColor(kHoveredVertexColorKey, "#FFFF00");
+            set => WriteColor(kHoveredVertexColorKey, value);
+        }
+
+        public static Color meshLineColor
+        {
+            get => ReadColor(kMeshLineColorKey, "#00FFFF");
+            set => WriteColor(kMeshLineColorKey, value);
+        }
+
+        static Color ReadColor(string key, string fallback)
+        {
+            if (ColorUtility.TryParseHtmlString(EditorPrefs.GetString(key, fallback), out var color)) return color;
+            ColorUtility.TryParseHtmlString(fallback, out color);
+            return color;
+        }
+
+        static void WriteColor(string key, Color value) => EditorPrefs.SetString(key, "#" + ColorUtility.ToHtmlStringRGB(value));
+
+        internal static void ResetDefaults()
+        {
+            EditorPrefs.DeleteKey(kSymmetryThresholdKey);
+            EditorPrefs.DeleteKey(kSelectedVertexColorKey);
+            EditorPrefs.DeleteKey(kHoveredVertexColorKey);
+            EditorPrefs.DeleteKey(kMeshLineColorKey);
+        }
+
+        internal static void OnGUI()
+        {
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Mesh Editing", EditorStyles.boldLabel);
+            EditorGUI.BeginChangeCheck();
+            float threshold = EditorGUILayout.FloatField(s_ThresholdLabel, symmetryThreshold);
+            var selected = EditorGUILayout.ColorField(s_SelectedLabel, selectedVertexColor, true, false, false);
+            var hovered = EditorGUILayout.ColorField(s_HoveredLabel, hoveredVertexColor, true, false, false);
+            var lines = EditorGUILayout.ColorField(s_LineLabel, meshLineColor, true, false, false);
+            if (EditorGUI.EndChangeCheck())
+            {
+                symmetryThreshold = threshold;
+                selectedVertexColor = selected;
+                hoveredVertexColor = hovered;
+                meshLineColor = lines;
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+            }
+            if (GUILayout.Button("Reset Mesh Editing Defaults", GUILayout.ExpandWidth(false)))
+            {
+                ResetDefaults();
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+            }
+        }
+    }
+
     internal class VisibilityToolSettings
     {
         public const string kBoneOpacitykey = UserSettings.kSettingsUniqueKey + "VisibilityToolSettings.boneOpacity";
@@ -233,9 +315,10 @@ namespace UnityEditor.U2D.Animation
         private static SkinningModuleSettings s_SkinningModuleSettings = new SkinningModuleSettings();
 
         public UserSettings()
-            : base("Preferences/2D/Animation", SettingsScope.User)
+            : base("Preferences/Uniskin", SettingsScope.User)
         {
             guiHandler = OnGUI;
+            keywords = new[] { "Uniskin", "Symmetry", "Threshold", "Vertex", "Vertices", "Hover", "Mesh", "Color", "Bone", "Animation" };
         }
 
         [SettingsProvider]
@@ -253,6 +336,7 @@ namespace UnityEditor.U2D.Animation
             {
                 s_SkinningModuleSettings.OnGUI();
                 s_SelectionOutlineSettings.OnGUI();
+                MeshEditorSettings.OnGUI();
             }
         }
     }

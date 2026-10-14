@@ -82,6 +82,11 @@ namespace UnityEditor.U2D.Animation
         Button m_BindButton;
         bool m_BindPulseActive;
         double m_BindPulseStart;
+        bool m_Weld;
+        VisualElement m_WeldPulse;
+        Button m_WeldButton;
+        bool m_WeldPulseActive;
+        double m_WeldPulseStart;
         BoneCache m_DragBone;
         Button m_DragBoneName;
         int m_DragBonePointer;
@@ -225,13 +230,18 @@ namespace UnityEditor.U2D.Animation
             Command("auto", "Auto", () => Run(m_Session.Auto));
             Command("prune", "Prune", ShowPrune);
             Command("weld", "Weld", ShowWeld);
-            rootVisualElement.Q<Button>("weld").tooltip = "Copy weights into this mesh from another character mesh. Select the source and All or Overlapping. Requires two common bound bones; preserves locked weights.";
+            m_WeldButton = rootVisualElement.Q<Button>("weld");
+            m_WeldButton.tooltip = "Click Weld, then click the source mesh in the Scene View and choose All or Overlapping. Esc or Weld cancels picking. Requires two common bound bones; preserves locked weights.";
+            m_WeldPulse = new VisualElement { name = "weldPulse", pickingMode = PickingMode.Ignore };
+            m_WeldButton.Insert(0, m_WeldPulse);
+            m_WeldPulseActive = false;
             Command("bind", "Bind", () => Run(() => SetBindMode(!m_Bind)));
             m_BindButton = rootVisualElement.Q<Button>("bind");
             m_BindPulse = new VisualElement { name = "bindPulse", pickingMode = PickingMode.Ignore };
             m_BindButton.Insert(0, m_BindPulse);
             m_BindPulseActive = false;
             rootVisualElement.schedule.Execute(UpdateBindPulse).Every(16);
+            rootVisualElement.schedule.Execute(UpdateWeldPulse).Every(16);
             Command("swap", "Swap", () => Run(m_Session.Swap));
             Command("remove", "Delete", () => Run(m_Session.Remove));
             Command("updateBindings", "UpdateBind", () => Run(UpdateBindings));
@@ -337,6 +347,7 @@ namespace UnityEditor.U2D.Animation
         void Run(Action operation)
         {
             if (BlockReason() != null || m_Saving) return;
+            m_Weld = false;
             EndGesture();
             try { operation(); m_Error = null; }
             catch (Exception ex) { m_Error = ex.Message; EditorUtility.DisplayDialog("Edit Weights", ex.Message, "OK"); }
@@ -347,24 +358,53 @@ namespace UnityEditor.U2D.Animation
         {
             if (BlockReason() != null || m_Saving) return;
             EndGesture();
-            var menu = new GenericMenu();
-            var sources = m_Session.weldSources;
-            for (var i = 0; i < sources.Length; ++i)
+            if (m_Weld) { m_Weld = false; m_Error = null; UpdateUI(); SceneView.RepaintAll(); return; }
+            Run(() =>
             {
-                var source = sources[i];
-                // Numbered names keep duplicate layer names distinct and slashes out of menu paths.
-                var label = (i + 1) + ". " + source.name.Replace('/', '\u2215');
-                menu.AddItem(new GUIContent(label + "/Overlapping"), false, () => Run(() => m_Session.Weld(source, true)));
-                menu.AddItem(new GUIContent(label + "/All"), false, () => Run(() => m_Session.Weld(source, false)));
+                if (m_Session.weldSources.Length == 0)
+                    throw new InvalidOperationException("Requires another character mesh with two common bound bones.");
+                if (m_Bind) SetBindMode(false);
+                m_Weld = true;
+            });
+        }
+
+        internal SpriteCache WeldSource(SpriteRenderer renderer)
+        {
+            if (renderer == null || renderer == m_Renderer || renderer.sprite == null ||
+                UniskinRigUtility.SourcePath(renderer.sprite) != m_Session.context.assetPath) return null;
+            if (UniskinClippingMaskUtility.Find(renderer.sprite) != null) return null;
+            var instance = PrefabUtility.GetNearestPrefabInstanceRoot(m_Renderer.gameObject);
+            var host = instance != null ? instance.transform : m_Renderer.transform.root;
+            if (!renderer.transform.IsChildOf(host)) return null;
+            var id = SceneSpriteIdentity.GetId(renderer.sprite).ToString();
+            return m_Session.weldSources.FirstOrDefault(sprite => sprite.id == id);
+        }
+
+        void PickWeldSource(Vector2 position)
+        {
+            var picked = HandleUtility.PickGameObject(position, false);
+            var source = WeldSource(picked != null ? picked.GetComponent<SpriteRenderer>() : null);
+            if (source == null)
+            {
+                m_Error = "Click another mesh in this character with two common bound bones. Esc cancels Weld.";
+                UpdateUI(); return;
             }
-            if (sources.Length == 0)
-                menu.AddDisabledItem(new GUIContent("Requires another character mesh with two common bound bones"));
+            m_Weld = false;
+            m_Error = null;
+            UpdateUI();
+            var menu = new GenericMenu();
+            menu.AddDisabledItem(new GUIContent(source.name.Replace('/', '\u2215')));
+            menu.AddSeparator("");
+            menu.AddItem(new GUIContent("Overlapping"), false, () => { if (this != null) Run(() => m_Session.Weld(source, true)); });
+            menu.AddItem(new GUIContent("All"), false, () => { if (this != null) Run(() => m_Session.Weld(source, false)); });
             menu.ShowAsContext();
         }
 
         void ShowPrune()
         {
             if (BlockReason() != null) return;
+            m_Weld = false;
+            UpdateUI();
             PruneWeightsWindow.ShowWindow((max, threshold) => this != null && m_Session != null ? m_Session.CountPruned(max, threshold) : 0,
                 (max, threshold) => { if (this != null && m_Session != null) Run(() => m_Session.Prune(max, threshold)); }, sceneStyle: true);
         }
@@ -451,9 +491,11 @@ namespace UnityEditor.U2D.Animation
         {
             if (m_Saving || rootVisualElement.Q("commands") == null) return;
             var blocked = BlockReason();
+            if (blocked != null) m_Weld = false;
             rootVisualElement.Q("commands").SetEnabled(blocked == null);
             UpdateBindPulse();
-            rootVisualElement.Q<Label>("status").text = blocked ?? m_Error ?? (m_Bind ? "Click bones to bind. Esc exits Bind." : m_Direct ? "Ctrl+click/drag selects vertices. Drag a vertex to edit weights." : "Ctrl+click/drag selects vertices. Alt temporarily removes weights in Add.");
+            UpdateWeldPulse();
+            rootVisualElement.Q<Label>("status").text = blocked ?? m_Error ?? (m_Weld ? "Click the source mesh in the Scene View. Esc or Weld cancels." : m_Bind ? "Click bones to bind. Esc exits Bind." : m_Direct ? "Ctrl+click/drag selects vertices. Drag a vertex to edit weights." : "Ctrl+click/drag selects vertices. Alt temporarily removes weights in Add.");
             if (blocked != null) { RestoreTool(); return; }
             RebuildRows();
             AlignBoneSliders();
@@ -486,6 +528,18 @@ namespace UnityEditor.U2D.Animation
         }
 
         static Color WeightColor(BoneCache bone) => BoneColorUtility.GetWeightMapColor(bone.ToSpriteSheetIfNeeded());
+
+        void UpdateWeldPulse()
+        {
+            if (m_WeldPulse == null || m_WeldButton == null) return;
+            var active = m_Weld && m_WeldButton.enabledInHierarchy && !m_Saving;
+            if (active && !m_WeldPulseActive) m_WeldPulseStart = EditorApplication.timeSinceStartup;
+            m_WeldPulseActive = active;
+            m_WeldButton.EnableInClassList("mesh-active", active);
+            m_WeldPulse.style.display = active ? DisplayStyle.Flex : DisplayStyle.None;
+            m_WeldPulse.style.opacity = active
+                ? .5f - .5f * Mathf.Cos((float)((EditorApplication.timeSinceStartup - m_WeldPulseStart) * Math.PI)) : 0;
+        }
 
         void UpdateBindPulse()
         {

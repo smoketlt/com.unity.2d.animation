@@ -20,21 +20,53 @@ namespace UnityEditor.U2D.Animation
         public int mode;
         public bool pendingCreation;
         public bool symmetry;
+        [SerializeField] float m_SymmetryAxisOffset;
         [SerializeField] System.Collections.Generic.List<Vector2> m_SymmetryHull = new System.Collections.Generic.List<Vector2>();
         [SerializeField] System.Collections.Generic.List<int> m_SymmetrySources = new System.Collections.Generic.List<int>();
 
         internal bool symmetryActive => symmetry;
         internal bool symmetryHullActive => symmetry && mode == 3;
         float symmetryTolerance => Mathf.Max(0.0001f, Mathf.Max(mesh.frame.width, mesh.frame.height) * 0.0000005f);
-        internal Vector2 MirrorHullPoint(Vector2 point) => new Vector2(mesh.frame.width - point.x, point.y);
+        // Existing cages can be slightly asymmetric. Keep this separate from the
+        // precision used to reuse created vertices and restore triangulated data.
+        float symmetryPartnerTolerance => Mathf.Max(symmetryTolerance, MeshEditorSettings.symmetryThreshold);
+        internal float symmetryAxis => mesh.frame.width * 0.5f + m_SymmetryAxisOffset;
+        internal Vector2 MirrorHullPoint(Vector2 point) => new Vector2(2f * symmetryAxis - point.x, point.y);
+
+        internal void SetSymmetryAxis(float axis)
+        {
+            if (float.IsNaN(axis) || float.IsInfinity(axis)) return;
+            float previous = symmetryAxis;
+            float minimum = 0f, maximum = mesh.frame.width;
+            if (symmetryHullActive)
+                foreach (var point in m_SymmetryHull)
+                    if (point.x != previous)
+                    {
+                        minimum = Mathf.Max(minimum, point.x + mesh.frame.width * 0.0051f);
+                        maximum = Mathf.Min(maximum, (mesh.frame.width + point.x) * 0.5f);
+                    }
+            axis = Mathf.Clamp(axis, minimum, maximum);
+            if (axis == previous) return;
+            BeginUndoOperation("Move Sprite Mesh Symmetry Axis");
+            m_SymmetryAxisOffset = axis - mesh.frame.width * 0.5f;
+            axis = symmetryAxis;
+            if (symmetryHullActive)
+            {
+                for (var i = 0; i < m_SymmetryHull.Count; ++i)
+                    if (m_SymmetryHull[i].x == previous)
+                        m_SymmetryHull[i] = new Vector2(axis, m_SymmetryHull[i].y);
+                RebuildSymmetryHull();
+            }
+        }
 
         internal Vector2 SymmetryHullPoint(Vector2 point)
         {
-            float center = mesh.frame.width * 0.5f;
+            float center = symmetryAxis;
             point.x = Mathf.Clamp(point.x, 0f, mesh.frame.width);
             point.y = Mathf.Clamp(point.y, 0f, mesh.frame.height);
             if (Mathf.Abs(point.x - center) <= mesh.frame.width * 0.005f) point.x = center;
             else if (point.x > center) point = MirrorHullPoint(point);
+            point.x = Mathf.Max(point.x, 2f * center - mesh.frame.width);
             return point;
         }
 
@@ -61,8 +93,8 @@ namespace UnityEditor.U2D.Animation
             RebuildSymmetryHull();
             selection.Clear();
             selection.Select(m_SymmetryHull.Count - 1, true);
-            if (m_SymmetryHull.Count >= 3 && m_SymmetryHull[0].x == mesh.frame.width * 0.5f &&
-                position.x == mesh.frame.width * 0.5f)
+            if (m_SymmetryHull.Count >= 3 && m_SymmetryHull[0].x == symmetryAxis &&
+                position.x == symmetryAxis)
                 CompleteNew();
             EndUndoOperation();
         }
@@ -91,7 +123,7 @@ namespace UnityEditor.U2D.Animation
                 int source = m_SymmetrySources[index];
                 if (!moved.Add(source)) continue;
                 var point = index < m_SymmetryHull.Count ? positions[i] : MirrorHullPoint(positions[i]);
-                float center = mesh.frame.width * 0.5f;
+                float center = symmetryAxis;
                 // Keep handle indices stable throughout a drag: axis vertices stay
                 // single, and paired vertices stop just short of merging on the axis.
                 point.x = m_SymmetryHull[source].x == center ? center :
@@ -140,8 +172,37 @@ namespace UnityEditor.U2D.Animation
             return result;
         }
 
+        internal int FindSymmetryPartner(int index)
+        {
+            if (index < 0 || index >= mesh.vertexCount) return -1;
+            if (Mathf.Abs(mesh.vertices[index].x - symmetryAxis) <= symmetryTolerance) return index;
+            int partner = NearestSymmetryPartner(index);
+            // Require agreement in both directions so two nearby handles cannot
+            // drive the same mirrored vertex.
+            return partner >= 0 && NearestSymmetryPartner(partner) == index ? partner : -1;
+        }
+
+        int NearestSymmetryPartner(int index)
+        {
+            var original = mesh.vertices[index];
+            var reflected = MirrorHullPoint(original);
+            float distance = symmetryPartnerTolerance * symmetryPartnerTolerance;
+            int result = -1;
+            for (var i = 0; i < mesh.vertexCount; ++i)
+            {
+                var candidate = mesh.vertices[i];
+                if ((original.x < symmetryAxis) == (candidate.x < symmetryAxis) ||
+                    Mathf.Abs(candidate.x - symmetryAxis) <= symmetryTolerance) continue;
+                float squared = (candidate - reflected).sqrMagnitude;
+                if (squared > distance || (squared == distance && result >= 0)) continue;
+                distance = squared;
+                result = i;
+            }
+            return result;
+        }
+
         internal int[] SymmetrySelection(int[] selected) => selected.Concat(selected
-            .Where(i => i >= 0 && i < mesh.vertexCount).Select(i => FindSymmetryVertex(MirrorHullPoint(mesh.vertices[i])))
+            .Where(i => i >= 0 && i < mesh.vertexCount).Select(FindSymmetryPartner)
             .Where(i => i >= 0)).Distinct().ToArray();
 
         internal static EditableBoneWeight SampleGeometryWeight(BaseSpriteMeshData data, Vector2 position, int edgeIndex = -1)
@@ -198,6 +259,37 @@ namespace UnityEditor.U2D.Animation
             return index;
         }
 
+        internal void CreateClippingContourVertex(Vector2 position)
+        {
+            var boundary = mesh.outlineEdges;
+            if (boundary.Length == 0) throw new InvalidOperationException("Close the contour before inserting points.");
+            int2 edge = boundary[0];
+            var nearest = Vector2.zero; var distance = float.PositiveInfinity;
+            foreach (var candidate in boundary)
+            {
+                var a = mesh.vertices[candidate.x]; var direction = mesh.vertices[candidate.y] - a;
+                var t = direction.sqrMagnitude > 0 ? Mathf.Clamp01(Vector2.Dot(position - a, direction) / direction.sqrMagnitude) : 0;
+                var point = a + t * direction; var squared = (position - point).sqrMagnitude;
+                if (squared >= distance) continue;
+                distance = squared; edge = candidate; nearest = point;
+            }
+            if ((position - mesh.vertices[edge.x]).sqrMagnitude < 0.0001f ||
+                (position - mesh.vertices[edge.y]).sqrMagnitude < 0.0001f) return;
+            BeginUndoOperation("Insert Clipping Contour Point");
+            var controller = new SpriteMeshDataController { spriteMeshData = mesh };
+            int index = Array.FindIndex(mesh.edges, item => (item.x == edge.x && item.y == edge.y) || (item.x == edge.y && item.y == edge.x));
+            if (index < 0)
+            {
+                controller.CreateEdge(edge.x, edge.y);
+                index = Array.FindIndex(mesh.edges, item => (item.x == edge.x && item.y == edge.y) || (item.x == edge.y && item.y == edge.x));
+            }
+            var weight = SampleGeometryWeight(mesh, nearest, index).ToBoneWeight(true);
+            controller.CreateVertex(position, index);
+            mesh.vertexWeights[mesh.vertexCount - 1].SetFromBoneWeight(weight);
+            controller.Triangulate(new Triangulator()); controller.SortTrianglesByDepth();
+            SceneMeshSource.Validate(mesh);
+        }
+
         internal void CreateSymmetricGeometry(Vector2 position, int fromVertex = -1)
         {
             var backup = JsonUtility.ToJson(mesh);
@@ -213,11 +305,11 @@ namespace UnityEditor.U2D.Animation
 
         void CreateSymmetricGeometryCore(Vector2 position, int fromVertex)
         {
-            float center = mesh.frame.width * 0.5f;
+            float center = symmetryAxis;
             if (Mathf.Abs(position.x - center) <= mesh.frame.width * 0.005f) position.x = center;
             var mirrored = MirrorHullPoint(position);
             BeginUndoOperation("Create Symmetric Sprite Mesh Geometry");
-            int fromMirror = fromVertex >= 0 ? FindSymmetryVertex(MirrorHullPoint(mesh.vertices[fromVertex])) : -1;
+            int fromMirror = FindSymmetryPartner(fromVertex);
             if (fromVertex >= 0 && fromMirror < 0)
                 fromMirror = EnsureSymmetryVertex(MirrorHullPoint(mesh.vertices[fromVertex]));
             int primary = EnsureSymmetryVertex(position);
@@ -248,18 +340,20 @@ namespace UnityEditor.U2D.Animation
         bool MoveSymmetricGeometryCore(int[] selected, Vector2[] positions)
         {
             var updates = new System.Collections.Generic.Dictionary<int, Vector2>();
-            float center = mesh.frame.width * 0.5f;
+            float center = symmetryAxis;
             for (var i = 0; i < selected.Length; ++i)
             {
                 int index = selected[i];
                 if (updates.ContainsKey(index)) continue;
                 var original = mesh.vertices[index];
-                int partner = FindSymmetryVertex(MirrorHullPoint(original));
+                int partner = FindSymmetryPartner(index);
                 var point = positions[i];
                 point.y = Mathf.Clamp(point.y, 0f, mesh.frame.height);
                 if (Mathf.Abs(original.x - center) <= symmetryTolerance) point.x = center;
                 else if (original.x < center) point.x = Mathf.Clamp(point.x, 0f, center - mesh.frame.width * 0.0051f);
                 else point.x = Mathf.Clamp(point.x, center + mesh.frame.width * 0.0051f, mesh.frame.width);
+                if (partner >= 0 && partner != index)
+                    point.x = Mathf.Clamp(point.x, Mathf.Max(0f, 2f * center - mesh.frame.width), Mathf.Min(mesh.frame.width, 2f * center));
                 updates[index] = point;
                 if (partner >= 0 && partner != index) updates[partner] = MirrorHullPoint(point);
             }
@@ -546,6 +640,7 @@ namespace UnityEditor.U2D.Animation
             pendingCreation = false;
             mode = 0;
             symmetry = false;
+            m_SymmetryAxisOffset = 0f;
             selection.Clear();
         }
 
@@ -683,6 +778,7 @@ namespace UnityEditor.U2D.Animation
         public readonly ITextureDataProvider textureProvider;
         public readonly SpriteRect rect;
         internal readonly UniskinRig rig;
+        internal readonly UniskinClippingMaskData clipping;
         string m_BindingUserData;
         SceneMeshBindingPose m_BindingPose;
         internal SceneMeshBindingPose bindingPose
@@ -698,7 +794,7 @@ namespace UnityEditor.U2D.Animation
                 return m_BindingPose;
             }
         }
-        internal UnityEngine.Object saveTarget => rig != null ? (UnityEngine.Object)rig : importer;
+        internal UnityEngine.Object saveTarget => clipping != null ? (UnityEngine.Object)clipping : rig != null ? (UnityEngine.Object)rig : importer;
         internal string userData
         {
             get => provider is UniskinRigDataProvider rigProvider ? rigProvider.data.userData : importer.userData;
@@ -712,10 +808,11 @@ namespace UnityEditor.U2D.Animation
 
         public SceneMeshSource(Sprite sprite, bool useRig = true)
         {
+            clipping = useRig ? UniskinClippingMaskUtility.Find(sprite) : null;
             assetPath = UniskinRigUtility.SourcePath(sprite);
             if (string.IsNullOrEmpty(assetPath))
                 throw new InvalidOperationException("Select an imported Sprite asset in the scene.");
-            importer = AssetImporter.GetAtPath(assetPath);
+            importer = AssetImporter.GetAtPath(clipping != null ? AssetDatabase.GetAssetPath(clipping.source) : assetPath);
             var factories = new SpriteDataProviderFactories();
             factories.Init();
             provider = factories.GetSpriteEditorDataProviderFromObject(importer);
@@ -723,7 +820,13 @@ namespace UnityEditor.U2D.Animation
                 throw new InvalidOperationException("This importer does not support Sprite Editor data.");
             provider.InitSpriteEditorDataProvider();
             rig = useRig ? UniskinRigUtility.FindAtSource(assetPath) : null;
-            if (rig != null && rig.editingEnabled)
+            if (clipping != null)
+            {
+                UniskinClippingMaskUtility.CheckSource(clipping);
+                rig = clipping.rig;
+                provider = new UniskinRigDataProvider(clipping, provider);
+            }
+            else if (rig != null && rig.editingEnabled)
             {
                 UniskinRigUtility.CheckSource(rig);
                 provider = new UniskinRigDataProvider(rig, provider);
@@ -761,7 +864,7 @@ namespace UnityEditor.U2D.Animation
                 mesh.SetIndices(meshProvider.GetIndices(rect.spriteID) ?? Array.Empty<int>());
                 mesh.SetEdges(EditorUtilities.ToInt2(meshProvider.GetEdges(rect.spriteID) ?? Array.Empty<Vector2Int>()));
             }
-            else
+            else if (clipping == null)
             {
                 // Runtime sprite positions are in units; importer geometry is in source pixels.
                 Vector2 scale = rect.rect.size / sprite.rect.size;
@@ -775,13 +878,13 @@ namespace UnityEditor.U2D.Animation
             {
                 mesh.bones = ModuleUtility.CreateSpriteBoneData(bones.ToArray(), Matrix4x4.identity);
             }
-            Validate(mesh);
+            if (clipping == null || mesh.vertexCount > 0) Validate(mesh);
             return mesh;
         }
 
         public bool WriteMesh(SpriteMeshData mesh)
         {
-            Validate(mesh);
+            if (clipping == null || mesh.vertexCount > 0) Validate(mesh);
             var vertices = new Vertex2DMetaData[mesh.vertexCount];
             for (var i = 0; i < vertices.Length; ++i)
             {
@@ -813,7 +916,7 @@ namespace UnityEditor.U2D.Animation
             if (rig == null) importer.SaveAndReimport();
         }
 
-        internal Sprite ResolveSprite(string id) => rig != null ? rig.Find(id).sprite :
+        internal Sprite ResolveSprite(string id) => clipping != null ? clipping.sprite : rig != null ? rig.Find(id).sprite :
             AssetDatabase.LoadAllAssetsAtPath(assetPath).OfType<Sprite>().First(sprite => sprite.GetSpriteID().ToString() == id);
 
         internal static void Validate(BaseSpriteMeshData mesh)
