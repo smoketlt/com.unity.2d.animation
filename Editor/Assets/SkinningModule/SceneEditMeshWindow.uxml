@@ -10,6 +10,10 @@
       <ui:VisualElement class="mesh-block">
         <ui:VisualElement name="mainControls">
           <ui:VisualElement class="mesh-row">
+            <ui:Button name="copy" text="Copy" tooltip="Copy the complete source mesh, including its outline. Bones and weights are excluded." />
+            <ui:Button name="paste" text="Paste" tooltip="Preview a mirrored mesh on this sprite before replacing its geometry." />
+          </ui:VisualElement>
+          <ui:VisualElement class="mesh-row">
             <ui:Button name="modify" text="Modify" />
             <ui:Button name="create" text="Create" />
             <ui:Button name="delete" text="Delete" />
@@ -38,6 +42,16 @@
             <ui:Button name="traceOK" text="OK" />
           </ui:VisualElement>
         </ui:VisualElement>
+        <ui:VisualElement name="pasteSettings" class="mesh-hidden mesh-paste-settings">
+          <ui:Toggle name="pasteMirror" text="Mirror horizontally" value="true" />
+          <ui:Label name="pasteInstructions" text="Place the mesh and press Enter to confirm or Esc to cancel." class="mesh-paste-note" />
+          <ui:Label text="Drag inside to move. Drag a corner to rotate. Applying replaces the mesh and clears weights." class="mesh-paste-note" />
+          <ui:VisualElement class="mesh-row">
+            <ui:Button name="pasteCancel" text="Cancel" />
+            <ui:Button name="pasteApply" text="Apply" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:Label name="meshClipboardError" class="mesh-paste-note mesh-hidden" />
         <ui:Label name="vertexCount" class="mesh-count" />
       </ui:VisualElement>
     </ui:VisualElement>

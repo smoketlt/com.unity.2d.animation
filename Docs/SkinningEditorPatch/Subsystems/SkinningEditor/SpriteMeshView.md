@@ -58,6 +58,7 @@
 - `CreateEdge` in `CreateVertex` mode triggers on mouse up, not mouse down.
 - With `useSceneHandles`, edge dragging captures a dedicated control rather than a move-slider control. Action checks admit that owned capture; cursor/hover refresh on captured drag/repaint/release even without Layout, keeping the edge preview live. Release/cancel clears only this control. Scene's initial press is consumed by its host after selection runs. Without `useSceneHandles`, the legacy uncaptured workflow remains unchanged.
 - `CreateVertex` in `EditGeometry` still requires double-click.
+- Scene Edit Mesh accepts vertex-creation clicks and Create edge-drag releases outside the source-image frame, including its maximum edges. The controller clamps preview and committed positions to the frame. New hull creation accepts outside clicks at any distance in Scene; Sprite Editor retains its existing frame/radius checks. Mouse-button, hover and hot-control checks still apply.
 - `NewGeometry` creates vertices on empty clicks, completes on first-vertex click, and deletes vertices on double-click.
 - Scene Edit Mesh supplies `newGeometryClosureVertex` to also accept the mirrored starting handle while Symmetry is active. Completion uses the fresh `EndLayout()` hover result; other callers keep the first-vertex rule. The Scene session additionally completes a symmetric hull automatically when its authored half returns to the center axis after starting there.
 - `NewGeometry` forwards `Delete`/`SoftDelete` commands so the controller can remove selected open-hull vertices.

@@ -303,6 +303,87 @@ namespace UnityEditor.U2D.Animation
 
         // Version 1 could contain cage vertices; do not paste those older snapshots.
         const string ClipboardPrefix = "Uniskin.SceneMeshVertices/2:";
+        const string MeshClipboardPrefix = "Uniskin.SceneMeshGeometry/1:";
+
+        [Serializable]
+        sealed class MeshClipboard
+        {
+            public Vector2 size;
+            public Vector2[] positions;
+            public int[] indices;
+            public int2[] edges;
+        }
+
+        internal string CopyMeshGeometry()
+        {
+            SceneMeshSource.Validate(mesh);
+            return MeshClipboardPrefix + JsonUtility.ToJson(new MeshClipboard
+            {
+                size = mesh.frame.size, positions = mesh.vertices,
+                indices = mesh.indices, edges = mesh.edges
+            });
+        }
+
+        internal SpriteMeshData PreviewMeshGeometry(string clipboard, bool mirror, Vector2 offset, Vector2 scale, float angle)
+        {
+            if (string.IsNullOrEmpty(clipboard) || !clipboard.StartsWith(MeshClipboardPrefix, StringComparison.Ordinal))
+                throw new InvalidOperationException("Use Copy in Edit Mesh to copy a complete mesh first.");
+            var data = JsonUtility.FromJson<MeshClipboard>(clipboard.Substring(MeshClipboardPrefix.Length));
+            bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+            if (data?.positions == null || data.indices == null || data.edges == null ||
+                data.positions.Length < 3 || data.positions.Length > 65535 ||
+                !Finite(data.size.x) || !Finite(data.size.y) || data.size.x <= 0 || data.size.y <= 0 ||
+                !Finite(offset.x) || !Finite(offset.y) || !Finite(scale.x) || !Finite(scale.y) ||
+                scale.x <= 0 || scale.y <= 0 || !Finite(angle) ||
+                data.positions.Any(p => !Finite(p.x) || !Finite(p.y)) ||
+                data.indices.Length == 0 || data.indices.Length % 3 != 0 ||
+                data.indices.Any(i => i < 0 || i >= data.positions.Length) ||
+                data.edges.Any(e => e.x < 0 || e.y < 0 || e.x >= data.positions.Length || e.y >= data.positions.Length || e.x == e.y))
+                throw new InvalidOperationException("Invalid mesh clipboard or transform. Scale must be positive.");
+            var result = new SpriteMeshData();
+            result.SetFrame(mesh.frame);
+            result.bones = mesh.bones;
+            float radians = angle * Mathf.Deg2Rad;
+            var positions = data.positions.Select(p =>
+            {
+                var local = p - data.size * 0.5f;
+                if (mirror) local.x = -local.x;
+                local = Vector2.Scale(local, Vector2.Scale(new Vector2(mesh.frame.width / data.size.x, mesh.frame.height / data.size.y), scale));
+                return mesh.frame.size * 0.5f + offset + new Vector2(
+                    local.x * Mathf.Cos(radians) - local.y * Mathf.Sin(radians),
+                    local.x * Mathf.Sin(radians) + local.y * Mathf.Cos(radians));
+            }).ToArray();
+            result.SetVertices(positions, positions.Select(_ => EditableBoneWeightUtility.CreateFromBoneWeight(default)).ToArray());
+            var indices = (int[])data.indices.Clone();
+            for (int i = 0; i < indices.Length; i += 3)
+            {
+                if (mirror) (indices[i + 1], indices[i + 2]) = (indices[i + 2], indices[i + 1]);
+                var a = positions[indices[i + 1]] - positions[indices[i]];
+                var b = positions[indices[i + 2]] - positions[indices[i]];
+                if (Mathf.Abs(a.x * b.y - a.y * b.x) < 0.000001f)
+                    throw new InvalidOperationException("The pasted mesh contains a collapsed triangle.");
+            }
+            result.SetEdges((int2[])data.edges.Clone());
+            result.SetIndices(indices);
+            SceneMeshSource.Validate(result);
+            return result;
+        }
+
+        internal void ApplyMeshGeometry(SpriteMeshData preview)
+        {
+            SceneMeshSource.Validate(preview);
+            BeginUndoOperation("Paste Sprite Mesh Geometry");
+            try
+            {
+                // Keep target metadata/bones; only replace geometry and clear weights.
+                mesh.SetVertices((Vector2[])preview.vertices.Clone(), preview.vertices.Select(_ => EditableBoneWeightUtility.CreateFromBoneWeight(default)).ToArray());
+                mesh.SetEdges((int2[])preview.edges.Clone());
+                mesh.SetIndices((int[])preview.indices.Clone());
+                selection.Clear();
+                mode = 0;
+            }
+            finally { EndUndoOperation(); }
+        }
 
         [Serializable]
         sealed class VertexClipboard

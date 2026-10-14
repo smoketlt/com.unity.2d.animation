@@ -66,7 +66,7 @@ Unity `.meta` files, C# sources, shaders, UXML/USS, and package resources remain
 
 ### Publishing changes
 
-The current user-directed publication branch is `AlphaVersion`. Publish this alpha snapshot and subsequent requested updates only to `AlphaVersion` unless the user changes that instruction. This overrides the default development-branch push steps below. A Unity Git dependency for this snapshot should use `#AlphaVersion`.
+The current user-directed publication targets are both `AlphaVersion` and `codex/skinning-editor-fork` (updated on 2026-10-14). Publish requested updates to both branches, preserving shared history without force pushes. A Unity Git dependency can use either branch.
 
 1. Read `Docs/SkinningEditorPatch/Index.md`.
 2. Read subsystem/entity docs for the task.

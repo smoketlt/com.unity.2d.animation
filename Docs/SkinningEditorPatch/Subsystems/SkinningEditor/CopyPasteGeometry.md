@@ -12,6 +12,8 @@
 
 ## Entry Points
 
+Scene **Edit Mesh** additionally has whole-mesh **Copy/Paste** buttons with mirrored, fitted source-space preview and transform controls. Apply replaces destination geometry and clears weights; Cancel leaves staging unchanged. This uses a separate clipboard format and does not change the selected-vertex shortcuts. See [whole mesh clipboard](SceneMeshEditing.md#whole-mesh-copy-and-paste-buttons).
+
 Scene **Edit Mesh** uses a separate selected-vertex clipboard in `SceneMeshSession`, handled by `SceneEditMeshWindow` for Ctrl+C, Ctrl+V and Ctrl+Shift+V. It merges selected geometry rather than replacing the whole mesh. See [Scene mesh clipboard](SceneMeshEditing.md#selected-vertex-clipboard) for mirroring, weight compatibility, Undo and source-space rules.
 
 - keyboard handling in `SkinningModule.DoCopyPasteKeyboardEventHandling()`

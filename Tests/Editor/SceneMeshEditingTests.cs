@@ -101,12 +101,40 @@ namespace UnityEditor.U2D.Animation.Tests
         [TestCase(true)]
         public void CreateEdgeDragKeepsPreviewActiveAndReleasesMouseCapture(bool scene)
         {
+            CheckCreateEdgeDrag(scene, new Vector2(48, 48));
+        }
+
+        [Test]
+        public void SceneCreateEdgeDragCanReleaseOutsideFrame()
+        {
+            CheckCreateEdgeDrag(true, new Vector2(-80, 100));
+        }
+
+        [TestCase(true, -80f, 32f)]
+        [TestCase(true, 100f, 100f)]
+        [TestCase(true, 64f, 32f)]
+        [TestCase(false, -80f, 32f)]
+        public void SceneCreateVertexAcceptsOutsideFrameClicks(bool scene, float x, float y)
+        {
+            var gui = new DragGUI();
+            var view = new SpriteMeshView(gui) { useSceneHandles = scene, mode = SpriteMeshViewMode.CreateVertex,
+                selection = new IndexedSelection(), defaultControlID = 99, frame = new Rect(0, 0, 64, 64) };
+            var position = new Vector2(x, y);
+            gui.Event(EventType.Layout, position);
+            view.BeginLayout(); view.EndLayout();
+            gui.Event(EventType.MouseDown, position);
+            view.BeginLayout(); view.EndLayout();
+            Assert.AreEqual(scene, view.DoCreateVertex());
+            Assert.AreEqual(scene ? EventType.Used : EventType.MouseDown, gui.eventType);
+        }
+
+        void CheckCreateEdgeDrag(bool scene, Vector2 target)
+        {
             var gui = new DragGUI();
             var selection = new IndexedSelection(); selection.Select(0, true);
             var view = new SpriteMeshView(gui) { useSceneHandles = scene, mode = SpriteMeshViewMode.CreateVertex,
                 selection = selection, defaultControlID = 99, frame = new Rect(0, 0, 64, 64) };
             var source = new Vector2(8, 8);
-            var target = new Vector2(48, 48);
             Layout(source);
             gui.Event(EventType.MouseDown, source);
             view.BeginLayout(); view.EndLayout();
@@ -172,6 +200,132 @@ namespace UnityEditor.U2D.Animation.Tests
             controller.Triangulate(new Triangulator());
             session.savedMesh = JsonUtility.ToJson(session.mesh);
             return session;
+        }
+
+        [Test]
+        public void WholeMeshClipboardPreviewsMirroredTopologyAndAppliesWithUndo()
+        {
+            var source = Quad();
+            var target = Quad();
+            try
+            {
+                source.mesh.vertices[0] = new Vector2(2, 3);
+                target.mesh.SetFrame(new Rect(100, 200, 64, 64));
+                target.mesh.bones.Add(new SpriteBoneData());
+                target.mesh.vertexWeights[0].SetFromBoneWeight(new BoneWeight { boneIndex0 = 0, weight0 = 1 });
+                var before = JsonUtility.ToJson(target.mesh);
+                var clipboard = source.CopyMeshGeometry();
+                var preview = target.PreviewMeshGeometry(clipboard, true, Vector2.zero, Vector2.one, 0);
+                Assert.AreEqual(new Vector2(60, 6), preview.vertices[0]);
+                Assert.AreEqual(before, JsonUtility.ToJson(target.mesh), "Preview must not stage changes.");
+                Assert.AreEqual(source.mesh.indices[1], preview.indices[2]);
+                Assert.AreEqual(source.mesh.indices[2], preview.indices[1]);
+                Assert.AreEqual(source.mesh.edges, preview.edges);
+                Assert.AreEqual(1, preview.boneCount);
+                Undo.IncrementCurrentGroup();
+                target.ApplyMeshGeometry(preview);
+                Assert.AreEqual(preview.vertices, target.mesh.vertices);
+                Assert.IsFalse(target.hasBoneWeights);
+                Assert.AreEqual(1, target.mesh.boneCount);
+                Undo.FlushUndoRecordObjects();
+                Undo.PerformUndo();
+                Assert.AreEqual(before, JsonUtility.ToJson(target.mesh));
+                Undo.PerformRedo();
+                Assert.AreEqual(preview.vertices, target.mesh.vertices);
+                source.mesh.vertices[0] = Vector2.zero;
+                Assert.AreEqual(new Vector2(60, 6), target.PreviewMeshGeometry(clipboard, true, Vector2.zero, Vector2.one, 0).vertices[0]);
+            }
+            finally
+            {
+                Undo.ClearUndo(source); Undo.ClearUndo(target);
+                Object.DestroyImmediate(source); Object.DestroyImmediate(target);
+            }
+        }
+
+        [Test]
+        public void WholeMeshClipboardTransformsAndRejectsInvalidInputWithoutMutation()
+        {
+            var session = Quad();
+            try
+            {
+                var before = JsonUtility.ToJson(session.mesh);
+                var clipboard = session.CopyMeshGeometry();
+                var preview = session.PreviewMeshGeometry(clipboard, false, new Vector2(2, 0), new Vector2(0.5f, 0.5f), 90);
+                var local = session.mesh.vertices[0] - new Vector2(16, 16);
+                Assert.That(Vector2.Distance(preview.vertices[0], new Vector2(18 - local.y * 0.5f, 16 + local.x * 0.5f)), Is.LessThan(0.0001f));
+                Assert.Throws<InvalidOperationException>(() => session.PreviewMeshGeometry("unrelated", true, Vector2.zero, Vector2.one, 0));
+                Assert.Throws<InvalidOperationException>(() => session.PreviewMeshGeometry(clipboard, true, Vector2.zero, Vector2.zero, 0));
+                var outside = session.PreviewMeshGeometry(clipboard, true, new Vector2(100, 0), Vector2.one, 45);
+                Assert.That(outside.vertices.All(p => p.x > session.mesh.frame.width), Is.True);
+                Assert.Throws<InvalidOperationException>(() => session.PreviewMeshGeometry(clipboard, true, Vector2.zero, Vector2.one, float.NaN));
+                Assert.AreEqual(before, JsonUtility.ToJson(session.mesh));
+            }
+            finally { Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void EscapeInMeshPastePreviewPreservesMeshAndSelection()
+        {
+            var original = Quad();
+            var window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            try
+            {
+                var session = (SceneMeshSession)typeof(SceneEditMeshWindow).GetField("m_Session", flags).GetValue(window);
+                EditorJsonUtility.FromJsonOverwrite(EditorJsonUtility.ToJson(original), session);
+                session.selection.elements = new[] { 0 };
+                var before = EditorJsonUtility.ToJson(session);
+                window.CreateGUI();
+                window.ShowPopup();
+                var clipboard = session.CopyMeshGeometry();
+                typeof(SceneEditMeshWindow).GetField("m_MeshClipboard", flags).SetValue(window, clipboard);
+                typeof(SceneEditMeshWindow).GetField("m_PastePreview", flags).SetValue(window, session.PreviewMeshGeometry(clipboard, true, Vector2.zero, Vector2.one, 0));
+                using (var evt = KeyDownEvent.GetPooled(new Event { type = EventType.KeyDown, keyCode = KeyCode.Escape }))
+                {
+                    evt.target = window.rootVisualElement;
+                    window.rootVisualElement.SendEvent(evt);
+                }
+                Assert.IsNull(typeof(SceneEditMeshWindow).GetField("m_MeshClipboard", flags).GetValue(window));
+                Assert.IsNull(typeof(SceneEditMeshWindow).GetField("m_PastePreview", flags).GetValue(window));
+                Assert.AreEqual(before, EditorJsonUtility.ToJson(session));
+                Assert.IsTrue(window.rootVisualElement.Q("pasteSettings").ClassListContains("mesh-hidden"));
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(original); }
+        }
+
+        [Test]
+        public void MeshPastePlacementKeepsPreviewAcrossMoveRotationAndMirrorChanges()
+        {
+            var original = Quad();
+            var window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            try
+            {
+                var type = typeof(SceneEditMeshWindow);
+                var session = (SceneMeshSession)type.GetField("m_Session", flags).GetValue(window);
+                EditorJsonUtility.FromJsonOverwrite(EditorJsonUtility.ToJson(original), session);
+                var before = EditorJsonUtility.ToJson(session);
+                window.CreateGUI();
+                type.GetField("m_MeshClipboard", flags).SetValue(window, session.CopyMeshGeometry());
+                foreach (float angle in new[] { 5f, 45f, 90f, 180f, 270f })
+                {
+                    type.GetField("m_PasteOffset", flags).SetValue(window, new Vector2(50, -10));
+                    type.GetField("m_PasteAngle", flags).SetValue(window, angle);
+                    type.GetMethod("RefreshMeshPaste", flags).Invoke(window, null);
+                    var preview = (SpriteMeshData)type.GetField("m_PastePreview", flags).GetValue(window);
+                    Assert.IsNotNull(preview);
+                    Assert.IsNull(type.GetField("m_Error", flags).GetValue(window));
+                    var corners = (Vector2[])type.GetMethod("PasteCorners", flags).Invoke(window, null);
+                    Assert.That(Vector2.Distance((corners[0] + corners[2]) * 0.5f, new Vector2(66, 6)), Is.LessThan(0.0001f));
+                    Assert.AreEqual(before, EditorJsonUtility.ToJson(session));
+                }
+                window.rootVisualElement.Q<Toggle>("pasteMirror").value = false;
+                Assert.IsNotNull(type.GetField("m_PastePreview", flags).GetValue(window));
+                Assert.AreEqual(before, EditorJsonUtility.ToJson(session));
+                Assert.That(SceneEditMeshWindow.PasteRotation(new Vector2(12, 10), new Vector2(10, 12), new Vector2(10, 10)), Is.EqualTo(90).Within(0.0001f));
+                Assert.That(Vector2.Distance(SceneEditMeshWindow.RotatePastePoint(new Vector2(2, 0), 90), new Vector2(0, 2)), Is.LessThan(0.0001f));
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(original); }
         }
 
         [TestCase(false)]
@@ -782,6 +936,34 @@ namespace UnityEditor.U2D.Animation.Tests
             finally { Undo.ClearUndo(session); Object.DestroyImmediate(session); }
         }
 
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        public void SceneEscapeConsumesKeyAndClearsVerticesBeforeObjectDeselection(int mode)
+        {
+            var original = Quad();
+            var window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var objectSelection = Selection.objects;
+            try
+            {
+                var session = (SceneMeshSession)typeof(SceneEditMeshWindow).GetField("m_Session", flags).GetValue(window);
+                EditorJsonUtility.FromJsonOverwrite(EditorJsonUtility.ToJson(original), session);
+                session.mode = mode;
+                session.selection.Select(0, true);
+                session.selection.Select(1, true);
+                var before = JsonUtility.ToJson(session.mesh);
+                var evt = new Event { type = EventType.KeyDown, keyCode = KeyCode.Escape };
+                Assert.IsTrue(window.HandleSceneEscape(evt));
+                Assert.AreEqual(EventType.Used, evt.type, "Native Scene deselection must not receive Escape.");
+                Assert.AreEqual(0, session.selection.Count);
+                Assert.AreEqual(mode, session.mode);
+                Assert.AreEqual(before, JsonUtility.ToJson(session.mesh));
+                CollectionAssert.AreEqual(objectSelection, Selection.objects);
+            }
+            finally { Object.DestroyImmediate(window); Undo.ClearUndo(original); Object.DestroyImmediate(original); }
+        }
+
         [Test]
         public void EscapeInMeshPopupCancelsNewAndRestoresGeometry()
         {
@@ -1222,8 +1404,16 @@ namespace UnityEditor.U2D.Animation.Tests
             var template = ResourceLoader.Load<VisualTreeAsset>("SkinningModule/SceneEditMeshWindow.uxml");
             Assert.IsNotNull(template);
             var root = template.CloneTree();
-            foreach (var name in new[] { "modify", "create", "delete", "newMesh", "reset", "generate", "trace", "traceOK", "traceCancel" })
+            foreach (var name in new[] { "modify", "create", "delete", "newMesh", "reset", "generate", "trace", "traceOK", "traceCancel", "copy", "paste", "pasteApply", "pasteCancel" })
                 Assert.IsNotNull(root.Q<Button>(name), name);
+            Assert.IsTrue(root.Q("pasteSettings").ClassListContains("mesh-hidden"));
+            Assert.IsTrue(root.Q<Toggle>("pasteMirror").value);
+            Assert.IsNull(root.Q("pasteOffset"));
+            Assert.IsNull(root.Q("pasteScale"));
+            Assert.IsNull(root.Q("pasteAngle"));
+            Assert.AreEqual("Place the mesh and press Enter to confirm or Esc to cancel.", root.Q<Label>("pasteInstructions").text);
+            Assert.IsNotNull(ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/Copy.png"));
+            Assert.IsNotNull(ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/Paste.png"));
             Assert.IsNull(root.Q<Foldout>("traceSettings"));
             Assert.IsTrue(root.Q("traceSettings").ClassListContains("mesh-hidden"));
             Assert.IsNotNull(root.Q<Slider>("detail"));

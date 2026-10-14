@@ -547,7 +547,7 @@ namespace UnityEditor.U2D.Animation
 
             if (action == MeshEditorAction.CreateVertex)
             {
-                if (!frame.Contains(mouseWorldPosition))
+                if (!useSceneHandles && !frame.Contains(mouseWorldPosition))
                     return false;
 
                 if (mode == SpriteMeshViewMode.EditGeometry)
@@ -659,7 +659,7 @@ namespace UnityEditor.U2D.Animation
 
         private bool CanCreateEdge()
         {
-            if (!frame.Contains(mouseWorldPosition) || !(ownsSceneEdgeDrag || guiWrapper.IsControlNearest(defaultControlID) || guiWrapper.IsControlNearest(m_HoveredVertexControlID) || guiWrapper.IsControlNearest(m_HoveredEdgeControlID)))
+            if ((!useSceneHandles && !frame.Contains(mouseWorldPosition)) || !(ownsSceneEdgeDrag || guiWrapper.IsControlNearest(defaultControlID) || guiWrapper.IsControlNearest(m_HoveredVertexControlID) || guiWrapper.IsControlNearest(m_HoveredEdgeControlID)))
                 return false;
 
             if (mode == SpriteMeshViewMode.EditGeometry)
@@ -698,6 +698,11 @@ namespace UnityEditor.U2D.Animation
 
         private bool IsMouseInsideFrameForNewGeometry()
         {
+            // Scene mesh creation uses the controller's clamped preview position,
+            // even when the cursor is farther outside the source-image rectangle.
+            if (useSceneHandles)
+                return true;
+
             if (frame.Contains(mouseWorldPosition))
                 return true;
 

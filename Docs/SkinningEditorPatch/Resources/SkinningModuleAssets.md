@@ -30,6 +30,8 @@ Do not rename the UXML element unless all C# lookups, USS selectors, and metadat
 
 ## Panels
 
+- `SceneMeshIcons/Copy.png` and `Paste.png`: user-supplied icons for whole-mesh clipboard commands in Scene Edit Mesh. `SceneEditMeshWindow.uxml` adds `copy`, `paste` and a separate `pasteSettings` preview panel with a mirror toggle, English Scene placement/Enter/Escape instructions, Cancel and Apply controls. Scene handles provide translation and corner rotation; numeric transform fields have been removed.
+
 - `SceneEditMeshWindow.uxml` / `.uss`: floating **Edit Mesh** popup with a separate Symmetry row (New/Modify/Create/Delete) and Deformed, Triangles, Dim and Isolate toggles. Preserve `windowIcon`, `windowTitle`, `symmetry` and `deformed` for C# queries. The native title/header icon uses the existing `SceneMeshIcons/CreateMesh.png`; icon size accounts for editor DPI.
 - `GenerateGeometryPanel.uxml` / `.uss`
 - `GenerateWeightsPanel.uxml` / `.uss`

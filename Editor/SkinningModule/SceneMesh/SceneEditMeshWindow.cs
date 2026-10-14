@@ -51,6 +51,17 @@ namespace UnityEditor.U2D.Animation
         bool m_SaveInProgress;
         string m_LastImporterFingerprint;
         double m_NextPoseRepaint;
+        string m_MeshClipboard;
+        SpriteMeshData m_PastePreview;
+        bool pasteActive => m_MeshClipboard != null;
+        Vector2 m_PasteOffset;
+        float m_PasteAngle;
+        int m_PasteControl;
+        bool m_PasteRotating;
+        Vector2 m_PasteDragStart;
+        Vector2 m_PasteEntryOffset;
+        float m_PasteEntryAngle;
+        Vector2 m_PastePivot;
 
         sealed class SceneGUIWrapper : GUIWrapper
         {
@@ -166,6 +177,8 @@ namespace UnityEditor.U2D.Animation
 
         void OnDisable()
         {
+            if (m_PasteControl != 0 && GUIUtility.hotControl == m_PasteControl) GUIUtility.hotControl = 0;
+            m_PasteControl = 0;
             DisableWindowLifetime();
             EndTraceGesture();
             if (!isClosingForReload && !isRestoredWindow && !m_DiscardOnClose && !m_SaveInProgress && !EditorApplication.isPlaying && m_Source != null &&
@@ -234,6 +247,11 @@ namespace UnityEditor.U2D.Animation
             Bind("trace", () => { if (EnterTrace()) Trace(false); });
             Bind("traceOK", () => { ExitTrace(); SceneView.RepaintAll(); UpdateUI(); });
             Bind("traceCancel", CancelTrace);
+            Bind("copy", CopyMesh);
+            Bind("paste", BeginMeshPaste);
+            Bind("pasteCancel", CancelMeshPaste);
+            Bind("pasteApply", ApplyMeshPaste);
+            rootVisualElement.Q<Toggle>("pasteMirror").RegisterValueChangedCallback(_ => RefreshMeshPaste());
             rootVisualElement.RegisterCallback<KeyDownEvent>(evt =>
             {
                 if (!(evt.target is TextInputBaseField<string>) &&
@@ -242,18 +260,14 @@ namespace UnityEditor.U2D.Animation
                     evt.StopImmediatePropagation();
                     return;
                 }
-                if (evt.keyCode != KeyCode.Escape) return;
-                if (m_TraceActive)
-                    CancelTrace();
-                else if (m_Session.mode == 3)
+                if (pasteActive && (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter))
                 {
-                    m_Session.CancelNew();
-                    m_Error = null;
-                    SceneView.RepaintAll();
-                    UpdateUI();
+                    ApplyMeshPaste();
+                    evt.StopImmediatePropagation();
+                    return;
                 }
-                else return;
-                evt.StopPropagation();
+                if (evt.keyCode == KeyCode.Escape && HandleEscape())
+                    evt.StopImmediatePropagation();
             }, TrickleDown.TrickleDown);
             BindToggle("triangles", m_Triangles, value => m_Triangles = value);
             BindToggle("dim", m_Dim, value => m_Dim = value);
@@ -288,6 +302,160 @@ namespace UnityEditor.U2D.Animation
             if (texture != null) button.Add(new Image { image = texture, pickingMode = PickingMode.Ignore, name = "commandIcon" });
             button.Add(label);
         }
+        bool CanUseMeshClipboard() => !m_SaveInProgress && !m_MeshMutationInProgress &&
+            !m_TraceActive && m_Session != null && m_Session.mode != 3 &&
+            GUIUtility.hotControl == 0 && BlockReason() == null;
+
+        void CopyMesh()
+        {
+            if (!CanUseMeshClipboard() || pasteActive) return;
+            try { EditorGUIUtility.systemCopyBuffer = m_Session.CopyMeshGeometry(); m_Error = null; }
+            catch (Exception ex) { m_Error = ex.Message; }
+            UpdateUI();
+        }
+
+        void BeginMeshPaste()
+        {
+            if (!CanUseMeshClipboard() || pasteActive) return;
+            try
+            {
+                var clipboard = EditorGUIUtility.systemCopyBuffer;
+                var preview = m_Session.PreviewMeshGeometry(clipboard, true, Vector2.zero, Vector2.one, 0);
+                rootVisualElement.Q<Toggle>("pasteMirror").SetValueWithoutNotify(true);
+                m_PasteOffset = Vector2.zero;
+
+                m_PasteAngle = 0;
+                m_MeshClipboard = clipboard;
+                m_PastePreview = preview;
+                m_Error = null;
+            }
+            catch (Exception ex) { m_Error = ex.Message; }
+            UpdateUI();
+            SceneView.RepaintAll();
+        }
+
+        void RefreshMeshPaste()
+        {
+            if (!pasteActive) return;
+            try
+            {
+                m_PastePreview = m_Session.PreviewMeshGeometry(m_MeshClipboard,
+                    rootVisualElement.Q<Toggle>("pasteMirror").value,
+                    m_PasteOffset,
+                    Vector2.one,
+                    m_PasteAngle);
+                m_Error = null;
+            }
+            catch (Exception ex) { m_Error = ex.Message; }
+            UpdateUI();
+            SceneView.RepaintAll();
+        }
+
+        void CancelMeshPaste()
+        {
+            if (m_PasteControl != 0 && GUIUtility.hotControl == m_PasteControl) GUIUtility.hotControl = 0;
+            m_PasteControl = 0;
+            m_MeshClipboard = null;
+            m_PastePreview = null;
+            m_Error = null;
+            UpdateUI();
+            SceneView.RepaintAll();
+        }
+
+        void ApplyMeshPaste()
+        {
+            if (!pasteActive || m_PastePreview == null || !CanUseMeshClipboard()) return;
+            var preview = m_PastePreview;
+            Mutate("Paste Sprite Mesh Geometry", () => m_Session.ApplyMeshGeometry(preview), false);
+            if (m_Error == null) CancelMeshPaste();
+        }
+
+        internal static Vector2 RotatePastePoint(Vector2 point, float degrees)
+        {
+            float angle = degrees * Mathf.Deg2Rad;
+            return new Vector2(point.x * Mathf.Cos(angle) - point.y * Mathf.Sin(angle),
+                point.x * Mathf.Sin(angle) + point.y * Mathf.Cos(angle));
+        }
+
+        internal static float PasteRotation(Vector2 start, Vector2 current, Vector2 pivot) =>
+            Vector2.SignedAngle(start - pivot, current - pivot);
+
+        Vector2[] PasteCorners()
+        {
+            var center = m_Session.mesh.frame.size * 0.5f + m_PasteOffset;
+            var local = m_PastePreview.vertices.Select(p => RotatePastePoint(p - center, -m_PasteAngle)).ToArray();
+            var min = local.Aggregate(Vector2.Min);
+            var max = local.Aggregate(Vector2.Max);
+            return new[] { min, new Vector2(min.x, max.y), max, new Vector2(max.x, min.y) }
+                .Select(p => center + RotatePastePoint(p, m_PasteAngle)).ToArray();
+        }
+
+        void HandleMeshPastePlacement(Matrix4x4 matrix)
+        {
+            if (m_PastePreview == null) return;
+            var evt = Event.current;
+            int control = GUIUtility.GetControlID("UniskinMeshPastePlacement".GetHashCode(), FocusType.Passive);
+            var corners = PasteCorners();
+            var screen = corners.Select(p => HandleUtility.WorldToGUIPoint(matrix.MultiplyPoint3x4(p))).ToArray();
+            int corner = Array.FindIndex(screen, p => Vector2.Distance(p, evt.mousePosition) <= 12f);
+            bool inside = false;
+            for (int i = 0, j = 3; i < 4; j = i++)
+                if ((screen[i].y > evt.mousePosition.y) != (screen[j].y > evt.mousePosition.y) &&
+                    evt.mousePosition.x < (screen[j].x - screen[i].x) * (evt.mousePosition.y - screen[i].y) /
+                    (screen[j].y - screen[i].y) + screen[i].x) inside = !inside;
+            if (evt.type == EventType.Layout && !evt.alt)
+                HandleUtility.AddControl(control, corner >= 0 || inside ? 0 : 1000);
+            if (evt.type == EventType.Repaint)
+            {
+                using (new Handles.DrawingScope(new Color(0.3f, 0.7f, 1f), matrix))
+                    Handles.DrawAAPolyLine(2f, corners.Concat(new[] { corners[0] }).Select(p => (Vector3)p).ToArray());
+                Handles.BeginGUI();
+                foreach (var point in screen)
+                    EditorGUI.DrawRect(new Rect(point.x - 4, point.y - 4, 8, 8), new Color(0.3f, 0.7f, 1f));
+                Handles.EndGUI();
+            }
+            if (evt.alt || evt.button != 0) return;
+            var ray = HandleUtility.GUIPointToWorldRay(evt.mousePosition);
+            var plane = new Plane(matrix.MultiplyVector(Vector3.forward).normalized, matrix.MultiplyPoint3x4(Vector3.zero));
+            if (!plane.Raycast(ray, out var distance)) return;
+            Vector2 pointInMesh = matrix.inverse.MultiplyPoint3x4(ray.GetPoint(distance));
+            if (evt.type == EventType.MouseDown && GUIUtility.hotControl == 0 && (inside || corner >= 0))
+            {
+                m_PasteControl = control;
+                GUIUtility.hotControl = control;
+                m_PasteRotating = corner >= 0;
+                m_PasteDragStart = pointInMesh;
+                m_PasteEntryOffset = m_PasteOffset;
+                m_PasteEntryAngle = m_PasteAngle;
+                m_PastePivot = (corners[0] + corners[2]) * 0.5f;
+                evt.Use();
+            }
+            else if (GUIUtility.hotControl == m_PasteControl && m_PasteControl != 0)
+            {
+                if (evt.type == EventType.MouseDrag)
+                {
+                    if (m_PasteRotating)
+                    {
+                        float delta = PasteRotation(m_PasteDragStart, pointInMesh, m_PastePivot);
+                        m_PasteAngle = m_PasteEntryAngle + delta;
+                        var entryCenter = m_Session.mesh.frame.size * 0.5f + m_PasteEntryOffset;
+                        m_PasteOffset = m_PastePivot - m_Session.mesh.frame.size * 0.5f - RotatePastePoint(m_PastePivot - entryCenter, delta);
+                    }
+                    else m_PasteOffset = m_PasteEntryOffset + pointInMesh - m_PasteDragStart;
+                    RefreshMeshPaste();
+                    evt.Use();
+                }
+                else if (evt.type == EventType.MouseUp)
+                {
+                    GUIUtility.hotControl = 0;
+                    m_PasteControl = 0;
+                    evt.Use();
+                }
+            }
+            if (corner >= 0 || inside)
+                EditorGUIUtility.AddCursorRect(new Rect(evt.mousePosition - Vector2.one * 12, Vector2.one * 24),
+                    corner >= 0 ? MouseCursor.RotateArrow : MouseCursor.MoveArrow);
+        }
         void BindToggle(string name, bool value, Action<bool> action)
         {
             var toggle = rootVisualElement.Q<Toggle>(name);
@@ -320,9 +488,14 @@ namespace UnityEditor.U2D.Animation
                 rootVisualElement.Q(name).SetEnabled(blocked == null);
             rootVisualElement.Q<VisualElement>("commands").tooltip = blocked;
             rootVisualElement.Q("traceSettings").tooltip = m_Error ?? blocked;
-            rootVisualElement.Q("mainControls").EnableInClassList("mesh-hidden", m_TraceActive);
+            rootVisualElement.Q("mainControls").EnableInClassList("mesh-hidden", m_TraceActive || pasteActive);
+            rootVisualElement.Q("pasteSettings").EnableInClassList("mesh-hidden", !pasteActive);
+            rootVisualElement.Q("pasteSettings").SetEnabled(blocked == null);
+            rootVisualElement.Q<Button>("pasteApply").SetEnabled(blocked == null && m_PastePreview != null);
+            foreach (var name in new[] { "copy", "paste" })
+                rootVisualElement.Q(name).SetEnabled(CanUseMeshClipboard());
             rootVisualElement.Q("traceSettings").EnableInClassList("mesh-hidden", !m_TraceActive);
-            rootVisualElement.Q<Label>("windowTitle").text = m_TraceActive ? "Edit Mesh: Trace" : "Edit Mesh";
+            rootVisualElement.Q<Label>("windowTitle").text = pasteActive ? "Edit Mesh: Paste" : m_TraceActive ? "Edit Mesh: Trace" : "Edit Mesh";
             var effectiveMode = EffectiveMode();
             var symmetry = rootVisualElement.Q<Toggle>("symmetry");
             symmetry.SetValueWithoutNotify(m_Session.symmetryActive);
@@ -334,6 +507,9 @@ namespace UnityEditor.U2D.Animation
             rootVisualElement.Q<Button>("trace").EnableInClassList("mesh-active", m_TraceActive);
             hasUnsavedChanges = false; // RequestClose saves before closing; no Unity confirmation.
             rootVisualElement.Q<Label>("vertexCount").text = $"Vertices: {m_Session.mesh.vertexCount}    Triangles: {m_Session.mesh.indices.Length / 3}";
+            var error = rootVisualElement.Q<Label>("meshClipboardError");
+            error.text = m_Error;
+            error.EnableInClassList("mesh-hidden", string.IsNullOrEmpty(m_Error));
             if (blocked != null) RestoreScene();
         }
 
@@ -393,6 +569,7 @@ namespace UnityEditor.U2D.Animation
         void OnUndoRedo()
         {
             if (m_SaveInProgress) return;
+            if (pasteActive) CancelMeshPaste();
             m_TraceUndoGroup = -1;
             m_TraceTransactionUndoGroup = -1;
             if (m_Session.hasBoneWeights) ExitTrace();
@@ -683,6 +860,9 @@ namespace UnityEditor.U2D.Animation
             {
                 toolScope.Hide();
                 var evt = Event.current;
+                // Consume Escape before SceneView's native object deselection.
+                // duringSceneGui runs too late to receive the original key event.
+                if (HandleSceneEscape(evt)) return;
                 // Native inspector handles run before duringSceneGui. Reserve the
                 // press now, then release it to our mesh handles in OnSceneGUI.
                 int control = GUIUtility.GetControlID("UniskinSceneMeshInput".GetHashCode(), FocusType.Passive);
@@ -690,6 +870,39 @@ namespace UnityEditor.U2D.Animation
                 if ((!evt.alt && UnityEditor.Tools.current != Tool.View) || temporaryAltMode)
                     if (CapturePrimaryScenePress(m_InputGUI, control)) m_PrimaryInputControl = control;
             }
+        }
+
+        internal bool HandleSceneEscape(Event evt)
+        {
+            if (evt.type != EventType.KeyDown || evt.keyCode != KeyCode.Escape || !HandleEscape()) return false;
+            evt.Use();
+            return true;
+        }
+
+        bool HandleEscape()
+        {
+            if (m_Session == null || m_SaveInProgress || m_TraceInProgress || m_MeshMutationInProgress) return false;
+            if (pasteActive) CancelMeshPaste();
+            else if (m_TraceActive) CancelTrace();
+            else
+            {
+                ReleasePrimaryScenePress(m_InputGUI, m_PrimaryInputControl);
+                m_PrimaryInputControl = 0;
+                m_View?.CancelCreateEdgeDrag();
+                if (m_BoxSelecting && GUIUtility.hotControl == m_Control) GUIUtility.hotControl = 0;
+                m_BoxSelecting = false;
+                m_BoxSelection = Array.Empty<int>();
+                if (m_Session.mode == 3)
+                {
+                    m_Session.CancelNew();
+                    m_Error = null;
+                    UpdateUI();
+                }
+                else m_Session.selection.Clear();
+                m_Session.EndUndoOperation();
+                SceneView.RepaintAll();
+            }
+            return true;
         }
 
         internal static bool CapturePrimaryScenePress(IGUIWrapper gui, int control)
@@ -711,12 +924,25 @@ namespace UnityEditor.U2D.Animation
             if (m_TraceInProgress || m_MeshMutationInProgress || m_SaveInProgress) return;
             if (BlockReason() != null) return;
             var evt = Event.current;
+            if (pasteActive && evt.type == EventType.KeyDown && (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter))
+            {
+                if (GUIUtility.hotControl == m_PasteControl) GUIUtility.hotControl = 0;
+                ApplyMeshPaste();
+                evt.Use();
+                return;
+            }
+            if (pasteActive && evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Escape)
+            {
+                CancelMeshPaste();
+                evt.Use();
+                return;
+            }
             if (!EditorGUIUtility.editingTextField && GUIUtility.hotControl == 0)
             {
                 bool command = evt.type == EventType.ValidateCommand || evt.type == EventType.ExecuteCommand;
                 bool copy = command && evt.commandName == "Copy";
                 bool paste = command && evt.commandName == "Paste";
-                if ((copy || paste) && !m_TraceActive && m_Session.mode != 3)
+                if ((copy || paste) && !m_TraceActive && !pasteActive && m_Session.mode != 3)
                 {
                     if (evt.type == EventType.ExecuteCommand)
                         HandleVertexClipboard(copy ? KeyCode.C : KeyCode.V, true, evt.shift, false);
@@ -763,6 +989,26 @@ namespace UnityEditor.U2D.Animation
                     }
             }
             var matrix = SceneMeshSession.PixelToWorld(m_Renderer, m_Session.mesh.frame);
+            if (pasteActive)
+            {
+                if (evt.type == EventType.Repaint)
+                {
+                    DrawImage(matrix, null);
+                    DrawImageBounds(matrix, scene);
+                    if (m_PastePreview != null)
+                        using (new Handles.DrawingScope(new Color(0.3f, 0.9f, 1f), matrix))
+                        {
+                            if (m_Triangles) DrawTriangles(m_PastePreview);
+                            foreach (var edge in m_PastePreview.edges.Concat(m_PastePreview.outlineEdges))
+                                Handles.DrawLine(m_PastePreview.vertices[edge.x], m_PastePreview.vertices[edge.y]);
+                            foreach (var point in m_PastePreview.vertices)
+                                Handles.DrawSolidDisc(point, Vector3.forward, HandleUtility.GetHandleSize(point) * 0.025f);
+                        }
+                }
+                HandleMeshPastePlacement(matrix);
+                if (!evt.alt && evt.button == 0 && (evt.type == EventType.MouseDown || evt.type == EventType.MouseDrag || evt.type == EventType.MouseUp)) evt.Use();
+                return;
+            }
             var deformation = evt.type == EventType.Repaint ? Deformation() : null;
             var displayedMesh = deformation?.mesh ?? m_Session.mesh;
             if (evt.type == EventType.Repaint)
@@ -922,7 +1168,7 @@ namespace UnityEditor.U2D.Animation
 
         bool HandleVertexClipboard(KeyCode key, bool action, bool shift, bool alt)
         {
-            if (!action || alt || (key != KeyCode.C && key != KeyCode.V) || m_TraceActive ||
+            if (!action || alt || (key != KeyCode.C && key != KeyCode.V) || m_TraceActive || pasteActive ||
                 GUIUtility.hotControl != 0 || m_SaveInProgress || m_MeshMutationInProgress ||
                 m_Session == null || m_Session.mode == 3 || BlockReason() != null)
                 return false;
@@ -1152,7 +1398,7 @@ namespace UnityEditor.U2D.Animation
             if (m_ImageMesh == null) m_ImageMesh = new Mesh { name = "Uniskin Sprite Preview", hideFlags = HideFlags.HideAndDontSave };
             textureProvider.GetTextureActualWidthAndHeight(out var width, out var height);
             BuildImageMesh(m_ImageMesh, m_Session.mesh, deformedMesh, m_Source.bindingPose,
-                m_Session.mode == 3 || m_TraceActive, width, height);
+                m_Session.mode == 3 || m_TraceActive || pasteActive, width, height);
             var color = m_Renderer.color;
             if (m_Dim) { color.r *= 0.35f; color.g *= 0.35f; color.b *= 0.35f; }
             m_ImageMaterial.mainTexture = textureProvider.texture;

@@ -309,16 +309,12 @@ namespace UnityEditor.U2D.Animation
                     }
                     else if (m_Direct && !m_Bind)
                     {
-                        if (evt.clickCount >= 2)
+                        m_Gesture = Gesture.Select;
+                        m_SelectionBefore = m_Session.vertices.elements.ToArray();
+                        if (!m_Additive)
                         {
                             m_Session.vertices.EndSelection(false);
                             m_Session.vertices.Clear();
-                        }
-                        else
-                        {
-                            // Keep the selection on a single click; replace/add only after dragging.
-                            m_Gesture = Gesture.Select;
-                            m_SelectionBefore = m_Session.vertices.elements.ToArray();
                         }
                     }
                     else if (!m_Bind && !m_Direct && m_Session.selectedBones.Length > 0)

@@ -25,6 +25,9 @@
 .mesh-tick { font-size: 11px; color: #CFCFCF; margin: 0; padding: 0; }
 .mesh-options .unity-toggle__checkmark:checked { background-image: none; }
 .mesh-hidden { display: none; }
+.mesh-paste-settings .unity-base-field { margin-bottom: 4px; }
+.mesh-paste-settings .unity-base-field__label { min-width: 110px; }
+.mesh-paste-note { white-space: normal; margin-bottom: 4px; }
 .uniskin-mesh-window Slider, .uniskin-mesh-window SliderInt { height: 20px; margin: 0 0 4px 0; }
 .uniskin-mesh-window Slider > .unity-base-field__label, .uniskin-mesh-window SliderInt > .unity-base-field__label { min-width: 100px; }
 .uniskin-mesh-window .unity-base-slider__tracker { background-color: #14171B; height: 14px; border-width: 0; border-radius: 0; }
