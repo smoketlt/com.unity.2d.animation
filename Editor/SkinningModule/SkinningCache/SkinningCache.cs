@@ -188,6 +188,7 @@ namespace UnityEditor.U2D.Animation
             }
 
             CreateCharacter(spriteEditor);
+            BoneIconUtility.Load(this, dataProvider);
         }
 
         public void CreateToolCache(ISpriteEditor spriteEditor, LayoutOverlay layoutOverlay)

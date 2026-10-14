@@ -69,6 +69,7 @@ namespace UnityEditor.U2D.Animation
             public SpriteRecord[] sprites;
             public SpriteBone[] characterBones;
             public CharacterData character;
+            public BoneIconUtility.Entry[] icons;
         }
 
         internal SkeletonCache skeleton => cache.GetEffectiveSkeleton(cache.selectedSprite);
@@ -305,7 +306,8 @@ namespace UnityEditor.U2D.Animation
                     vertices = source.meshProvider.GetVertices(rect.spriteID),
                     indices = source.meshProvider.GetIndices(rect.spriteID), edges = source.meshProvider.GetEdges(rect.spriteID)
                 }).ToArray(),
-                character = source.provider.GetDataProvider<ICharacterDataProvider>()?.GetCharacterData() ?? default
+                character = source.provider.GetDataProvider<ICharacterDataProvider>()?.GetCharacterData() ?? default,
+                icons = BoneIconUtility.Read(source.userData)
             });
         }
 
@@ -320,7 +322,8 @@ namespace UnityEditor.U2D.Animation
                     // layer's vertex payload during the popup's property refresh.
                     influences = sprite.GetMesh().bones.Select(bone => bone.guid).ToArray()
                 }).ToArray(),
-            characterBones = cache.hasCharacter ? cache.character.skeleton.bones.ToSpriteBone(Matrix4x4.identity) : null
+            characterBones = cache.hasCharacter ? cache.character.skeleton.bones.ToSpriteBone(Matrix4x4.identity) : null,
+            icons = BoneIconUtility.Capture(skeleton.bones)
         });
 
         void RememberBones() => m_KnownBones = skeleton.bones.Select(bone => bone.guid).ToList();
@@ -499,6 +502,7 @@ namespace UnityEditor.U2D.Animation
             var renames = SceneBoneRenamePlan.Create(source, skeleton);
             Undo.RegisterCompleteObjectUndo(source.saveTarget, "Save Sprite Bones");
             WithSourcePose(() => SkinningModule.ApplySceneBoneChanges(cache, source.provider, initializeMissingWeights: !skeletonOnly));
+            source.userData = BoneIconUtility.Write(source.userData, BoneIconUtility.Bones(cache));
             if (source.provider is UniskinRigDataProvider rigProvider)
             {
                 UniskinRigUtility.CheckSource(rigProvider.rig);
@@ -517,6 +521,7 @@ namespace UnityEditor.U2D.Animation
                     throw;
                 }
                 m_Saved = SourceSnapshot();
+                BoneGizmo.instance.ClearSpriteBoneCache();
                 return;
             }
             // Set instance overrides before prefab regeneration so renamed objects retain
@@ -524,6 +529,7 @@ namespace UnityEditor.U2D.Animation
             renames.Apply();
             source.ApplyAndSave();
             m_Saved = SourceSnapshot();
+            BoneGizmo.instance.ClearSpriteBoneCache();
         }
 
         internal void RestoreAfterUndo() { cache.EndUndoOperation(); RememberBones(); }

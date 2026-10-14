@@ -26,6 +26,7 @@
           </ui:VisualElement>
           <ui:VisualElement class="mesh-row mesh-options">
             <ui:Toggle name="symmetry" text="Symmetry" tooltip="Mirror New/Create geometry and edit mirrored vertex pairs across the source bounds center. Points near the axis snap to it." class="mesh-option-toggle" />
+            <ui:Toggle name="onTop" text="On Top" value="true" tooltip="Show the edited image in front of other sprites. Disable to use its normal sorting layer and order." class="mesh-option-toggle" />
           </ui:VisualElement>
           <ui:VisualElement class="mesh-row mesh-options">
             <ui:Toggle name="deformed" text="Deformed" tooltip="Follow the current scene bone pose while keeping edits in source coordinates." class="mesh-option-toggle" />

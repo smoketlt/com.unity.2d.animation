@@ -22,6 +22,8 @@ This host edits the **source Sprite/PSB skeleton**, not scene Transform objects.
 
 ## Controls and gestures
 
+The properties area includes a current-icon button opening the separate Spine-style [Bone Icons](BoneIcons.md) picker. Icon selection supports multiple bones and Undo, and saves by GUID to native importer or rig metadata.
+
 The selected GameObject's native transform handles are automatically hidden while Edit Bones is available, including after choosing Move/Rotate/Scale again. Custom bone handles remain available. The shared [Scene object tool scope](SceneMeshEditing.md#scene-object-tool-handles) restores the previous visibility when editing closes, reloads or becomes blocked; manually switching to View is unnecessary.
 
 ### Editing during Scene animation

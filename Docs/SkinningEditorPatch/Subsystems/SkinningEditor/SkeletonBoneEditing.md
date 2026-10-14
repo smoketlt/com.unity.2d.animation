@@ -37,6 +37,8 @@ Chained creation still works when starting from a hovered bone tail. The new bon
 
 ## Bone Inspector
 
+Scene **Edit Bones** also exposes an Icon button and separate seven-column picker for per-bone symbols replacing the entire bone drawing, including directional Arrow/Direction variants. Default retains the original bone drawing. See [Bone Icons](BoneIcons.md) for display and persistence semantics.
+
 Edit Bones shows the bottom bone inspector when one or more bones are selected.
 
 For a single selected bone, the inspector title is `Bone` and exposes name, position, rotation, length, bone color, and depth. `Length` reads and writes the selected bone's world length. Position, rotation, and length update when the selected bone is edited directly in the viewport.

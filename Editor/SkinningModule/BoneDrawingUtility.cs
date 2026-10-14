@@ -77,11 +77,15 @@ namespace UnityEditor.U2D.Animation
             Handles.color = handlesColor;
         }
 
-        public static void DrawBoneOutline(Vector3 position, Vector3 endPosition, Vector3 forward, Color color, float outlineScale = 1.35f, float scale = 1.0f)
+        public static void DrawBoneOutline(Vector3 position, Vector3 endPosition, Vector3 forward, Color color, float outlineScale = 1.35f, float scale = 1.0f, string iconId = null, float iconSize = BoneIconUtility.DefaultSize)
         {
             float displayScale = scale * SkinningModuleSettings.boneDisplayScale;
-            DrawTextureAt(position, B_Circle_Selected, color, kCircleSize * displayScale, kCircleSize * displayScale);
-            DrawTexturedBone(position, endPosition, forward, color, color, true, scale);
+            if (BoneIconUtility.Normalize(iconId) == BoneIconUtility.Default)
+            {
+                DrawTextureAt(position, B_Circle_Selected, color, kCircleSize * displayScale, kCircleSize * displayScale);
+                DrawTexturedBone(position, endPosition, forward, color, color, true, scale);
+            }
+            else BoneIconUtility.Draw(position, iconId, color, true, iconSize);
         }
 
         public static bool ShouldDrawBoneBody(Vector3 position, Vector3 endPosition, float scale = 1.0f)

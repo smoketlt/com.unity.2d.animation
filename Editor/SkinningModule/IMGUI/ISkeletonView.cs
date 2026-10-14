@@ -48,7 +48,7 @@ namespace UnityEditor.U2D.Animation
         void EndLayout();
         bool CanLayout();
         Vector3 GetMouseWorldPosition(Vector3 planeNormal, Vector3 planePosition);
-        void LayoutBone(ObjectId id, Vector3 position, Vector3 endPosition, Vector3 forward, Vector3 up, Vector3 right, bool isChainEnd);
+        void LayoutBone(ObjectId id, Vector3 position, Vector3 endPosition, Vector3 forward, Vector3 up, Vector3 right, bool isChainEnd, bool iconOnly = false);
         bool DoSelectBone(out ObjectId id, out bool additive);
         bool DoRotateBone(Vector3 pivot, Vector3 normal, out float deltaAngle);
         bool DoMoveBone(out Vector3 deltaPosition);
@@ -66,10 +66,10 @@ namespace UnityEditor.U2D.Animation
         bool IsActionTriggering(SkeletonAction action);
         bool IsActionFinishing(SkeletonAction action);
         bool IsRepainting();
-        void DrawBone(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, bool isChained, bool isSelected, bool isJointHovered, bool isTailHovered, bool isHot);
+        void DrawBone(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, bool isChained, bool isSelected, bool isJointHovered, bool isTailHovered, bool isHot, string iconId = null, float iconSize = BoneIconUtility.DefaultSize);
         void DrawConstraintParent(Vector3 position, Vector3 right, Vector3 up, Color color);
         void DrawBoneParentLink(Vector3 parentEndPosition, Vector3 position, Vector3 forward, Color color);
-        void DrawBoneOutline(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, float outlineScale);
+        void DrawBoneOutline(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, float outlineScale, string iconId = null, float iconSize = BoneIconUtility.DefaultSize);
         void DrawCursors(bool canBeActive);
     }
 }

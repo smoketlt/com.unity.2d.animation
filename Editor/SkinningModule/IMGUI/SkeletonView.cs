@@ -137,12 +137,12 @@ namespace UnityEditor.U2D.Animation
             return m_GUIWrapper.eventType == EventType.Layout;
         }
 
-        public void LayoutBone(ObjectId id, Vector3 position, Vector3 endPosition, Vector3 forward, Vector3 up, Vector3 right, bool isChainEnd)
+        public void LayoutBone(ObjectId id, Vector3 position, Vector3 endPosition, Vector3 forward, Vector3 up, Vector3 right, bool isChainEnd, bool iconOnly = false)
         {
             if (mode == SkeletonMode.Disabled)
                 return;
 
-            bool isZeroLength = (endPosition - position).sqrMagnitude <= k_ZeroLengthBoneSqrMagnitude;
+            bool isZeroLength = iconOnly || (endPosition - position).sqrMagnitude <= k_ZeroLengthBoneSqrMagnitude;
             SliderData sliderData = new SliderData()
             {
                 position = GetMouseWorldPosition(forward, position),
@@ -560,7 +560,7 @@ namespace UnityEditor.U2D.Animation
             return m_GUIWrapper.IsRepainting();
         }
 
-        public void DrawBone(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, bool isChained, bool isSelected, bool isJointHovered, bool isTailHovered, bool isHot)
+        public void DrawBone(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, bool isChained, bool isSelected, bool isJointHovered, bool isTailHovered, bool isHot, string iconId = null, float iconSize = BoneIconUtility.DefaultSize)
         {
             Vector3 endPosition = position + right * length;
             Color boneJointColor = color;
@@ -578,8 +578,12 @@ namespace UnityEditor.U2D.Animation
             if (isHot && (IsActionHot(SkeletonAction.ChangeLength) || IsActionHot(SkeletonAction.MoveEndPosition)))
                 endCapColor = selectedColor;
 
-            BoneDrawingUtility.DrawBone(position, endPosition, forward, color, endCapColor);
-            BoneDrawingUtility.DrawBoneNode(position, forward, boneJointColor);
+            if (BoneIconUtility.Normalize(iconId) == BoneIconUtility.Default)
+            {
+                BoneDrawingUtility.DrawBone(position, endPosition, forward, color, endCapColor);
+                BoneDrawingUtility.DrawBoneNode(position, forward, boneJointColor);
+            }
+            else BoneIconUtility.Draw(position, iconId, boneJointColor, iconSize: iconSize);
 
         }
 
@@ -598,9 +602,9 @@ namespace UnityEditor.U2D.Animation
             BoneDrawingUtility.DrawBoneParentLink(position, parentEndPosition, forward, color);
         }
 
-        public void DrawBoneOutline(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, float outlineScale)
+        public void DrawBoneOutline(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, float outlineScale, string iconId = null, float iconSize = BoneIconUtility.DefaultSize)
         {
-            BoneDrawingUtility.DrawBoneOutline(position, position + right * length, forward, color, outlineScale);
+            BoneDrawingUtility.DrawBoneOutline(position, position + right * length, forward, color, outlineScale, iconId: iconId, iconSize: iconSize);
         }
 
         public void DrawCursors(bool canBeActive)

@@ -97,6 +97,19 @@ namespace UnityEditor.U2D.Animation
         bool m_IsVisible = true;
         [SerializeField]
         string m_Guid;
+        [SerializeField] string m_IconId;
+        [SerializeField] float m_IconSize = BoneIconUtility.DefaultSize;
+        internal float iconSize
+        {
+            get => BoneIconUtility.NormalizeSize(m_IconSize);
+            set => m_IconSize = BoneIconUtility.NormalizeSize(value);
+        }
+
+        internal string iconId
+        {
+            get => BoneIconUtility.Normalize(m_IconId);
+            set => m_IconId = BoneIconUtility.Normalize(value);
+        }
 
         public bool NotInDefaultPose()
         {

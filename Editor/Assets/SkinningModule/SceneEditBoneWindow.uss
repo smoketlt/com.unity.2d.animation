@@ -3,3 +3,16 @@
 .bone-properties .unity-base-field__input { background-color: #1D2228; color: #CFCFCF; border-width: 1px; border-color: #14171B; border-radius: 0; }
 .bone-properties .unity-text-field__input { color: #CFCFCF; }
 #windowIcon { width: 16px; height: 16px; align-self: center; margin-left: 5px; flex-shrink: 0; }
+.bone-color-row { flex-direction: row; align-items: center; margin-bottom: 4px; }
+.bone-length-size-row { flex-direction: row; margin-bottom: 4px; }
+.bone-length-size-row > .unity-base-field { height: 20px; flex-grow: 1; flex-basis: 0; min-width: 0; margin: 0; }
+.bone-length-size-row > #boneIconSize { margin-left: 8px; }
+.bone-length-size-row > #boneIconSize > .unity-base-field__label { min-width: 30px; }
+.bone-color-row > #boneColor { flex-grow: 1; height: 20px; margin: 0 4px 0 0; }
+.uniskin-bone-window .bone-icon-button { width: 24px; height: 24px; padding: 0; flex-grow: 0; flex-shrink: 0; margin: 0; align-items: center; justify-content: center; }
+.bone-icon-button > .bone-icon-image { width: 16px; height: 16px; }
+.bone-icon-image { width: 20px; height: 20px; }
+.bone-icon-picker { flex-grow: 1; flex-direction: row; flex-wrap: wrap; align-content: flex-start; padding: 5px; background-color: #1D2228; border-width: 1px; border-color: #14171B; border-radius: 0; }
+.bone-icon-picker-button { width: 32px; height: 32px; flex-grow: 0; flex-shrink: 0; margin: 2px; padding: 0; border-width: 0; border-bottom-width: 1px; border-color: #14171B; border-radius: 0; background-color: #272D35; align-items: center; justify-content: center; }
+.bone-icon-picker-button:hover { background-color: #313943; }
+.bone-icon-picker-button.bone-icon-current { background-color: #005050; }

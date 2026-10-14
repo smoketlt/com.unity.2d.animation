@@ -146,12 +146,36 @@ namespace UnityEditor.U2D.Animation
             if (boneProperties != null)
                 foreach (var field in boneProperties.Children())
                 {
+                    if (!field.ClassListContains("unity-base-field")) continue;
                     field.style.height = Px(20);
                     field.style.marginBottom = Px(4);
                     var label = field.Q(className: "unity-base-field__label");
                     if (label != null) label.style.minWidth = Px(52);
                 }
             root.Query(className: "mesh-tick").ForEach(tick => tick.style.fontSize = Px(11));
+            var boneIcon = root.Q<Button>("boneIcon");
+            if (boneIcon != null)
+            {
+                boneIcon.style.width = Px(24);
+                boneIcon.style.paddingLeft = boneIcon.style.paddingRight = 0;
+                var image = root.Q("boneIconImage");
+                image.style.width = image.style.height = Px(16);
+                var row = root.Q(className: "bone-color-row");
+                row.style.marginBottom = Px(4);
+                var color = root.Q("boneColor");
+                color.style.height = Px(20);
+                color.style.marginRight = Px(4);
+                color.Q(className: "unity-base-field__label").style.minWidth = Px(52);
+                var sizeRow = root.Q(className: "bone-length-size-row");
+                sizeRow.style.marginBottom = Px(4);
+                foreach (var fieldName in new[] { "boneLength", "boneIconSize" })
+                {
+                    var field = root.Q(fieldName);
+                    field.style.height = Px(20);
+                    field.Q(className: "unity-base-field__label").style.minWidth = Px(fieldName == "boneLength" ? 52 : 30);
+                }
+                root.Q("boneIconSize").style.marginLeft = Px(8);
+            }
             options?.Query(className: "unity-toggle__checkmark").ForEach(check => check.style.width = check.style.height = Px(14));
             options?.Query(className: "unity-toggle__text").ForEach(label => label.style.marginLeft = Px(4));
             var weightStep = root.Q<FloatField>("weightStep");

@@ -16,8 +16,16 @@
         </ui:VisualElement>
         <ui:VisualElement name="properties" class="bone-properties">
           <ui:TextField name="boneName" label="Name" is-delayed="true" tooltip="Rename the bone, its scene GameObjects and animation bindings when saving." />
-          <uie:ColorField name="boneColor" label="Color" show-alpha="false" hdr="false" />
-          <uie:FloatField name="boneLength" label="Length" is-delayed="true" tooltip="Bone length in original source pixels." />
+          <ui:VisualElement class="bone-color-row">
+            <uie:ColorField name="boneColor" label="Color" show-alpha="false" hdr="false" />
+            <ui:Button name="boneIcon" tooltip="Choose an icon for the selected bones." class="bone-icon-button">
+              <ui:Image name="boneIconImage" picking-mode="Ignore" class="bone-icon-image" />
+            </ui:Button>
+          </ui:VisualElement>
+          <ui:VisualElement class="bone-length-size-row">
+            <uie:FloatField name="boneLength" label="Length" is-delayed="true" tooltip="Bone length in original source pixels." />
+            <uie:FloatField name="boneIconSize" label="Size" is-delayed="true" tooltip="Icon display size in screen points (4–128). Available for custom icons." />
+          </ui:VisualElement>
         </ui:VisualElement>
       </ui:VisualElement>
     </ui:VisualElement>

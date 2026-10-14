@@ -132,7 +132,7 @@ namespace UnityEditor.U2D.Animation
                 BoneCache bone = skeleton.GetBone(i);
 
                 if (bone.isVisible && bone != hotBone && !bone.IsConstraintParent())
-                    view.LayoutBone(bone.GetObjectId(), bone.position, bone.endPosition, bone.forward, bone.up, bone.right, bone.chainedChild == null);
+                    view.LayoutBone(bone.GetObjectId(), bone.position, bone.endPosition, bone.forward, bone.up, bone.right, bone.chainedChild == null, bone.iconId != BoneIconUtility.Default);
             }
         }
 
@@ -495,7 +495,7 @@ namespace UnityEditor.U2D.Animation
             bool isJointHovered = !isHovered && view.IsActionHot(SkeletonAction.None) && hoveredJoint == bone && isNotOnVisualElement;
             bool isTailHovered = !isHovered && view.IsActionHot(SkeletonAction.None) && hoveredTail == bone && isNotOnVisualElement;
 
-            view.DrawBone(bone.position, bone.right, Vector3.forward, bone.length, color, bone.chainedChild != null, isSelected, isJointHovered, isTailHovered, bone == hotBone);
+            view.DrawBone(bone.position, bone.right, Vector3.forward, bone.length, color, bone.chainedChild != null, isSelected, isJointHovered, isTailHovered, bone == hotBone, bone.iconId, bone.iconSize);
         }
 
         static Color ApplyConstraintFlashAlpha(BoneCache bone, Color color)
@@ -506,6 +506,7 @@ namespace UnityEditor.U2D.Animation
 
         static Vector3 GetBoneTailMarkerPosition(BoneCache bone)
         {
+            if (bone.iconId != BoneIconUtility.Default) return bone.position;
             Vector3 endPosition = bone.endPosition;
             Vector2 startGUI = HandleUtility.WorldToGUIPoint(bone.position);
             Vector2 endGUI = HandleUtility.WorldToGUIPoint(endPosition);
@@ -519,7 +520,7 @@ namespace UnityEditor.U2D.Animation
 
         void DrawBoneOutline(BoneCache bone, Color color, float outlineScale)
         {
-            view.DrawBoneOutline(bone.position, bone.right, Vector3.forward, bone.length, color, outlineScale);
+            view.DrawBoneOutline(bone.position, bone.right, Vector3.forward, bone.length, color, outlineScale, bone.iconId, bone.iconSize);
         }
 
         void DrawSplitBonePreview()

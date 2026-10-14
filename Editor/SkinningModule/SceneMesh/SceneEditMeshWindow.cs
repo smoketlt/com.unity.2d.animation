@@ -16,6 +16,7 @@ namespace UnityEditor.U2D.Animation
         [SerializeField] bool m_Dim;
         [SerializeField] bool m_Isolate;
         [SerializeField] bool m_Deformed;
+        [SerializeField] bool m_OnTop = true;
         [SerializeField] float m_Detail = 0.5f;
         [SerializeField] int m_Alpha = 10;
         [SerializeField] bool m_TraceActive;
@@ -35,6 +36,7 @@ namespace UnityEditor.U2D.Animation
         readonly List<GameObject> m_HiddenObjects = new List<GameObject>();
         Mesh m_ImageMesh;
         Material m_ImageMaterial;
+        MeshRenderer m_SortedImageRenderer;
         readonly Vector3[] m_ImageBoundsPoints = new Vector3[4];
         readonly Vector3[] m_ImageBoundsDash = new Vector3[2];
         string m_Error;
@@ -273,6 +275,11 @@ namespace UnityEditor.U2D.Animation
             BindToggle("dim", m_Dim, value => m_Dim = value);
             BindToggle("isolate", m_Isolate, value => { m_Isolate = value; RestoreVisibility(); });
             BindToggle("deformed", m_Deformed, value => m_Deformed = value);
+            BindToggle("onTop", m_OnTop, value =>
+            {
+                m_OnTop = value;
+                if (m_SortedImageRenderer != null) m_SortedImageRenderer.enabled = !value;
+            });
             BindToggle("symmetry", m_Session.symmetryActive, value => { m_Session.SetSymmetry(value); UpdateUI(); });
             var detail = rootVisualElement.Q<Slider>("detail");
             detail.SetValueWithoutNotify(m_Detail);
@@ -845,6 +852,8 @@ namespace UnityEditor.U2D.Animation
             m_PrimaryInputControl = 0;
             m_View?.CancelCreateEdgeDrag();
             RestoreVisibility();
+            if (m_SortedImageRenderer != null) DestroyImmediate(m_SortedImageRenderer.gameObject);
+            m_SortedImageRenderer = null;
             if (m_PreviewRenderer != null) m_PreviewRenderer.forceRenderingOff = m_PreviousForceRenderingOff;
             m_PreviewRenderer = null;
             toolScope.Restore();
@@ -855,11 +864,21 @@ namespace UnityEditor.U2D.Animation
         void BeforeSceneGUI(SceneView scene)
         {
             if (m_SaveInProgress) return;
-            if (BlockReason() != null) toolScope.Restore();
+            if (BlockReason() != null) RestoreScene();
             else
             {
                 toolScope.Hide();
                 var evt = Event.current;
+                if (!m_OnTop && evt.type == EventType.Repaint)
+                {
+                    if (m_PreviewRenderer == null)
+                    {
+                        m_PreviewRenderer = m_Renderer;
+                        m_PreviousForceRenderingOff = m_Renderer.forceRenderingOff;
+                        m_Renderer.forceRenderingOff = true;
+                    }
+                    DrawImage(SceneMeshSession.PixelToWorld(m_Renderer, m_Session.mesh.frame), pasteActive ? null : Deformation()?.mesh);
+                }
                 // Consume Escape before SceneView's native object deselection.
                 // duringSceneGui runs too late to receive the original key event.
                 if (HandleSceneEscape(evt)) return;
@@ -1403,6 +1422,29 @@ namespace UnityEditor.U2D.Animation
             if (m_Dim) { color.r *= 0.35f; color.g *= 0.35f; color.b *= 0.35f; }
             m_ImageMaterial.mainTexture = textureProvider.texture;
             m_ImageMaterial.color = color;
+            if (!m_OnTop)
+            {
+                if (m_SortedImageRenderer == null)
+                {
+                    var preview = new GameObject("Uniskin Sorted Mesh Preview") { hideFlags = HideFlags.HideAndDontSave };
+                    preview.transform.SetParent(m_Renderer.transform, false);
+                    preview.AddComponent<MeshFilter>().sharedMesh = m_ImageMesh;
+                    m_SortedImageRenderer = preview.AddComponent<MeshRenderer>();
+                    m_SortedImageRenderer.sharedMaterial = m_ImageMaterial;
+                    m_SortedImageRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                    m_SortedImageRenderer.receiveShadows = false;
+                    SceneVisibilityManager.instance.DisablePicking(preview, false);
+                }
+                var localMatrix = m_Renderer.transform.worldToLocalMatrix * matrix;
+                m_ImageMesh.vertices = Array.ConvertAll(m_ImageMesh.vertices, localMatrix.MultiplyPoint3x4);
+                m_ImageMesh.RecalculateBounds();
+                m_SortedImageRenderer.gameObject.layer = m_Renderer.gameObject.layer;
+                m_SortedImageRenderer.sortingLayerID = m_Renderer.sortingLayerID;
+                m_SortedImageRenderer.sortingOrder = m_Renderer.sortingOrder;
+                m_SortedImageRenderer.enabled = true;
+                return;
+            }
+            if (m_SortedImageRenderer != null) m_SortedImageRenderer.enabled = false;
             m_ImageMaterial.SetPass(0);
             Graphics.DrawMeshNow(m_ImageMesh, matrix);
         }

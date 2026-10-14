@@ -658,6 +658,7 @@ namespace UnityEditor.U2D.Animation
             ApplyBone(skinningCache, dataProvider);
             ApplyMesh(skinningCache, dataProvider);
             ApplyCharacter(skinningCache, dataProvider);
+            BoneIconUtility.Save(skinningCache, dataProvider);
             skinningCache.applyingChanges = false;
         }
 

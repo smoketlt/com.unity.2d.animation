@@ -79,10 +79,13 @@ namespace UnityEditor.U2D.Animation
         Dictionary<Sprite, SpriteBone[]> m_SpriteBones = new Dictionary<Sprite, UnityEngine.U2D.SpriteBone[]>();
         Dictionary<Transform, Vector2> m_BoneData = new Dictionary<Transform, Vector2>();
         Dictionary<Transform, Color> m_BoneColors = new Dictionary<Transform, Color>();
+        readonly Dictionary<Transform, string> m_BoneIcons = new Dictionary<Transform, string>();
+        readonly Dictionary<Transform, float> m_BoneIconSizes = new Dictionary<Transform, float>();
+        readonly Dictionary<Sprite, BoneIconUtility.Entry[]> m_SpriteIcons = new Dictionary<Sprite, BoneIconUtility.Entry[]>();
         HashSet<SpriteSkin> m_SkinComponents = new HashSet<SpriteSkin>();
         HashSet<Transform> m_CachedBones = new HashSet<Transform>();
         HashSet<Transform> m_SelectionRoots = new HashSet<Transform>();
-        readonly Dictionary<Transform, (float length, Color color)> m_UnboundCharacterBones = new Dictionary<Transform, (float, Color)>();
+        readonly Dictionary<Transform, (float length, Color color, string icon, float size)> m_UnboundCharacterBones = new Dictionary<Transform, (float, Color, string, float)>();
         bool m_CharacterBonesDirty = true;
         ISkeletonView m_View;
         IUndo m_Undo;
@@ -177,6 +180,7 @@ namespace UnityEditor.U2D.Animation
         internal void ClearSpriteBoneCache()
         {
             m_SpriteBones.Clear();
+            m_SpriteIcons.Clear();
             m_CharacterBonesDirty = true;
         }
 
@@ -208,6 +212,7 @@ namespace UnityEditor.U2D.Animation
                     try
                     {
                         var source = new SceneMeshSource(renderer.sprite);
+                        var icons = BoneIconUtility.Read(source.userData);
                         var provider = source.provider.GetDataProvider<ICharacterDataProvider>();
                         var bones = provider != null ? provider.GetCharacterData().bones : null;
                         if (bones == null) continue;
@@ -216,7 +221,7 @@ namespace UnityEditor.U2D.Animation
                             var transform = SceneBoneInspector.FindCharacterTransform(host, bones, i);
                             if (transform == null || bound.Contains(transform)) continue;
                             Color color = bones[i].color.a > 0 ? bones[i].color : BoneColorUtility.DefaultCreatedBoneColor;
-                            m_UnboundCharacterBones[transform] = (SceneBoneInspector.CharacterBoneLocalLength(source.provider, bones[i].length), color);
+                            m_UnboundCharacterBones[transform] = (SceneBoneInspector.CharacterBoneLocalLength(source.provider, bones[i].length), color, BoneIconUtility.Find(icons, bones[i].guid.ToString()), BoneIconUtility.FindSize(icons, bones[i].guid.ToString()));
                         }
                     }
                     catch (Exception) { /* Other renderer sources may not expose character data. */ }
@@ -234,6 +239,8 @@ namespace UnityEditor.U2D.Animation
 
             m_BoneData.Clear();
             m_BoneColors.Clear();
+            m_BoneIcons.Clear();
+            m_BoneIconSizes.Clear();
 
             foreach (SpriteSkin skinComponent in m_SkinComponents)
             {
@@ -249,6 +256,8 @@ namespace UnityEditor.U2D.Animation
                     if (bone == null || !bone.gameObject.activeInHierarchy || m_BoneData.ContainsKey(bone)) continue;
                     m_BoneData[bone] = new Vector2(entry.Value.length, entry.Value.color.a);
                     m_BoneColors[bone] = entry.Value.color;
+                    m_BoneIcons[bone] = entry.Value.icon;
+                    m_BoneIconSizes[bone] = entry.Value.size;
                     if (m_View.IsActionHot(SkeletonAction.None)) m_CachedBones.Add(bone);
                 }
         }
@@ -277,6 +286,13 @@ namespace UnityEditor.U2D.Animation
 
             Transform[] boneTransforms = spriteSkin.boneTransforms;
             SpriteBone[] spriteBones = GetSpriteBones(spriteSkin);
+            var sprite = spriteSkin.spriteRenderer.sprite;
+            if (!m_SpriteIcons.TryGetValue(sprite, out var icons))
+            {
+                try { icons = BoneIconUtility.Read(new SceneMeshSource(sprite).userData); }
+                catch (Exception) { icons = Array.Empty<BoneIconUtility.Entry>(); }
+                m_SpriteIcons[sprite] = icons;
+            }
             const float alpha = 1f;
 
             if (spriteBones == null)
@@ -299,6 +315,8 @@ namespace UnityEditor.U2D.Animation
 
                 m_BoneData.Add(boneTransform, new Vector2(bone.length, alpha));
                 m_BoneColors.Add(boneTransform, boneColor);
+                m_BoneIcons[boneTransform] = BoneIconUtility.Find(icons, bone.guid.ToString());
+                m_BoneIconSizes[boneTransform] = BoneIconUtility.FindSize(icons, bone.guid.ToString());
             }
         }
 
@@ -333,7 +351,8 @@ namespace UnityEditor.U2D.Animation
                 if (bone != hotBone)
                 {
                     Vector3 bonePosition = bone.position;
-                    m_View.LayoutBone(bone.GetObjectId(), bonePosition, bonePosition + bone.GetScaledRight() * length, bone.forward, bone.up, bone.right, false);
+                    m_BoneIcons.TryGetValue(bone, out var icon);
+                    m_View.LayoutBone(bone.GetObjectId(), bonePosition, bonePosition + bone.GetScaledRight() * length, bone.forward, bone.up, bone.right, false, BoneIconUtility.Normalize(icon) != BoneIconUtility.Default);
                 }
             }
         }
@@ -476,7 +495,9 @@ namespace UnityEditor.U2D.Animation
                 else if (isHovered)
                     color = Handles.preselectionColor;
 
-                m_View.DrawBoneOutline(bone.position, bone.GetScaledRight(), bone.forward, length, color, outlineSize);
+                m_BoneIcons.TryGetValue(bone, out var icon);
+                m_BoneIconSizes.TryGetValue(bone, out var iconSize);
+                m_View.DrawBoneOutline(bone.position, bone.GetScaledRight(), bone.forward, length, color, outlineSize, icon, iconSize);
             }
 
             BatchedDrawing.Draw();
@@ -521,7 +542,9 @@ namespace UnityEditor.U2D.Animation
             bool isJointHovered = m_View.IsActionHot(SkeletonAction.None) && hoveredJoint == bone;
             bool isTailHovered = m_View.IsActionHot(SkeletonAction.None) && hoveredTail == bone;
 
-            m_View.DrawBone(bone.position, bone.GetScaledRight(), bone.forward, length, color, false, isSelected, isJointHovered, isTailHovered, bone == hotBone);
+            m_BoneIcons.TryGetValue(bone, out var icon);
+            m_BoneIconSizes.TryGetValue(bone, out var iconSize);
+            m_View.DrawBone(bone.position, bone.GetScaledRight(), bone.forward, length, color, false, isSelected, isJointHovered, isTailHovered, bone == hotBone, icon, iconSize);
         }
 
         void DrawCursors()

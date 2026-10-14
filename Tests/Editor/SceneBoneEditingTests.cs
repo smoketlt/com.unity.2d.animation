@@ -42,6 +42,102 @@ namespace UnityEditor.U2D.Animation.Tests
 
         SceneMeshSource Source() => new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path));
 
+        sealed class IconPickingGUI : GUIWrapper, IGUIWrapper
+        {
+            internal int bodyCalls;
+            internal readonly System.Collections.Generic.List<Vector3> circles = new System.Collections.Generic.List<Vector3>();
+            Vector2 IGUIWrapper.mousePosition => Vector2.zero;
+            bool IGUIWrapper.HasCurrentCamera() => false;
+            Vector3 IGUIWrapper.GUIToWorld(Vector2 point, Vector3 normal, Vector3 position) => position;
+            float IGUIWrapper.DistanceToSegmentClamp(Vector3 start, Vector3 end) { ++bodyCalls; return 0; }
+            public override float DistanceToCircle(Vector3 position, float radius) { circles.Add(position); return 0; }
+        }
+
+        [Test]
+        public void BoneIconPickingHasNoInvisibleBodyOrTailAndDefaultRestoresThem()
+        {
+            var gui = new IconPickingGUI();
+            var view = new SkeletonView(gui) { mode = SkeletonMode.EditJoints };
+            var start = new Vector3(3, 4, 0);
+            var end = new Vector3(100, 4, 0);
+            view.LayoutBone(default, start, end, Vector3.forward, Vector3.up, Vector3.right, true, true);
+            Assert.AreEqual(0, gui.bodyCalls);
+            CollectionAssert.AreEqual(new[] { start }, gui.circles);
+            gui.circles.Clear();
+            view.LayoutBone(default, start, end, Vector3.forward, Vector3.up, Vector3.right, true, false);
+            Assert.AreEqual(1, gui.bodyCalls);
+            CollectionAssert.AreEqual(new[] { start, end }, gui.circles);
+        }
+
+        [Test]
+        public void BoneIconPersistsByGuidAndDefaultRestoresNativeDrawing()
+        {
+            Load();
+            var bone = m_Session.skeleton.CreateBone(null, Vector3.zero, Vector3.right, false, "Icon Bone");
+            m_Session.Changed(true);
+            m_Session.Save(Source());
+            Object.DestroyImmediate(m_Session);
+            Load();
+            bone = m_Session.skeleton.bones.Single();
+            var guid = bone.guid;
+            Assert.AreEqual(BoneIconUtility.Default, bone.iconId);
+            using (m_Session.cache.UndoScope("Change Bone Icon"))
+            {
+                bone.iconId = "0010_Arrow@270";
+                bone.iconSize = 48f;
+            }
+            Assert.IsTrue(m_Session.dirty);
+            Undo.PerformUndo();
+            Assert.AreEqual(BoneIconUtility.Default, bone.iconId);
+            Assert.AreEqual(24f, bone.iconSize);
+            Undo.PerformRedo();
+            Assert.AreEqual("0010_Arrow@270", bone.iconId);
+            Assert.AreEqual(48f, bone.iconSize);
+            m_Session.Save(Source());
+            Object.DestroyImmediate(m_Session);
+            Load();
+            bone = m_Session.skeleton.bones.Single();
+            Assert.AreEqual(guid, bone.guid);
+            Assert.AreEqual("0010_Arrow@270", bone.iconId);
+            Assert.IsFalse(m_Session.dirty);
+            Assert.AreEqual(48f, bone.iconSize);
+            m_Session.SelectBone(guid);
+            m_Session.RenameSelectedBone("Renamed Icon Bone");
+            m_Session.Save(Source());
+            Assert.AreEqual("0010_Arrow@270", BoneIconUtility.Find(BoneIconUtility.Read(Source().userData), guid));
+            Object.DestroyImmediate(m_Session);
+            Load();
+            m_Session.skeleton.bones.Single().iconId = BoneIconUtility.Default;
+            m_Session.skeleton.bones.Single().iconSize = BoneIconUtility.DefaultSize;
+            m_Session.Save(Source());
+            Assert.IsEmpty(BoneIconUtility.Read(Source().userData));
+        }
+
+        [Test]
+        public void BoneIconPaletteContainsResourcesAndFourDirectionsWithoutChangingOtherMetadata()
+        {
+            Assert.AreEqual(35, BoneIconUtility.Choices.Length);
+            foreach (var name in BoneIconUtility.Names) Assert.IsNotNull(BoneIconUtility.Texture(name), name);
+            foreach (var prefix in new[] { "0008_Direction", "0010_Arrow" })
+                Assert.AreEqual(4, BoneIconUtility.Choices.Count(id => id == prefix || id.StartsWith(prefix + "@")));
+            var uxml = ResourceLoader.Load<VisualTreeAsset>("SkinningModule/SceneEditBoneWindow.uxml");
+            var root = uxml.CloneTree();
+            Assert.IsNotNull(root.Q<Button>("boneIcon"));
+            Assert.IsNotNull(root.Q<Image>("boneIconImage"));
+            Assert.AreSame(root.Q<FloatField>("boneLength").parent, root.Q<FloatField>("boneIconSize").parent);
+            Assert.AreEqual(24f, BoneIconUtility.FindSize(BoneIconUtility.Read("Uniskin.BoneIcons.v1:{\"bones\":[{\"guid\":\"legacy\",\"icon\":\"0023_Heart\"}]}"), "legacy"));
+            Assert.AreEqual(new Vector2(264, 192), new BoneIconPicker(BoneIconUtility.Default, _ => { }).GetWindowSize());
+            Load();
+            var bone = m_Session.skeleton.CreateBone(null, Vector3.zero, Vector3.right, false, "Bone");
+            bone.iconId = "0023_Heart";
+            var data = "Other.Custom.Data\nUniskin.MeshBindingPose.v1:untouched";
+            var saved = BoneIconUtility.Write(data, new[] { bone });
+            Assert.IsTrue(saved.StartsWith(data + "\n"));
+            Assert.AreEqual("0023_Heart", BoneIconUtility.Find(BoneIconUtility.Read(saved), bone.guid));
+            bone.iconId = BoneIconUtility.Default;
+            Assert.AreEqual(data, BoneIconUtility.Write(saved, new[] { bone }));
+        }
+
         [Test]
         public void NamePollingPreservesPendingInputAndRefreshesChangedModelOrSelection()
         {

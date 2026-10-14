@@ -68,6 +68,28 @@ namespace UnityEditor.U2D.Animation.Tests
         static Vertex2DMetaData Vertex(float x, float y) => new Vertex2DMetaData { position = new Vector2(x, y) };
 
         [Test]
+        public void BoneIconSurvivesRigSaveBakeAndNativeReload()
+        {
+            var source = Source();
+            var session = Session<SceneBoneSession>();
+            session.Load(m_Renderer.sprite, source);
+            var bone = session.skeleton.CreateBone(null, Vector3.zero, Vector3.right * 10, false, "Icon Bone");
+            bone.iconId = "0008_Direction@90";
+            bone.iconSize = 40f;
+            session.Changed(true);
+            var guid = bone.guid;
+            session.Save(source);
+            var reloaded = Session<SceneBoneSession>();
+            reloaded.Load(m_Renderer.sprite, Source());
+            Assert.AreEqual("0008_Direction@90", reloaded.skeleton.bones.Single(item => item.guid == guid).iconId);
+            Assert.AreEqual(40f, reloaded.skeleton.bones.Single(item => item.guid == guid).iconSize);
+            UniskinRigUtility.Bake(m_Rig);
+            var importer = AssetImporter.GetAtPath(m_Path);
+            Assert.AreEqual("0008_Direction@90", BoneIconUtility.Find(BoneIconUtility.Read(importer.userData), guid));
+            Assert.AreEqual(40f, BoneIconUtility.FindSize(BoneIconUtility.Read(importer.userData), guid));
+        }
+
+        [Test]
         public void MeshSavePersistsNativeSubassetWithoutChangingPsbOrItsMetadata()
         {
             var image = File.ReadAllBytes(m_Path);

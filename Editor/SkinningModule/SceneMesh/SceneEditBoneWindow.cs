@@ -207,6 +207,7 @@ namespace UnityEditor.U2D.Animation
             Bind("create", "Bone_Create", 1);
             Bind("split", "Bone_Split", 2);
             Bind("setParent", "Bone_SetParent", 3);
+            rootVisualElement.Q<Button>("boneIcon").clicked += ShowIconPicker;
             rootVisualElement.Q<TextField>("boneName").RegisterValueChangedCallback(evt =>
             {
                 try
@@ -220,6 +221,10 @@ namespace UnityEditor.U2D.Animation
                 SceneView.RepaintAll();
             });
             rootVisualElement.Q<ColorField>("boneColor").RegisterValueChangedCallback(evt => EditProperty("Change Bone Color", bone => bone.bindPoseColor = evt.newValue, true));
+            rootVisualElement.Q<FloatField>("boneIconSize").RegisterValueChangedCallback(evt => EditProperty("Change Bone Icon Size", bone =>
+            {
+                if (bone.iconId != BoneIconUtility.Default && float.IsFinite(evt.newValue)) bone.iconSize = Mathf.Clamp(evt.newValue, 4f, 128f);
+            }, true));
             rootVisualElement.Q<FloatField>("boneLength").RegisterValueChangedCallback(evt => EditProperty("Change Bone Length", bone =>
             {
                 if (float.IsFinite(evt.newValue)) bone.length = Mathf.Max(0, evt.newValue);
@@ -244,6 +249,18 @@ namespace UnityEditor.U2D.Animation
             button.Add(label);
             if (name == "setParent") button.AddToClassList("mesh-last-action");
             button.clicked += () => { CancelRecreate(); m_Controller?.Reset(); m_Mode = m_Mode == mode ? 0 : mode; UpdateUI(); SceneView.RepaintAll(); };
+        }
+
+        void ShowIconPicker()
+        {
+            if (m_Saving || BlockReason() != null) return;
+            var selected = m_Session.cache.skeletonSelection.elements.Where(bone => bone != null && !bone.IsConstraintParent()).ToArray();
+            if (selected.Length == 0) return;
+            var mixed = selected.Any(bone => bone.iconId != selected[0].iconId);
+            var anchor = rootVisualElement.Q<Button>("boneIcon").worldBound;
+            anchor.position += position.position;
+            PopupWindow.Show(GUIUtility.ScreenToGUIRect(anchor), new BoneIconPicker(mixed ? null : selected[0].iconId,
+                id => { if (this != null) EditProperty("Change Bone Icon", bone => bone.iconId = id, true); }));
         }
 
         string BlockReason()
@@ -291,8 +308,21 @@ namespace UnityEditor.U2D.Animation
             var length = rootVisualElement.Q<FloatField>("boneLength");
             length.SetEnabled(selected.Length == 1);
             color.SetEnabled(selected.Length > 0);
+            var editableIcons = selected.Where(bone => !bone.IsConstraintParent()).ToArray();
+            var iconButton = rootVisualElement.Q<Button>("boneIcon");
+            iconButton.SetEnabled(editableIcons.Length > 0);
+            var iconId = editableIcons.Length > 0 ? editableIcons[0].iconId : BoneIconUtility.Default;
+            var mixedIcons = editableIcons.Any(bone => bone.iconId != iconId);
+            BoneIconUtility.SetImage(rootVisualElement.Q<Image>("boneIconImage"), iconId);
+            iconButton.tooltip = mixedIcons ? "Mixed icons. Choose an icon for all selected bones." : "Choose bone icon: " + iconId.Substring(5);
             // Poll viewport edits without replacing partially typed text.
             var focused = rootVisualElement.panel?.focusController.focusedElement as VisualElement;
+            var iconSize = rootVisualElement.Q<FloatField>("boneIconSize");
+            var sizedBones = editableIcons.Where(bone => bone.iconId != BoneIconUtility.Default).ToArray();
+            iconSize.SetEnabled(sizedBones.Length > 0);
+            iconSize.showMixedValue = sizedBones.Length > 0 && sizedBones.Any(bone => bone.iconSize != sizedBones[0].iconSize);
+            if (focused != iconSize && (focused == null || !iconSize.Contains(focused)))
+                iconSize.SetValueWithoutNotify(sizedBones.Length > 0 ? sizedBones[0].iconSize : BoneIconUtility.DefaultSize);
             RefreshNameField(selected.Length == 1 ? selected[0] : null);
             if (focused != length && (focused == null || !length.Contains(focused))) length.SetValueWithoutNotify(selected.Length == 1 ? selected[0].length : 0);
             if (selected.Length > 0)
@@ -407,8 +437,12 @@ namespace UnityEditor.U2D.Animation
             {
                 var end = (m_RecreateEnd - m_RecreateStart).sqrMagnitude < .0001f ? m_RecreateStart + Vector3.right * .01f : m_RecreateEnd;
                 var color = m_RecreatingBone.bindPoseColor;
-                BoneDrawingUtility.DrawBone(m_RecreateStart, end, m_RecreatingBone.forward, color, color);
-                BoneDrawingUtility.DrawBoneNode(m_RecreateStart, m_RecreatingBone.forward, color);
+                if (m_RecreatingBone.iconId == BoneIconUtility.Default)
+                {
+                    BoneDrawingUtility.DrawBone(m_RecreateStart, end, m_RecreatingBone.forward, color, color);
+                    BoneDrawingUtility.DrawBoneNode(m_RecreateStart, m_RecreatingBone.forward, color);
+                }
+                else BoneIconUtility.Draw(m_RecreateStart, m_RecreatingBone.iconId, color, iconSize: m_RecreatingBone.iconSize);
             }
         }
 

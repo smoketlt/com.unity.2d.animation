@@ -26,6 +26,10 @@ On 2026-10-14, the final input change compiled and passed 23/23 targeted cases o
 
 By default, geometry is edited in the SpriteRenderer's source plane. **Deformed** projects the staged mesh through the current SpriteSkin bone pose, including Edit Mode animation playback and scrubbing. Weight authoring has its own [Scene Edit Weights](SceneWeightEditing.md) window.
 
+**On Top** defaults to enabled for each Edit Mesh popup and keeps the existing foreground image preview. Unchecking it renders the staged source/deformed image at the SpriteRenderer's sorting layer and order, inside its existing Sorting Group hierarchy. The toggle sits beside Symmetry and survives mode changes within the popup. Mesh handles and the source-frame outline remain foreground editing guides. A hidden, unsaved child MeshRenderer prepares the sorted preview before Scene camera rendering; switching back disables it, and closing, blocked editing or Play Mode cleanup destroys it and restores the source renderer. The option does not change saved renderer sorting or mesh data.
+
+On 2026-10-14, the On Top change compiled without errors in the connected Unity 6000.0.81f1 editor and passed `git diff --check`. Interactive overlap/sorting, Sorting Group and Deformed appearance checks remain unverified, as does Unity 6000.5+ execution. No version-sensitive API was introduced. With the local `file:` dependency Unity recompiles directly from this checkout.
+
 ## Leaving New hull authoring
 
 Escape clears vertex/edge selection in Modify, Create and Delete, both in the Scene viewport and when the floating Edit Mesh popup has keyboard focus. Scene Escape is consumed in `beforeSceneGui`, before Unity's native object deselection; handling it only in `duringSceneGui` is too late and can instead trigger the opening-object selection restoration. Both hosts share `HandleEscape`, which cancels owned edge/box selection gestures and repaints the Scene immediately. New, Trace and Paste retain their Escape cancellation priority. Clearing selection leaves staged geometry and the active mode unchanged.
@@ -258,4 +262,4 @@ Manual checks:
 
 For automated checks, enable this package under project `testables` and run `UnityEditor.U2D.Animation.Tests.SceneMeshEditingTests`, alongside the existing geometry deletion and compatibility suites. Exact Unity 6000.0.7 and interactive Unity 6000.5+ have not been verified for this feature.
 
-The Deformed/Triangles/Dim/Isolate toggles form a centered group with content-sized toggles and symmetric spacing. Edit Mesh uses tighter spacing for its four controls; other windows retain the shared mesh-options spacing.
+The Deformed/Triangles/Dim/Isolate toggles form a centered group with content-sized toggles and symmetric spacing. Symmetry/On Top form a separate centered row. Edit Mesh uses tighter spacing for its controls; other windows retain the shared mesh-options spacing.

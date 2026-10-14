@@ -31,6 +31,8 @@ namespace UnityEditor.U2D.Animation
                 spriteBone.name = characterBone.name;
                 spriteBone.depth = characterBone.depth;
                 spriteBone.bindPoseColor = characterBone.bindPoseColor;
+                spriteBone.iconId = characterBone.iconId;
+                spriteBone.iconSize = characterBone.iconSize;
 
                 spriteBone.SetChildrenWorldPose(childWorldPose);
             }
