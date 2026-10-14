@@ -126,7 +126,7 @@ namespace UnityEditor.U2D.Animation
                 var blocked = opening.BlockReason();
                 if (blocked != null) throw new InvalidOperationException(blocked);
                 var origin = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.position.position + new Vector2(35, 55) : new Vector2(100, 100);
-                opening.position = new Rect(origin, new Vector2(370, 444) / Mathf.Max(1, EditorGUIUtility.pixelsPerPoint));
+                opening.position = new Rect(origin, new Vector2(370, 482) / Mathf.Max(1, EditorGUIUtility.pixelsPerPoint));
                 if (opening.m_PreferredRect.width > 0)
                 {
                     var rect = opening.m_PreferredRect;
@@ -146,7 +146,7 @@ namespace UnityEditor.U2D.Animation
         {
             if (!EnableWindowLifetime(m_Renderer != null || m_Session != null)) return;
             titleContent = new GUIContent("Edit Weights");
-            minSize = new Vector2(370, 354) / Mathf.Max(1, EditorGUIUtility.pixelsPerPoint);
+            minSize = new Vector2(370, 392) / Mathf.Max(1, EditorGUIUtility.pixelsPerPoint);
             if (!m_SettingsLoaded) { LoadWindowPreferences(); m_SettingsLoaded = true; }
             m_Strength = CurrentModeStrength();
             if (m_Session == null) { m_Session = CreateInstance<SceneWeightSession>(); m_Session.hideFlags = HideFlags.HideAndDontSave; }
@@ -157,6 +157,7 @@ namespace UnityEditor.U2D.Animation
             SceneView.beforeSceneGui += BeforeSceneGUI;
             SceneView.duringSceneGui += OnSceneGUI;
             Undo.undoRedoPerformed += OnUndoRedo;
+            EditorApplication.update += TrackPreviewAnimation;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
         }
 
@@ -164,6 +165,7 @@ namespace UnityEditor.U2D.Animation
         {
             DisableWindowLifetime();
             EndGesture();
+            RestorePreviewPose(false);
             if (!isClosingForReload && !isRestoredWindow && !m_DiscardOnClose && !m_Saving && !EditorApplication.isPlaying && m_Source != null &&
                 m_Renderer != null && m_Renderer.sprite != null && m_Session?.context?.cache != null)
             {
@@ -178,6 +180,7 @@ namespace UnityEditor.U2D.Animation
             SceneView.beforeSceneGui -= BeforeSceneGUI;
             SceneView.duringSceneGui -= OnSceneGUI;
             Undo.undoRedoPerformed -= OnUndoRedo;
+            EditorApplication.update -= TrackPreviewAnimation;
             EditorApplication.playModeStateChanged -= OnPlayModeChanged;
             EndGesture(); RestoreTool();
             if (m_OverlayMesh != null) DestroyImmediate(m_OverlayMesh);
@@ -237,6 +240,7 @@ namespace UnityEditor.U2D.Animation
             m_WeldPulseActive = false;
             Command("bind", "Bind", () => Run(() => SetBindMode(!m_Bind)));
             m_BindButton = rootVisualElement.Q<Button>("bind");
+            m_BindButton.tooltip = "Add unbound bones by clicking them in the Scene View or selecting their GameObjects in the Hierarchy.";
             m_BindPulse = new VisualElement { name = "bindPulse", pickingMode = PickingMode.Ignore };
             m_BindButton.Insert(0, m_BindPulse);
             m_BindPulseActive = false;
@@ -245,6 +249,8 @@ namespace UnityEditor.U2D.Animation
             Command("swap", "Swap", () => Run(m_Session.Swap));
             Command("remove", "Delete", () => Run(m_Session.Remove));
             Command("updateBindings", "UpdateBind", () => Run(UpdateBindings));
+            Command("previewPose", "PreviewPose", () => SetPreviewPose(!m_PreviewPose));
+            Command("resetPose", "ResetPose", ResetPreviewPose);
             var titleIcon = rootVisualElement.Q<Image>("weightsIcon");
             titleIcon.image = ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/Weights.png");
             rootVisualElement.RegisterCallback<KeyDownEvent>(evt =>
@@ -346,7 +352,7 @@ namespace UnityEditor.U2D.Animation
 
         void Run(Action operation)
         {
-            if (BlockReason() != null || m_Saving) return;
+            if (BlockReason() != null || m_Saving || m_PreviewPose) return;
             m_Weld = false;
             EndGesture();
             try { operation(); m_Error = null; }
@@ -356,7 +362,7 @@ namespace UnityEditor.U2D.Animation
 
         void ShowWeld()
         {
-            if (BlockReason() != null || m_Saving) return;
+            if (BlockReason() != null || m_Saving || m_PreviewPose) return;
             EndGesture();
             if (m_Weld) { m_Weld = false; m_Error = null; UpdateUI(); SceneView.RepaintAll(); return; }
             Run(() =>
@@ -402,7 +408,7 @@ namespace UnityEditor.U2D.Animation
 
         void ShowPrune()
         {
-            if (BlockReason() != null) return;
+            if (BlockReason() != null || m_PreviewPose) return;
             m_Weld = false;
             UpdateUI();
             PruneWeightsWindow.ShowWindow((max, threshold) => this != null && m_Session != null ? m_Session.CountPruned(max, threshold) : 0,
@@ -431,6 +437,7 @@ namespace UnityEditor.U2D.Animation
                 {
                     if (evt.button != 0) return;
                     m_Session.SelectBone(bone, evt.ctrlKey || evt.commandKey || evt.shiftKey); UpdateUI(); SceneView.RepaintAll();
+                    if (m_PreviewPose) { evt.StopImmediatePropagation(); return; }
                     m_DragBone = bone; m_DragBoneStartY = evt.position.y; m_DropBoneIndex = -1;
                     m_DragBoneName = name; m_DragBonePointer = evt.pointerId;
                     name.CapturePointer(evt.pointerId);
@@ -493,9 +500,15 @@ namespace UnityEditor.U2D.Animation
             var blocked = BlockReason();
             if (blocked != null) m_Weld = false;
             rootVisualElement.Q("commands").SetEnabled(blocked == null);
+            foreach (var name in new[] { "mode", "strength", "prune", "weld", "bind", "weightStep" })
+                rootVisualElement.Q(name).SetEnabled(!m_PreviewPose);
+            rootVisualElement.Q("size").SetEnabled(!m_PreviewPose && !m_Direct);
+            rootVisualElement.Q("feather").SetEnabled(!m_PreviewPose && !m_Direct);
+            rootVisualElement.Q<Button>("previewPose").EnableInClassList("mesh-active", m_PreviewPose);
+            rootVisualElement.Q<Button>("resetPose").SetEnabled(m_Session?.context?.cache != null && m_Session.mesh.boneCount > 0);
             UpdateBindPulse();
             UpdateWeldPulse();
-            rootVisualElement.Q<Label>("status").text = blocked ?? m_Error ?? (m_Weld ? "Click the source mesh in the Scene View. Esc or Weld cancels." : m_Bind ? "Click bones to bind. Esc exits Bind." : m_Direct ? "Ctrl+click/drag selects vertices. Drag a vertex to edit weights." : "Ctrl+click/drag selects vertices. Alt temporarily removes weights in Add.");
+            rootVisualElement.Q<Label>("status").text = blocked ?? m_Error ?? (m_PreviewPose ? "W: drag joint to move, body to rotate. E/R: rotate/scale. Reset restores bindings." : m_Weld ? "Click the source mesh in the Scene View. Esc or Weld cancels." : m_Bind ? "Click bones to bind. Esc exits Bind." : m_Direct ? "Ctrl+click/drag selects vertices. Drag a vertex to edit weights." : "Ctrl+click/drag selects vertices. Alt temporarily removes weights in Add.");
             if (blocked != null) { RestoreTool(); return; }
             RebuildRows();
             AlignBoneSliders();
@@ -512,16 +525,17 @@ namespace UnityEditor.U2D.Animation
                 var focused = rootVisualElement.panel?.focusController.focusedElement as VisualElement;
                 if (focused == null || !row.slider.Contains(focused)) row.slider.SetValueWithoutNotify(weight * 100);
                 row.slider.showMixedValue = mixed;
-                row.slider.SetEnabled(!locked.Contains(boneIndex) && !m_Bind);
+                row.slider.SetEnabled(!locked.Contains(boneIndex) && !m_Bind && !m_PreviewPose);
+                row.swatch.SetEnabled(!m_PreviewPose);
                 row.slider.Q(className: "mesh-slider-fill").style.width = Length.Percent(weight * 100);
             }
             rootVisualElement.Q<Button>("bind").EnableInClassList("mesh-active", m_Bind);
-            rootVisualElement.Q<Button>("swap").SetEnabled(selected.Length == 2 && !selected.Any(i => locked.Contains(i)));
-            rootVisualElement.Q<Button>("remove").SetEnabled(selected.Length > 0);
-            rootVisualElement.Q<Button>("auto").SetEnabled(m_Session.mesh.boneCount > 0);
-            rootVisualElement.Q<Button>("smooth").SetEnabled(m_Session.mesh.boneCount > 0);
-            rootVisualElement.Q<Button>("updateBindings").SetEnabled(m_Session.mesh.boneCount > 0 && !m_Bind);
-            var canOffset = !m_Bind && m_WeightStep > 0 && m_Session.vertices.Count > 0 && selected.Length == 1 && !locked.Contains(selected[0]);
+            rootVisualElement.Q<Button>("swap").SetEnabled(!m_PreviewPose && selected.Length == 2 && !selected.Any(i => locked.Contains(i)));
+            rootVisualElement.Q<Button>("remove").SetEnabled(!m_PreviewPose && selected.Length > 0);
+            rootVisualElement.Q<Button>("auto").SetEnabled(!m_PreviewPose && m_Session.mesh.boneCount > 0);
+            rootVisualElement.Q<Button>("smooth").SetEnabled(!m_PreviewPose && m_Session.mesh.boneCount > 0);
+            rootVisualElement.Q<Button>("updateBindings").SetEnabled(!m_PreviewPose && m_Session.mesh.boneCount > 0 && !m_Bind);
+            var canOffset = !m_PreviewPose && !m_Bind && m_WeightStep > 0 && m_Session.vertices.Count > 0 && selected.Length == 1 && !locked.Contains(selected[0]);
             rootVisualElement.Q<Button>("weightDecrease").SetEnabled(canOffset);
             rootVisualElement.Q<Button>("weightIncrease").SetEnabled(canOffset);
             hasUnsavedChanges = false; // Closing saves directly instead of prompting.
@@ -604,7 +618,12 @@ namespace UnityEditor.U2D.Animation
 
         public override void SaveChanges() { if (!Apply()) throw new InvalidOperationException(m_Error); base.SaveChanges(); }
         public override void DiscardChanges() { m_DiscardOnClose = true; base.DiscardChanges(); }
-        void OnUndoRedo() { EndGesture(); ClearBoneDrop(); m_Session.InvalidateDrawOrder(); m_Session.context?.RestoreAfterUndo(); m_RowKey = null; UpdateUI(); SceneView.RepaintAll(); }
+        void OnUndoRedo()
+        {
+            foreach (var bone in m_PreviewPoseTouched.Where(bone => bone != null))
+                m_PreviewPoseLastWritten[bone] = (bone.localPosition, bone.localRotation, bone.localScale);
+            EndGesture(); ClearBoneDrop(); m_Session.InvalidateDrawOrder(); m_Session.context?.RestoreAfterUndo(); m_RowKey = null; UpdateUI(); SceneView.RepaintAll();
+        }
         void RestoreTool()
         {
             ClearSortedPreview();
@@ -618,6 +637,11 @@ namespace UnityEditor.U2D.Animation
         void OnSelectionChanged()
         {
             if (m_Saving || m_SelectionRestoreQueued || m_Renderer == null || m_EntrySelection == null || Selection.objects.SequenceEqual(m_EntrySelection)) return;
+            if (m_Bind && !m_PreviewPose && BlockReason() == null)
+            {
+                var selected = Selection.transforms.ToHashSet();
+                Run(() => BindHierarchyBones(selected));
+            }
             m_SelectionRestoreQueued = true;
             EditorApplication.delayCall += () =>
             {
@@ -631,6 +655,15 @@ namespace UnityEditor.U2D.Animation
                 }
                 finally { m_SelectionRestoreQueued = false; }
             };
+        }
+
+        void BindHierarchyBones(HashSet<Transform> selected)
+        {
+            RefreshLiveBoneBindings();
+            var bones = m_Session.context.skeleton.bones.Where(bone => !bone.IsConstraintParent() &&
+                !m_Session.mesh.ContainsBone(bone) && m_LiveBoneBindings.TryGetValue(bone.guid, out var live) &&
+                live.transform != null && selected.Contains(live.transform)).ToArray();
+            foreach (var bone in bones) m_Session.Bind(bone);
         }
         void OnPlayModeChanged(PlayModeStateChange change)
         {

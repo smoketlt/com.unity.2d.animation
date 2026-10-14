@@ -207,11 +207,11 @@ namespace UnityEditor.U2D.Animation
                     if (renderer.sprite == null) continue;
                     var prefab = PrefabUtility.GetNearestPrefabInstanceRoot(renderer.gameObject);
                     var host = prefab != null ? prefab.transform : root;
-                    var path = AssetDatabase.GetAssetPath(renderer.sprite);
+                    var path = UniskinRigUtility.SourcePath(renderer.sprite);
                     if (string.IsNullOrEmpty(path) || !visited.Add((host, path))) continue;
                     try
                     {
-                        var source = new SceneMeshSource(renderer.sprite);
+                        var source = GetBoneDisplaySource(renderer.sprite);
                         var icons = BoneIconUtility.Read(source.userData);
                         var provider = source.provider.GetDataProvider<ICharacterDataProvider>();
                         var bones = provider != null ? provider.GetCharacterData().bones : null;
@@ -227,6 +227,14 @@ namespace UnityEditor.U2D.Animation
                     catch (Exception) { /* Other renderer sources may not expose character data. */ }
                 }
             }
+        }
+
+        static SceneMeshSource GetBoneDisplaySource(Sprite sprite)
+        {
+            // A clipping contour borrows the rig skeleton, but its private document
+            // can predate later icon edits. Display metadata belongs to the owner.
+            var clipping = UniskinClippingMaskUtility.Find(sprite);
+            return new SceneMeshSource(clipping != null ? clipping.source : sprite);
         }
 
         void PrepareBones()
@@ -289,7 +297,7 @@ namespace UnityEditor.U2D.Animation
             var sprite = spriteSkin.spriteRenderer.sprite;
             if (!m_SpriteIcons.TryGetValue(sprite, out var icons))
             {
-                try { icons = BoneIconUtility.Read(new SceneMeshSource(sprite).userData); }
+                try { icons = BoneIconUtility.Read(GetBoneDisplaySource(sprite).userData); }
                 catch (Exception) { icons = Array.Empty<BoneIconUtility.Entry>(); }
                 m_SpriteIcons[sprite] = icons;
             }

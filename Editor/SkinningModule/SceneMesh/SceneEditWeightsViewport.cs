@@ -26,6 +26,269 @@ namespace UnityEditor.U2D.Animation
         readonly Dictionary<string, (Transform transform, float length)> m_CharacterLiveBindings = new Dictionary<string, (Transform, float)>();
         bool m_CharacterBindingsLoaded;
         Vector2[] m_FirstBindPositions;
+        bool m_PreviewPose;
+        bool spriteOnlyPreview => m_Preview || m_PreviewPose;
+        readonly Dictionary<Transform, (Vector3 position, Quaternion rotation, Vector3 scale)> m_PreviewPoseBaseline =
+            new Dictionary<Transform, (Vector3, Quaternion, Vector3)>();
+        readonly Dictionary<Transform, (Vector3 position, Quaternion rotation, Vector3 scale)> m_PreviewPoseLastWritten =
+            new Dictionary<Transform, (Vector3, Quaternion, Vector3)>();
+        readonly Dictionary<Transform, (Vector3 position, Quaternion rotation, Vector3 scale)> m_PreviewPoseSample =
+            new Dictionary<Transform, (Vector3, Quaternion, Vector3)>();
+        readonly Dictionary<Transform, (Vector3Int position, bool rotation, Vector3Int scale)> m_PreviewPoseAnimated =
+            new Dictionary<Transform, (Vector3Int, bool, Vector3Int)>();
+        readonly HashSet<Transform> m_PreviewPoseTouched = new HashSet<Transform>();
+        SkeletonView m_PoseView;
+        bool m_WasAnimationMode;
+
+        sealed class PoseGUI : GUIWrapper
+        {
+            public override float DistanceToCircle(Vector3 center, float radius) =>
+                Mathf.Max(0, Vector2.Distance(Event.current.mousePosition, HandleUtility.WorldToGUIPoint(center)) - 8f / EditorGUIUtility.pixelsPerPoint);
+        }
+
+        void CapturePreviewBindPose()
+        {
+            var world = new Dictionary<Transform, Matrix4x4>();
+            var sprite = m_Renderer.sprite;
+            var bones = sprite.GetBones(); var bind = sprite.GetBindPoses();
+            var pixelToWorld = m_Renderer.transform.localToWorldMatrix * SceneMeshBindingPose.PixelsToLocal(sprite, m_Source.rect.rect);
+            m_Session.context.WithSourcePose(() =>
+            {
+                var skeletonToWorld = m_Session.context.SkeletonToWorld(m_Renderer, m_Source.rect.rect);
+                foreach (var bone in m_Session.context.skeleton.bones)
+                {
+                    if (!m_LiveBoneBindings.TryGetValue(bone.guid, out var live) || live.transform == null) continue;
+                    var reference = m_Session.bindingPose?.FindBone(bone.guid);
+                    var index = Array.FindIndex(bones, item => item.guid == bone.guid);
+                    world[live.transform] = reference.HasValue ? pixelToWorld * reference.Value.inverse * Matrix4x4.Scale(Vector3.one * m_Source.provider.pixelsPerUnit) :
+                        index >= 0 && index < bind.Length ? m_Renderer.transform.localToWorldMatrix * bind[index].inverse :
+                        // Cache bones use pixel units; native bind matrices use bone-local
+                        // world units. Cancel the pixel scale on the local basis as well as
+                        // converting the origin, or an unbound parent makes its bound child
+                        // reset at pixelsPerUnit times its intended scale and offset.
+                        skeletonToWorld * bone.localToWorldMatrix * Matrix4x4.Scale(new Vector3(
+                            m_Source.provider.pixelsPerUnit, m_Source.provider.pixelsPerUnit, 1));
+                }
+            });
+            foreach (var item in world)
+            {
+                var bone = item.Key;
+                var known = m_PreviewPoseBaseline.ContainsKey(bone);
+                var parent = bone.parent;
+                var parentWorld = parent == null ? Matrix4x4.identity : world.TryGetValue(parent, out var pose) ? pose : parent.localToWorldMatrix;
+                var local = parentWorld.inverse * item.Value;
+                if (!SceneMeshBindingPose.IsFinite(local)) continue;
+                m_PreviewPoseBaseline[bone] = (local.GetColumn(3), local.rotation, local.lossyScale);
+                if (!known) m_PreviewPoseSample[bone] = m_PreviewPoseLastWritten[bone] = (bone.localPosition, bone.localRotation, bone.localScale);
+            }
+        }
+
+        void TrackPreviewAnimation()
+        {
+            var animationMode = AnimationMode.InAnimationMode();
+            var animationStopped = m_WasAnimationMode && !animationMode;
+            if (animationStopped) m_PreviewPoseAnimated.Clear();
+            m_WasAnimationMode = animationMode;
+            foreach (var item in m_PreviewPoseLastWritten.ToArray())
+            {
+                var bone = item.Key; if (bone == null) continue;
+                if (animationStopped)
+                {
+                    m_PreviewPoseLastWritten[bone] = (bone.localPosition, bone.localRotation, bone.localScale);
+                    continue;
+                }
+                var last = item.Value; var sample = m_PreviewPoseSample[bone];
+                var positionChanged = ChangedAxes(bone.localPosition, last.position);
+                var rotationChanged = Quaternion.Angle(bone.localRotation, last.rotation) > .0001f;
+                var scaleChanged = ChangedAxes(bone.localScale, last.scale);
+                if (positionChanged != Vector3Int.zero || rotationChanged || scaleChanged != Vector3Int.zero)
+                {
+                    m_PreviewPoseAnimated.TryGetValue(bone, out var animated);
+                    m_PreviewPoseAnimated[bone] = (Vector3Int.Max(animated.position, positionChanged), animated.rotation || rotationChanged, Vector3Int.Max(animated.scale, scaleChanged));
+                    m_PreviewPoseSample[bone] = (SampleAxes(sample.position, bone.localPosition, positionChanged),
+                        rotationChanged ? bone.localRotation : sample.rotation, SampleAxes(sample.scale, bone.localScale, scaleChanged));
+                    m_PreviewPoseLastWritten[bone] = (bone.localPosition, bone.localRotation, bone.localScale);
+                }
+            }
+        }
+
+        static Vector3Int ChangedAxes(Vector3 current, Vector3 previous) => new Vector3Int(
+            Mathf.Abs(current.x - previous.x) > .000001f ? 1 : 0,
+            Mathf.Abs(current.y - previous.y) > .000001f ? 1 : 0,
+            Mathf.Abs(current.z - previous.z) > .000001f ? 1 : 0);
+
+        static Vector3 SampleAxes(Vector3 reference, Vector3 sample, Vector3Int changed) => new Vector3(
+            changed.x != 0 ? sample.x : reference.x, changed.y != 0 ? sample.y : reference.y, changed.z != 0 ? sample.z : reference.z);
+
+        static Vector3 ResetSampleAxes(Transform bone, string property, Vector3 reference, Vector3 sample, Vector3Int sampled) => new Vector3(
+            sampled.x != 0 || AnimationMode.IsPropertyAnimated(bone, property + ".x") ? sample.x : reference.x,
+            sampled.y != 0 || AnimationMode.IsPropertyAnimated(bone, property + ".y") ? sample.y : reference.y,
+            sampled.z != 0 || AnimationMode.IsPropertyAnimated(bone, property + ".z") ? sample.z : reference.z);
+
+        void RememberPreviewWrite(Transform bone)
+        {
+            m_PreviewPoseTouched.Add(bone);
+            m_PreviewPoseLastWritten[bone] = (bone.localPosition, bone.localRotation, bone.localScale);
+        }
+
+        void RestorePreviewPose(bool recordUndo)
+        {
+            TrackPreviewAnimation();
+            var bones = (recordUndo ? (IEnumerable<Transform>)m_PreviewPoseBaseline.Keys : m_PreviewPoseTouched).Where(bone => bone != null).ToArray();
+            if (recordUndo && bones.Length > 0 && !AnimationMode.InAnimationMode()) { Undo.IncrementCurrentGroup(); Undo.RecordObjects(bones, "Reset Preview Pose"); }
+            foreach (var bone in bones)
+            {
+                var pose = m_PreviewPoseBaseline[bone]; var sample = m_PreviewPoseSample[bone];
+                m_PreviewPoseAnimated.TryGetValue(bone, out var animated);
+                var animatedRotation = animated.rotation || AnimationMode.IsPropertyAnimated(bone, "m_LocalRotation.x") || AnimationMode.IsPropertyAnimated(bone, "m_LocalRotation.y") || AnimationMode.IsPropertyAnimated(bone, "m_LocalRotation.z") || AnimationMode.IsPropertyAnimated(bone, "m_LocalRotation.w");
+                bone.localPosition = ResetSampleAxes(bone, "m_LocalPosition", pose.position, sample.position, animated.position);
+                bone.localRotation = animatedRotation ? sample.rotation : pose.rotation;
+                bone.localScale = ResetSampleAxes(bone, "m_LocalScale", pose.scale, sample.scale, animated.scale);
+                RememberPreviewWrite(bone);
+            }
+        }
+
+        void SetPreviewPose(bool enabled)
+        {
+            if (m_Saving || BlockReason() != null || m_PreviewPose == enabled) return;
+            EndGesture(); ClearBoneDrop(); m_Weld = false;
+            if (enabled)
+            {
+                if (m_Bind) Run(() => SetBindMode(false));
+                if (m_Bind) return;
+                RefreshLiveBoneBindings();
+                CapturePreviewBindPose();
+                if (m_PreviewPoseBaseline.Count == 0) { m_Error = "No scene bone Transforms are available."; UpdateUI(); return; }
+            }
+            m_PreviewPose = enabled; m_Error = null;
+            UpdateUI(); SceneView.RepaintAll();
+        }
+
+        void ResetPreviewPose()
+        {
+            if (m_Saving || BlockReason() != null) return;
+            EndGesture();
+            RefreshLiveBoneBindings(); CapturePreviewBindPose();
+            RestorePreviewPose(true);
+            m_Error = null; UpdateUI(); SceneView.RepaintAll();
+        }
+
+        void PreviewPoseGUI(SceneView scene)
+        {
+            var evt = Event.current;
+            if (!scene.drawGizmos) return;
+            if (evt.type == EventType.Repaint) DrawBones();
+            if (UnityEditor.Tools.current == Tool.Move)
+            {
+                PreviewBoneMoveGUI(scene);
+                return;
+            }
+            var selected = m_Session.cache.skeletonSelection.elements
+                .Where(bone => bone != null && m_LiveBoneBindings.ContainsKey(bone.guid))
+                .Select(bone => m_LiveBoneBindings[bone.guid].transform).Where(bone => bone != null).Distinct().ToArray();
+            // Transform only selection roots, so a selected child inherits its parent's change once.
+            var roots = selected.Where(bone => !selected.Any(parent => parent != bone && bone.IsChildOf(parent))).ToArray();
+            if (roots.Length > 0 && UnityEditor.Tools.current != Tool.View && !evt.alt)
+            {
+                var active = roots[0];
+                var pivot = active.position;
+                var orientation = UnityEditor.Tools.pivotRotation == PivotRotation.Local ? active.rotation : Quaternion.identity;
+                EditorGUI.BeginChangeCheck();
+                var position = pivot; var rotation = orientation; var scale = active.localScale;
+                switch (UnityEditor.Tools.current)
+                {
+                    case Tool.Move: position = Handles.PositionHandle(pivot, orientation); break;
+                    case Tool.Scale: scale = Handles.ScaleHandle(active.localScale, pivot, active.rotation, HandleUtility.GetHandleSize(pivot)); break;
+                    default: rotation = Handles.RotationHandle(orientation, pivot); break;
+                }
+                if (EditorGUI.EndChangeCheck())
+                {
+                    if (!AnimationMode.InAnimationMode()) Undo.RecordObjects(roots, "Preview Bone Pose");
+                    var delta = rotation * Quaternion.Inverse(orientation);
+                    var oldScale = active.localScale;
+                    var ratio = new Vector3(oldScale.x != 0 ? scale.x / oldScale.x : 1,
+                        oldScale.y != 0 ? scale.y / oldScale.y : 1, oldScale.z != 0 ? scale.z / oldScale.z : 1);
+                    foreach (var bone in roots)
+                    {
+                        if (UnityEditor.Tools.current == Tool.Move) bone.position += position - pivot;
+                        else if (UnityEditor.Tools.current == Tool.Scale) bone.localScale = bone == active ? scale : Vector3.Scale(bone.localScale, ratio);
+                        else { bone.position = pivot + delta * (bone.position - pivot); bone.rotation = delta * bone.rotation; }
+                        RememberPreviewWrite(bone);
+                    }
+                    SceneView.RepaintAll();
+                }
+            }
+            if (evt.type == EventType.MouseDown && evt.button == 0 && !evt.alt &&
+                GUIUtility.hotControl == 0 && HandleUtility.nearestControl == m_Control)
+            {
+                var bone = NearestBone(evt.mousePosition);
+                if (bone != null) m_Session.SelectBone(bone, evt.control || evt.command || evt.shift, toggleSelected: false);
+                else if (!evt.control && !evt.command && !evt.shift) m_Session.cache.skeletonSelection.Clear();
+                evt.Use(); UpdateUI(); scene.Repaint();
+            }
+        }
+
+        Transform[] PreviewSelectionRoots()
+        {
+            var selected = m_Session.cache.skeletonSelection.elements
+                .Where(bone => bone != null && m_LiveBoneBindings.ContainsKey(bone.guid))
+                .Select(bone => m_LiveBoneBindings[bone.guid].transform).Where(bone => bone != null).Distinct().ToArray();
+            return selected.Where(bone => !selected.Any(parent => parent != bone && bone.IsChildOf(parent))).ToArray();
+        }
+
+        void MovePreviewBones(Vector3 movement, Quaternion rotation, Vector3 pivot)
+        {
+            var roots = PreviewSelectionRoots();
+            if (roots.Length == 0) return;
+            if (!AnimationMode.InAnimationMode()) Undo.RecordObjects(roots, "Preview Bone Pose");
+            foreach (var bone in roots)
+            {
+                bone.position = pivot + rotation * (bone.position - pivot) + movement;
+                bone.rotation = rotation * bone.rotation;
+                RememberPreviewWrite(bone);
+            }
+        }
+
+        void PreviewBoneMoveGUI(SceneView scene)
+        {
+            var evt = Event.current;
+            m_PoseView ??= new SkeletonView(new PoseGUI());
+            m_PoseView.defaultControlID = m_Control;
+            m_PoseView.mode = SkeletonMode.EditPose;
+            m_PoseView.BeginLayout();
+            if (m_PoseView.CanLayout())
+                foreach (var bone in m_Session.mesh.bones)
+                {
+                    WorldBoneSegment(bone, out var start, out var end);
+                    m_PoseView.LayoutBone(bone.GetObjectId(), start, end, Vector3.forward, Vector3.up, Vector3.right, false,
+                        BoneIconUtility.Normalize(bone.iconId) != BoneIconUtility.Default);
+                }
+            m_PoseView.EndLayout();
+            if (m_PoseView.DoSelectBone(out var id, out var additive))
+            {
+                var bone = UnityEditorObjectCompatibility.FindObject(id) as BoneCache;
+                if (bone != null) m_Session.SelectBone(bone, additive, toggleSelected: false);
+            }
+            var hot = UnityEditorObjectCompatibility.FindObject(m_PoseView.hotBoneID) as BoneCache;
+            var hovered = UnityEditorObjectCompatibility.FindObject(m_PoseView.hoveredBoneID) as BoneCache;
+            var target = hot != null ? hot : hovered;
+            if (target != null && m_LiveBoneBindings.TryGetValue(target.guid, out var binding))
+            {
+                var roots = PreviewSelectionRoots();
+                var pivot = roots.FirstOrDefault(root => binding.transform == root || binding.transform.IsChildOf(root));
+                if (pivot != null && m_PoseView.DoRotateBone(pivot.position, Vector3.forward, out var angle))
+                    MovePreviewBones(Vector3.zero, Quaternion.AngleAxis(angle, Vector3.forward), pivot.position);
+            }
+            if (m_PoseView.DoMoveBone(out var delta)) MovePreviewBones(delta, Quaternion.identity, Vector3.zero);
+            m_PoseView.DrawCursors(true);
+            if (evt.type == EventType.MouseDown && evt.button == 0 && !evt.alt && GUIUtility.hotControl == 0 && hovered == null)
+            {
+                if (!evt.control && !evt.command && !evt.shift) m_Session.cache.skeletonSelection.Clear();
+                evt.Use();
+            }
+            if (evt.rawType == EventType.MouseUp && hot != null) GUIUtility.hotControl = 0;
+            if (evt.type != EventType.Layout && evt.type != EventType.Repaint) { UpdateUI(); scene.Repaint(); }
+        }
 
         void SetBindMode(bool enabled)
         {
@@ -121,6 +384,9 @@ namespace UnityEditor.U2D.Animation
 
         void EndGesture()
         {
+            if (m_PoseView != null && (m_PoseView.IsActionHot(SkeletonAction.RotateBone) || m_PoseView.IsActionHot(SkeletonAction.MoveBone)))
+                GUIUtility.hotControl = 0;
+            m_PoseView = null;
             if (m_Control != 0 && GUIUtility.hotControl == m_Control) GUIUtility.hotControl = 0;
             m_Gesture = Gesture.None;
             m_Session?.context?.cache?.EndUndoOperation();
@@ -199,10 +465,12 @@ namespace UnityEditor.U2D.Animation
             }).ToArray();
             var positions = referencePositions ?? WorldVertices(false).Select(point => (Vector2)worldToPixels.MultiplyPoint3x4(point)).ToArray();
             m_Session.UpdateBindings(positions, matrices);
+            if (m_PreviewPoseBaseline.Count > 0) CapturePreviewBindPose();
         }
 
         void BeforeSceneGUI(SceneView scene)
         {
+            TrackPreviewAnimation();
             m_EscapeHandledBeforeSceneGUI = false;
             if (m_Session?.context?.cache == null || m_Renderer == null || Event.current == null)
             {
@@ -213,12 +481,12 @@ namespace UnityEditor.U2D.Animation
             {
                 if (!m_HidesRenderer) { m_PreviousForceRenderingOff = m_Renderer.forceRenderingOff; m_HidesRenderer = true; }
                 m_Renderer.forceRenderingOff = true;
-                if (m_Preview && Event.current.type == EventType.Repaint)
+                if (spriteOnlyPreview && Event.current.type == EventType.Repaint)
                 {
                     RefreshLiveBoneBindings();
                     UpdateSortedPreview(WorldVertices());
                 }
-                else if (!m_Preview) ClearSortedPreview();
+                else if (!spriteOnlyPreview) ClearSortedPreview();
             }
             if (!m_Saving)
             {
@@ -264,6 +532,7 @@ namespace UnityEditor.U2D.Animation
             m_ModePopup?.SetValueWithoutNotify(m_Direct ? "Direct" : m_RemoveMode || evt.alt ? "Remove" : "Add");
             m_Control = GUIUtility.GetControlID("UniskinSceneWeights".GetHashCode(), FocusType.Passive);
             if (evt.type == EventType.Layout) HandleUtility.AddDefaultControl(m_Control);
+            if (m_PreviewPose) { PreviewPoseGUI(scene); return; }
             var screen = world.Select(HandleUtility.WorldToGUIPoint).ToArray();
             if (evt.type == EventType.Repaint)
             {
@@ -394,7 +663,7 @@ namespace UnityEditor.U2D.Animation
                 if (m_Session.mesh.ContainsBone(bone) == m_Bind) continue;
                 WorldBoneSegment(bone, out var start, out var end);
                 var a = HandleUtility.WorldToGUIPoint(start);
-                var b = HandleUtility.WorldToGUIPoint(end);
+                var b = BoneIconUtility.Normalize(bone.iconId) == BoneIconUtility.Default ? HandleUtility.WorldToGUIPoint(end) : a;
                 var delta = b - a;
                 var t = delta.sqrMagnitude > 0 ? Mathf.Clamp01(Vector2.Dot(point - a, delta) / delta.sqrMagnitude) : 0;
                 var next = Vector2.Distance(point, a + delta * t);
@@ -438,8 +707,16 @@ namespace UnityEditor.U2D.Animation
                     if (m_Bind && bound) color = new Color(.3f, .3f, .3f, .4f);
                     var scale = bound && !m_Bind && m_Session.cache.skeletonSelection.Contains(bone) ? 1.15f : 1;
                     WorldBoneSegment(bone, out var start, out var end);
-                    BoneDrawingUtility.DrawBone(start, end, Vector3.forward, color, scale);
-                    BoneDrawingUtility.DrawBoneNode(start, Vector3.forward, color, scale);
+                    if (BoneIconUtility.Normalize(bone.iconId) == BoneIconUtility.Default)
+                    {
+                        BoneDrawingUtility.DrawBone(start, end, Vector3.forward, color, scale);
+                        BoneDrawingUtility.DrawBoneNode(start, Vector3.forward, color, scale);
+                    }
+                    else
+                    {
+                        if (scale > 1) BoneIconUtility.Draw(start, bone.iconId, Handles.selectedColor, true, bone.iconSize);
+                        BoneIconUtility.Draw(start, bone.iconId, color, iconSize: bone.iconSize);
+                    }
                 }
         }
 

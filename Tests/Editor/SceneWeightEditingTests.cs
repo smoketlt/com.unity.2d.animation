@@ -127,6 +127,219 @@ namespace UnityEditor.U2D.Animation.Tests
 
         [TestCase(false)]
         [TestCase(true)]
+        public void PreviewResetWithUnboundParentPreservesBoneUnits(bool rebound)
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var type = typeof(SceneEditWeightsWindow);
+            var source = Source();
+            var provider = source.provider.GetDataProvider<ISpriteBoneDataProvider>();
+            var bones = provider.GetBones(source.rect.spriteID);
+            var child = bones[1]; child.parentId = 0; child.position = new Vector3(8, 12, 0); bones[1] = child;
+            provider.SetBones(source.rect.spriteID, bones);
+            source.provider.Apply(); source.importer.SaveAndReimport();
+            Object.DestroyImmediate(m_Session);
+            m_Session = ScriptableObject.CreateInstance<SceneWeightSession>();
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+            m_Session.Load(sprite, Source());
+            var target = m_Session.mesh.bones[1];
+            m_Session.mesh.bones = new[] { target };
+            var host = new GameObject("Partial Binding Preview Test");
+            var window = ScriptableObject.CreateInstance<SceneEditWeightsWindow>();
+            var sessionField = type.GetField("m_Session", flags);
+            Object.DestroyImmediate((SceneWeightSession)sessionField.GetValue(window));
+            sessionField.SetValue(window, m_Session);
+            type.GetField("m_DiscardOnClose", flags).SetValue(window, true);
+            try
+            {
+                var renderer = host.AddComponent<SpriteRenderer>(); renderer.sprite = sprite;
+                var parent = new GameObject(bones[0].name).transform; parent.SetParent(host.transform, false);
+                parent.localPosition = sprite.GetBindPoses()[0].inverse.GetColumn(3);
+                var transform = new GameObject(child.name).transform; transform.SetParent(parent, false);
+                transform.position = sprite.GetBindPoses()[1].inverse.GetColumn(3);
+                // Keep only the child's live binding, forcing the parent's source-pose fallback.
+                var skin = host.AddComponent<SpriteSkin>(); skin.SetRootBone(parent);
+                var live = new Transform[bones.Count]; live[1] = transform; skin.SetBoneTransforms(live);
+                type.GetField("m_Renderer", flags).SetValue(window, renderer);
+                type.GetField("m_Source", flags).SetValue(window, Source());
+                if (rebound)
+                {
+                    transform.localPosition += Vector3.right;
+                    transform.localScale = new Vector3(1.2f, .8f, 1);
+                    type.GetMethod("UpdateBindings", flags, null, Type.EmptyTypes, null).Invoke(window, null);
+                }
+                var expectedPosition = transform.localPosition;
+                var expectedScale = transform.localScale;
+                var fingerprint = Source().Fingerprint();
+                type.GetMethod("SetPreviewPose", flags).Invoke(window, new object[] { true });
+                transform.localPosition += Vector3.up;
+                transform.localScale = Vector3.one * 3;
+                type.GetMethod("RememberPreviewWrite", flags).Invoke(window, new object[] { transform });
+                type.GetMethod("RestorePreviewPose", flags).Invoke(window, new object[] { false });
+                Assert.That(Vector3.Distance(expectedPosition, transform.localPosition), Is.LessThan(.0001f));
+                Assert.That(Vector3.Distance(expectedScale, transform.localScale), Is.LessThan(.0001f));
+                Assert.That(Quaternion.Angle(Quaternion.identity, transform.localRotation), Is.LessThan(.001f));
+                Assert.AreEqual(fingerprint, Source().Fingerprint());
+            }
+            finally
+            {
+                sessionField.SetValue(window, null); Object.DestroyImmediate(window); Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void HierarchyBindUsesLiveTransformIdentityAndIgnoresOtherObjects()
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var type = typeof(SceneEditWeightsWindow);
+            var host = new GameObject("Hierarchy Bind Test");
+            var window = ScriptableObject.CreateInstance<SceneEditWeightsWindow>();
+            var sessionField = type.GetField("m_Session", flags);
+            Object.DestroyImmediate((SceneWeightSession)sessionField.GetValue(window)); sessionField.SetValue(window, m_Session);
+            type.GetField("m_DiscardOnClose", flags).SetValue(window, true);
+            try
+            {
+                var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                var renderer = host.AddComponent<SpriteRenderer>(); renderer.sprite = sprite;
+                var transforms = sprite.GetBones().Select(bone =>
+                {
+                    var transform = new GameObject(bone.name).transform;
+                    transform.SetParent(host.transform, false); return transform;
+                }).ToArray();
+                var foreign = new GameObject(transforms[4].name).transform; foreign.SetParent(host.transform, false);
+                var skin = host.AddComponent<SpriteSkin>(); skin.SetRootBone(host.transform); skin.SetBoneTransforms(transforms);
+                type.GetField("m_Renderer", flags).SetValue(window, renderer);
+                type.GetField("m_Source", flags).SetValue(window, Source());
+                var candidates = m_Session.mesh.bones.Skip(3).ToArray();
+                m_Session.mesh.bones = m_Session.mesh.bones.Take(3).ToArray();
+                var before = m_Session.Values(0);
+                var fingerprint = Source().Fingerprint();
+                type.GetMethod("SetBindMode", flags).Invoke(window, new object[] { true });
+                var bind = type.GetMethod("BindHierarchyBones", flags);
+                bind.Invoke(window, new object[] { new System.Collections.Generic.HashSet<Transform> { host.transform, foreign } });
+                Assert.AreEqual(3, m_Session.mesh.boneCount);
+                bind.Invoke(window, new object[] { new System.Collections.Generic.HashSet<Transform> { transforms[3], transforms[4] } });
+                Assert.AreEqual(5, m_Session.mesh.boneCount);
+                foreach (var bone in candidates) Assert.IsTrue(m_Session.mesh.ContainsBone(bone));
+                for (var i = 0; i < before.Length; ++i) Assert.AreEqual(before[i], m_Session.Values(0)[i]);
+                bind.Invoke(window, new object[] { new System.Collections.Generic.HashSet<Transform> { transforms[3] } });
+                Assert.AreEqual(5, m_Session.mesh.boneCount);
+                Undo.PerformUndo();
+                Assert.AreEqual(3, m_Session.mesh.boneCount, "One hierarchy selection is one Undo group.");
+                Undo.PerformRedo();
+                Assert.AreEqual(5, m_Session.mesh.boneCount);
+                Assert.AreEqual(fingerprint, Source().Fingerprint());
+            }
+            finally
+            {
+                sessionField.SetValue(window, null); Object.DestroyImmediate(window); Object.DestroyImmediate(host);
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void PreviewPoseRetainsTransformsBlocksWeightsAndResetsSavedBindingPose(bool rebound)
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var type = typeof(SceneEditWeightsWindow);
+            var host = new GameObject("Preview Pose Test");
+            var clip = new AnimationClip();
+            var window = ScriptableObject.CreateInstance<SceneEditWeightsWindow>();
+            var sessionField = type.GetField("m_Session", flags);
+            Object.DestroyImmediate((SceneWeightSession)sessionField.GetValue(window));
+            sessionField.SetValue(window, m_Session);
+            type.GetField("m_DiscardOnClose", flags).SetValue(window, true);
+            try
+            {
+                var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                var renderer = host.AddComponent<SpriteRenderer>(); renderer.sprite = sprite;
+                var transforms = sprite.GetBones().Select(bone =>
+                {
+                    var transform = new GameObject(bone.name).transform;
+                    transform.SetParent(host.transform, false); return transform;
+                }).ToArray();
+                var skin = host.AddComponent<SpriteSkin>(); skin.SetRootBone(host.transform); skin.SetBoneTransforms(transforms);
+                transforms[0].localPosition = new Vector3(4, 5, 0);
+                var expectedPosition = (Vector3)sprite.GetBindPoses()[0].inverse.GetColumn(3);
+                type.GetField("m_Renderer", flags).SetValue(window, renderer);
+                type.GetField("m_Source", flags).SetValue(window, Source());
+                if (rebound)
+                {
+                    type.GetMethod("UpdateBindings", flags, null, Type.EmptyTypes, null).Invoke(window, null);
+                    expectedPosition = transforms[0].localPosition;
+                }
+                window.CreateGUI();
+                var before = m_Session.Values(0);
+                var fingerprint = Source().Fingerprint();
+                var dirty = m_Session.dirty;
+                type.GetMethod("SetPreviewPose", flags).Invoke(window, new object[] { true });
+                Assert.IsTrue((bool)type.GetField("m_PreviewPose", flags).GetValue(window));
+                foreach (var name in new[] { "strength", "prune", "smooth", "auto", "bind", "swap", "remove", "updateBindings", "weightIncrease" })
+                    Assert.IsFalse(window.rootVisualElement.Q(name).enabledInHierarchy, name);
+                var ran = false;
+                type.GetMethod("Run", flags).Invoke(window, new object[] { (Action)(() => ran = true) });
+                Assert.IsFalse(ran);
+                transforms[0].localPosition = new Vector3(1, 2, 0);
+                transforms[0].localRotation = Quaternion.Euler(0, 0, 30);
+                transforms[0].localScale = new Vector3(2, 3, 1);
+                type.GetMethod("RememberPreviewWrite", flags).Invoke(window, new object[] { transforms[0] });
+                type.GetMethod("SetPreviewPose", flags).Invoke(window, new object[] { false });
+                Assert.AreEqual(new Vector3(1, 2, 0), transforms[0].localPosition);
+                Assert.IsTrue(window.rootVisualElement.Q("strength").enabledInHierarchy);
+                type.GetMethod("SetPreviewPose", flags).Invoke(window, new object[] { true });
+                type.GetMethod("ResetPreviewPose", flags).Invoke(window, null);
+                Assert.That(Vector3.Distance(expectedPosition, transforms[0].localPosition), Is.LessThan(.0001f));
+                Assert.That(Quaternion.Angle(Quaternion.identity, transforms[0].localRotation), Is.LessThan(.001f));
+                Assert.AreEqual(Vector3.one, transforms[0].localScale);
+                Undo.FlushUndoRecordObjects();
+                Undo.PerformUndo();
+                Assert.AreEqual(new Vector3(1, 2, 0), transforms[0].localPosition);
+                Assert.AreEqual(new Vector3(2, 3, 1), transforms[0].localScale);
+                Undo.PerformRedo();
+                Assert.That(Vector3.Distance(expectedPosition, transforms[0].localPosition), Is.LessThan(.0001f));
+                Assert.AreEqual(Vector3.one, transforms[0].localScale);
+                m_Session.cache.skeletonSelection.elements = new[] { m_Session.mesh.bones[0] };
+                type.GetMethod("MovePreviewBones", flags).Invoke(window, new object[] { Vector3.right, Quaternion.identity, Vector3.zero });
+                Assert.That(Vector3.Distance(expectedPosition + Vector3.right, transforms[0].position), Is.LessThan(.0001f));
+                type.GetMethod("MovePreviewBones", flags).Invoke(window, new object[] { Vector3.zero, Quaternion.Euler(0, 0, 45), transforms[0].position });
+                Assert.That(Quaternion.Angle(Quaternion.Euler(0, 0, 45), transforms[0].rotation), Is.LessThan(.001f));
+                type.GetMethod("RestorePreviewPose", flags).Invoke(window, new object[] { false });
+                Assert.That(Vector3.Distance(expectedPosition, transforms[0].localPosition), Is.LessThan(.0001f));
+                Assert.That(Quaternion.Angle(Quaternion.identity, transforms[0].localRotation), Is.LessThan(.001f));
+                // Playback replaces an animated position channel, while preview rotation/scale
+                // must still reset to the saved binding rather than the entry snapshot.
+                transforms[0].localRotation = Quaternion.Euler(0, 0, 60);
+                transforms[0].localScale = new Vector3(2, 2, 1);
+                transforms[0].localPosition += Vector3.up * 9;
+                type.GetMethod("RememberPreviewWrite", flags).Invoke(window, new object[] { transforms[0] });
+                // A sampler that writes only X must not promote the temporary Y edit.
+                var xOnlySample = transforms[0].localPosition; xOnlySample.x = 11;
+                transforms[0].localPosition = xOnlySample;
+                type.GetMethod("ResetPreviewPose", flags).Invoke(window, null);
+                Assert.That(transforms[0].localPosition.x, Is.EqualTo(11).Within(.0001f));
+                Assert.That(transforms[0].localPosition.y, Is.EqualTo(expectedPosition.y).Within(.0001f));
+                clip.SetCurve(transforms[0].name, typeof(Transform), "m_LocalPosition.x", AnimationCurve.Linear(0, 10, 1, 20));
+                clip.SampleAnimation(host, .25f);
+                var sampledY = transforms[0].localPosition.y;
+                type.GetMethod("ResetPreviewPose", flags).Invoke(window, null);
+                Assert.That(transforms[0].localPosition.x, Is.EqualTo(12.5f).Within(.0001f));
+                Assert.That(transforms[0].localPosition.y, Is.EqualTo(sampledY).Within(.0001f), "Preserve all position components actually written by Unity's clip sampler.");
+                Assert.That(Quaternion.Angle(Quaternion.identity, transforms[0].localRotation), Is.LessThan(.001f));
+                Assert.AreEqual(Vector3.one, transforms[0].localScale);
+                clip.SampleAnimation(host, .75f);
+                type.GetMethod("RestorePreviewPose", flags).Invoke(window, new object[] { false });
+                Assert.That(transforms[0].localPosition.x, Is.EqualTo(17.5f).Within(.0001f));
+                CollectionAssert.AreEqual(before, m_Session.Values(0));
+                Assert.AreEqual(fingerprint, Source().Fingerprint());
+                Assert.AreEqual(dirty, m_Session.dirty);
+            }
+            finally
+            {
+                sessionField.SetValue(window, null); Object.DestroyImmediate(window); Object.DestroyImmediate(host); Object.DestroyImmediate(clip);
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
         public void ManualUpdateBindingsUsesSceneBonesWithoutAnEnabledSpriteSkin(bool disabledSkin)
         {
             const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -960,11 +1173,16 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.AreEqual(5, tree.Q<FloatField>("weightStep").value);
             foreach (var name in new[] { "strength", "size", "feather" }) Assert.IsInstanceOf<Slider>(tree.Q(name), name);
             Assert.IsNull(tree.Q("influence")); Assert.IsNull(tree.Q("update"));
-            foreach (var icon in new[] { "Weights", "Bind", "Smooth", "UpdateBind" }) Assert.IsNotNull(ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/" + icon + ".png"));
+            foreach (var icon in new[] { "Weights", "Bind", "Smooth", "UpdateBind", "PreviewPose", "ResetPose" }) Assert.IsNotNull(ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/" + icon + ".png"));
             var update = tree.Q<Button>("updateBindings");
             Assert.AreEqual("Update Bindings", update.text);
             Assert.AreSame(tree.Q<Button>("remove").parent.parent, update.parent.parent);
             Assert.Greater(update.parent.parent.IndexOf(update.parent), update.parent.parent.IndexOf(tree.Q<Button>("remove").parent));
+            var pose = tree.Q<Button>("previewPose");
+            Assert.AreEqual("Preview Pose", pose.text);
+            Assert.AreEqual("Reset Pose", tree.Q<Button>("resetPose").text);
+            Assert.AreSame(pose.parent, tree.Q<Button>("resetPose").parent);
+            Assert.Greater(pose.parent.parent.IndexOf(pose.parent), update.parent.parent.IndexOf(update.parent));
             var shader = ResourceLoader.Load<Shader>("SkinningModule/SceneWeightsPreview.shader"); Assert.IsNotNull(shader); Assert.IsFalse(ShaderUtil.ShaderHasError(shader));
         }
 

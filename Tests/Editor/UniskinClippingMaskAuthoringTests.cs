@@ -149,6 +149,71 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.AreEqual(3, m_Mask.contour.sprite.vertices.Length);
         }
 
+        sealed class GizmoLayoutGUI : GUIWrapper, IGUIWrapper
+        {
+            EventType IGUIWrapper.eventType => EventType.Layout;
+            bool IGUIWrapper.IsControlHot(int id) => id == 0;
+            bool IGUIWrapper.IsMultiStepControlHot(int id) => id == 0;
+        }
+
+        sealed class EnabledGizmoToggle : IBoneGizmoToggle
+        {
+            public bool enableGizmos => true;
+            public void OnGUI() { }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void BoneIconsAfterWindowCloseUseOwnerRigInsteadOfStaleContour(bool contourFirst)
+        {
+            DrawContour();
+            var contourSource = Source(); BindGreyBones(Weights(contourSource), contourSource);
+            var body = m_Mask.GetComponent<SpriteRenderer>();
+            var source = new SceneMeshSource(body.sprite);
+            var window = ScriptableObject.CreateInstance<SceneEditBoneWindow>(); m_Transient.Add(window);
+            var session = (SceneBoneSession)Get(window, "m_Session");
+            session.Load(body.sprite, source, skeletonOnly: true);
+            typeof(SceneEditBoneWindow).GetField("m_Renderer", Flags).SetValue(window, body);
+            typeof(SceneEditBoneWindow).GetField("m_Source", Flags).SetValue(window, source);
+            var bound = session.skeleton.bones.First(bone => bone.name == "Spine_1");
+            var pin = session.skeleton.CreateBone(bound, bound.position, bound.position + Vector3.right, false, "Icon Pin");
+            bound.iconId = "0010_Arrow@270"; bound.iconSize = 40;
+            pin.iconId = "0023_Heart"; pin.iconSize = 36;
+            var boundGuid = bound.guid; var pinGuid = pin.guid;
+            session.Changed(true);
+            window.ShowPopup();
+            Assert.IsTrue(window.RequestClose(), "Ordinary close must save the icon edit.");
+            var ownerData = new SceneMeshSource(body.sprite).userData;
+            var contourData = ((SceneMeshSource)Source()).userData;
+            Assert.AreEqual("0023_Heart", BoneIconUtility.Find(BoneIconUtility.Read(ownerData), pinGuid));
+            Assert.AreEqual(BoneIconUtility.Default, BoneIconUtility.Find(BoneIconUtility.Read(contourData), pinGuid), "The contour retains its private metadata snapshot.");
+            var root = m_Mask.character.transform;
+            if (contourFirst)
+            {
+                m_Mask.contourRenderer.transform.SetParent(root, false);
+                m_Mask.contourRenderer.transform.SetSiblingIndex(0);
+            }
+            var controller = new BoneGizmoController(new SkeletonView(new GizmoLayoutGUI()), new UnityEngineUndo(), new EnabledGizmoToggle());
+            ((HashSet<Transform>)Get(controller, "m_SelectionRoots")).Add(root);
+            Call(controller, "FindUnboundCharacterBones");
+            var pinTransform = m_Mask.character.bones.Single(link => link.guid == pinGuid).transform;
+            var unbound = (Dictionary<Transform, (float length, Color color, string icon, float size)>)Get(controller, "m_UnboundCharacterBones");
+            Assert.AreEqual("0023_Heart", unbound[pinTransform].icon);
+            Assert.AreEqual(36, unbound[pinTransform].size);
+            var contourSkin = m_Mask.contourRenderer.GetComponent<SpriteSkin>();
+            Assert.IsTrue(contourSkin.isValid);
+            Call(controller, "PrepareBones", contourSkin);
+            var boundTransform = m_Mask.character.bones.Single(link => link.guid == boundGuid).transform;
+            Assert.AreEqual("0010_Arrow@270", ((Dictionary<Transform, string>)Get(controller, "m_BoneIcons"))[boundTransform]);
+            Assert.AreEqual(40, ((Dictionary<Transform, float>)Get(controller, "m_BoneIconSizes"))[boundTransform]);
+            Call(controller, "ClearSpriteBoneCache");
+            Call(controller, "FindUnboundCharacterBones");
+            Assert.AreEqual("0023_Heart", unbound[pinTransform].icon, "Cache rebuild must retain the saved choice after close/reload.");
+            Assert.AreEqual(ownerData, new SceneMeshSource(body.sprite).userData);
+            Assert.AreEqual(contourData, ((SceneMeshSource)Source()).userData);
+            CollectionAssert.AreEqual(m_PsbMeta, File.ReadAllBytes(m_PsbPath + ".meta"));
+        }
+
         [Test]
         public void ReaddingComponentReplacesOnlyItsOrphanedContour()
         {

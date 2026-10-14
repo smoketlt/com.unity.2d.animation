@@ -34,6 +34,10 @@
         <ui:VisualElement class="mesh-row">
           <ui:Button name="updateBindings" text="Update Bindings" class="mesh-last-action" tooltip="Use the current bone pose as this mesh's binding pose, keeping its visible shape and weights. Other meshes keep their bindings." />
         </ui:VisualElement>
+        <ui:VisualElement class="mesh-row weight-pose-controls">
+          <ui:Button name="previewPose" text="Preview Pose" tooltip="With Move, drag a joint to move bones or a bone body to rotate. E/R provides rotation/scale handles. Weight editing is disabled in this mode." />
+          <ui:Button name="resetPose" text="Reset Pose" class="mesh-last-action" tooltip="Restore the saved binding pose, preserving current animation samples. Closing Edit Weights also clears temporary preview transforms." />
+        </ui:VisualElement>
         <ui:Label name="status" />
       </ui:VisualElement>
     </ui:VisualElement>
