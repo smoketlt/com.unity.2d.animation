@@ -67,6 +67,42 @@ namespace UnityEditor.U2D.Animation.Tests
         }
         static Vertex2DMetaData Vertex(float x, float y) => new Vertex2DMetaData { position = new Vector2(x, y) };
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SourceCheckAcceptsDependencyDriftWithUnchangedNativeData(bool legacy)
+        {
+            var authored = m_Rig.authoringData;
+            var baseline = m_Rig.sourceBaseline;
+            var fileHash = m_Rig.sourceFileHash;
+            if (legacy) m_Rig.sourceFileHash = null;
+            m_Rig.sourceDependencyHash = "different-project-dependency-hash";
+            Assert.DoesNotThrow(() => UniskinRigUtility.CheckSource(m_Rig));
+            Assert.AreEqual(AssetDatabase.GetAssetDependencyHash(m_Path).ToString(), m_Rig.sourceDependencyHash);
+            Assert.AreEqual(fileHash, m_Rig.sourceFileHash);
+            Assert.AreEqual(authored, m_Rig.authoringData);
+            Assert.AreEqual(baseline, m_Rig.sourceBaseline);
+        }
+
+        [Test]
+        public void SourceCheckRejectsChangedImageEvenWithUnchangedNativeData()
+        {
+            m_Rig.sourceDependencyHash = "different-project-dependency-hash";
+            m_Rig.sourceFileHash = "different-image-content";
+            Assert.Throws<InvalidOperationException>(() => UniskinRigUtility.CheckSource(m_Rig));
+            Assert.AreEqual("different-image-content", m_Rig.sourceFileHash);
+            Assert.AreEqual("different-project-dependency-hash", m_Rig.sourceDependencyHash);
+        }
+
+        [Test]
+        public void LegacySourceCheckRejectsChangedNativeData()
+        {
+            m_Rig.sourceFileHash = null;
+            m_Rig.sourceDependencyHash = "different-project-dependency-hash";
+            m_Rig.sourceBaseline = "different-native-data";
+            Assert.Throws<InvalidOperationException>(() => UniskinRigUtility.CheckSource(m_Rig));
+            Assert.IsNull(m_Rig.sourceFileHash);
+        }
+
         [Test]
         public void BoneIconSurvivesRigSaveBakeAndNativeReload()
         {

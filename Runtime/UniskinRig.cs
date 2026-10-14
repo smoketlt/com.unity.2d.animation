@@ -21,6 +21,7 @@ namespace UnityEngine.U2D.Animation
         [HideInInspector] public string bakedData;
         [HideInInspector] public string sourceBaseline;
         [HideInInspector] public string sourceDependencyHash;
+        [HideInInspector] public string sourceFileHash;
         [HideInInspector] public bool editingEnabled = true;
         [HideInInspector] public int revision;
         [HideInInspector] public float pixelsPerUnit = 100f;

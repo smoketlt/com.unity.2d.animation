@@ -92,7 +92,7 @@ namespace UnityEditor.U2D.Animation
                 rig.name = Path.GetFileNameWithoutExtension(path) + " UniskinRig";
                 rig.sourceGuid = AssetDatabase.AssetPathToGUID(path);
                 rig.authoringData = rig.bakedData = rig.sourceBaseline = data.Serialize();
-                rig.sourceDependencyHash = AssetDatabase.GetAssetDependencyHash(path).ToString();
+                CaptureSourceHashes(rig, path);
                 var sourceSprites = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Sprite>().ToArray();
                 rig.sprites = data.sprites.Select(item =>
                 {
@@ -127,7 +127,38 @@ namespace UnityEditor.U2D.Animation
             var path = AssetDatabase.GUIDToAssetPath(rig.sourceGuid);
             if (string.IsNullOrEmpty(path)) throw new InvalidOperationException("The UniskinRig source PSB is missing.");
             if (AssetDatabase.GetAssetDependencyHash(path).ToString() != rig.sourceDependencyHash)
-                throw new InvalidOperationException("The PSB changed outside UniskinRig. Bake is blocked to protect both versions. Reload from PSB after backing up the rig, or restore the source.");
+            {
+                // Dependency hashes include the importer and its dependencies and are not
+                // portable between projects. Compare the actual source contract instead.
+                var native = UniskinRigData.Read(NativeProvider(path), AssetImporter.GetAtPath(path).userData);
+                var fileHash = SourceFileHash(path);
+                if (native.Serialize() != rig.sourceBaseline ||
+                    (!string.IsNullOrEmpty(rig.sourceFileHash) && fileHash != rig.sourceFileHash))
+                    throw new InvalidOperationException("The PSB changed outside UniskinRig. Editing and bake are blocked to protect both versions. Reload from PSB after backing up the rig, or restore the source.");
+                CaptureSourceHashes(rig, path);
+                EditorUtility.SetDirty(rig);
+                AssetDatabase.SaveAssetIfDirty(rig);
+            }
+            else if (string.IsNullOrEmpty(rig.sourceFileHash))
+            {
+                // Upgrade legacy rigs while their original dependency hash still matches.
+                rig.sourceFileHash = SourceFileHash(path);
+                EditorUtility.SetDirty(rig);
+                AssetDatabase.SaveAssetIfDirty(rig);
+            }
+        }
+
+        static string SourceFileHash(string path)
+        {
+            using (var stream = File.OpenRead(path))
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+                return BitConverter.ToString(sha.ComputeHash(stream));
+        }
+
+        static void CaptureSourceHashes(UniskinRig rig, string path)
+        {
+            rig.sourceDependencyHash = AssetDatabase.GetAssetDependencyHash(path).ToString();
+            rig.sourceFileHash = SourceFileHash(path);
         }
 
         internal static void Save(UniskinRigDataProvider provider)
@@ -354,7 +385,7 @@ namespace UnityEditor.U2D.Animation
                     throw new InvalidOperationException("PSB bake verification failed: imported authoring data does not match the rig.");
                 rig.bakedData = rig.authoringData;
                 rig.sourceBaseline = imported.Serialize();
-                rig.sourceDependencyHash = AssetDatabase.GetAssetDependencyHash(path).ToString();
+                CaptureSourceHashes(rig, path);
                 foreach (var entry in rig.sprites)
                     entry.source = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Sprite>().Single(sprite => sprite.GetSpriteID().ToString() == entry.id);
                 ReconcileBakedBones(rig);
@@ -372,7 +403,7 @@ namespace UnityEditor.U2D.Animation
                 Undo.RevertAllDownToGroup(undoGroup);
                 rig.bakedData = previousBaked;
                 rig.sourceBaseline = previousBaseline;
-                rig.sourceDependencyHash = AssetDatabase.GetAssetDependencyHash(path).ToString();
+                CaptureSourceHashes(rig, path);
                 EditorUtility.SetDirty(rig);
                 AssetDatabase.SaveAssetIfDirty(rig);
                 throw;
@@ -485,7 +516,7 @@ namespace UnityEditor.U2D.Animation
                 EditorUtility.CopySerialized(entry.source, entry.sprite);
             }
             rig.authoringData = rig.bakedData = rig.sourceBaseline = data.Serialize();
-            rig.sourceDependencyHash = AssetDatabase.GetAssetDependencyHash(path).ToString();
+            CaptureSourceHashes(rig, path);
             RefreshSprites(rig, new UniskinRigDataProvider(rig, provider));
             UniskinClippingMaskUtility.Synchronize(rig, true);
             // Native prefab regeneration already applies pose changes to unmodified
