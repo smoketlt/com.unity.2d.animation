@@ -63,6 +63,33 @@ namespace UnityEditor.U2D.Animation
             [In, Out] IntPtr weights
             );
 
+        // The Scene generator supplies a conforming, refined solver mesh. Keep
+        // the native boundary here so both generators use the same BBW library.
+        internal static BoneWeight[] CalculatePrepared(float2[] vertices, int[] indices, float2[] points, int2[] bones, int[] pins, int originalVertexCount)
+        {
+            var weights = new BoneWeight[originalVertexCount];
+            var arrays = new Array[] { vertices, indices, points, bones, pins, weights };
+            var handles = new GCHandle[arrays.Length];
+            try
+            {
+                for (var i = 0; i < arrays.Length; ++i) handles[i] = GCHandle.Alloc(arrays[i], GCHandleType.Pinned);
+                var result = Bbw(k_NumIterations, handles[0].AddrOfPinnedObject(), vertices.Length, originalVertexCount,
+                    handles[1].AddrOfPinnedObject(), indices.Length, handles[2].AddrOfPinnedObject(), points.Length,
+                    handles[3].AddrOfPinnedObject(), bones.Length, handles[4].AddrOfPinnedObject(), pins.Length,
+                    handles[5].AddrOfPinnedObject());
+                if (result != 0)
+                    throw new InvalidOperationException("Auto weight generation failed (BBW " + result + "). Check the mesh for overlapping or degenerate triangles.");
+                foreach (var weight in weights)
+                    if (!float.IsFinite(weight.Sum()) || weight.Sum() <= 0)
+                        throw new InvalidOperationException("Auto could not weight every vertex. Check for vertices outside the triangulated mesh.");
+                return weights;
+            }
+            finally
+            {
+                foreach (var handle in handles) if (handle.IsAllocated) handle.Free();
+            }
+        }
+
         public BoneWeight[] Calculate(string name, in float2[] vertices, in int[] indices, in int2[] edges, in float2[] controlPoints, in int2[] bones, in int[] pins)
         {
             // In almost all cases subdivided mesh weights fine. Non-subdivide is only a fail-safe.

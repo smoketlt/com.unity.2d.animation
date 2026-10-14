@@ -412,6 +412,107 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.AreEqual(.4f, m_Session.Values(1)[0]); Assert.AreEqual(0, m_Session.Values(1)[4]);
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AutoAfterRebindingMatchesAnEquivalentRigAndPreservesSelectionLocksAndUndo(bool restricted)
+        {
+            var mesh = m_Session.mesh;
+            var positions = (Vector2[])mesh.vertices.Clone();
+            var indices = (int[])mesh.indices.Clone();
+            var edges = (Unity.Mathematics.int2[])mesh.edges.Clone();
+            var referenceBones = Enumerable.Range(0, mesh.boneCount).Select(mesh.GetBoneData).ToArray();
+            var reference = new SpriteMeshData();
+            reference.SetFrame(mesh.frame);
+            reference.SetVertices(positions, positions.Select(_ => new EditableBoneWeight()).ToArray());
+            reference.SetIndices(indices); reference.SetEdges(edges);
+            // Separate two horizontal segments inside the mesh, independent of the fixture's source pose.
+            reference.bones = new[] { 3, 1 }.Select((index, order) => new SpriteBoneData
+            {
+                position = new Vector2(4, 8 + order * 16), endPosition = new Vector2(28, 8 + order * 16), length = 24
+            }).ToList();
+            new SpriteMeshDataController { spriteMeshData = reference }.CalculateWeights(new BoundedBiharmonicWeightsGenerator(), null, .01f);
+            var lowerWeights = reference.vertexWeights.Select(weight => weight.Where(channel => channel.enabled && channel.boneIndex == 0).Sum(channel => channel.weight)).ToArray();
+            Assert.That(lowerWeights.Max() - lowerWeights.Min(), Is.GreaterThan(.25f), "The reference solve must distinguish both bones, not return its first-bone fallback.");
+            var transform = Matrix4x4.TRS(new Vector3(130, -70, 0), Quaternion.Euler(0, 0, 33), new Vector3(1.4f, 1.4f, 1));
+            var bindings = referenceBones.Select((bone, i) =>
+            {
+                var y = i == 3 ? 8 : 24;
+                // Adjust local length so the independently posed bones have the expected endpoints.
+                mesh.bones[i].localLength = 24;
+                return (transform * Matrix4x4.Translate(new Vector3(4, y, 0))).inverse;
+            }).ToArray();
+            var rebound = positions.Select(point => (Vector2)transform.MultiplyPoint3x4(point)).ToArray();
+            m_Session.UpdateBindings(rebound, bindings);
+            m_Session.SelectBone(mesh.bones[3], false); m_Session.SelectBone(mesh.bones[1], true);
+            if (restricted)
+            {
+                m_Session.vertices.elements = new[] { 0 };
+                m_Session.ToggleLock(mesh.bones[0]);
+            }
+            var before = mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)).ToArray();
+            var fingerprint = Source().Fingerprint();
+            var pose = JsonUtility.ToJson(m_Session.bindingPose);
+            Undo.FlushUndoRecordObjects(); Undo.IncrementCurrentGroup();
+            m_Session.Auto(); Undo.FlushUndoRecordObjects();
+            foreach (var vertex in m_Session.targets)
+            {
+                var expected = new float[2];
+                foreach (var channel in reference.vertexWeights[vertex])
+                    if (channel.enabled) expected[channel.boneIndex] += channel.weight;
+                var available = restricted ? .6f : 1f;
+                Assert.That(m_Session.Values(vertex)[3], Is.EqualTo(expected[0] * available).Within(.015f));
+                Assert.That(m_Session.Values(vertex)[1], Is.EqualTo(expected[1] * available).Within(.015f));
+                Assert.That(m_Session.Values(vertex).Sum(), Is.EqualTo(1).Within(.00001f));
+                Assert.That(m_Session.Values(vertex)[0], Is.EqualTo(restricted ? .4f : 0).Within(.00001f));
+            }
+            if (restricted) CollectionAssert.AreEqual(before.Skip(1), mesh.vertexWeights.Skip(1).Select(weight => JsonUtility.ToJson(weight)));
+            CollectionAssert.AreEqual(rebound, mesh.vertices);
+            CollectionAssert.AreEqual(indices, mesh.indices); CollectionAssert.AreEqual(edges, mesh.edges);
+            Assert.AreEqual(pose, JsonUtility.ToJson(m_Session.bindingPose));
+            Assert.AreEqual(fingerprint, Source().Fingerprint());
+            // Subsequent animation/cache movement must not affect the saved binding used by Auto.
+            mesh.bones[1].position += new Vector3(300, 150, 0);
+            var after = mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)).ToArray();
+            Undo.PerformUndo();
+            CollectionAssert.AreEqual(before, mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)));
+            Undo.PerformRedo();
+            CollectionAssert.AreEqual(after, mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)));
+            m_Session.Auto();
+            CollectionAssert.AreEqual(after, mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)));
+        }
+
+        [Test]
+        public void AutoRejectsMissingReferenceBeforeChangingWeights()
+        {
+            m_Session.UpdateBindings((Vector2[])m_Session.mesh.vertices.Clone(),
+                Enumerable.Repeat(Matrix4x4.identity, m_Session.mesh.boneCount).ToArray());
+            m_Session.bindingPose.bones = m_Session.bindingPose.bones.Skip(1).ToArray();
+            var before = JsonUtility.ToJson(m_Session);
+            var weights = m_Session.mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)).ToArray();
+            StringAssert.Contains("Update Bindings", Assert.Throws<InvalidOperationException>(() => m_Session.Auto()).Message);
+            CollectionAssert.AreEqual(weights, m_Session.mesh.vertexWeights.Select(weight => JsonUtility.ToJson(weight)));
+            Assert.AreEqual(before, JsonUtility.ToJson(m_Session));
+        }
+
+        [TestCase(0f)]
+        [TestCase(12f)]
+        public void AutoReferenceSupportsPinsAndRotatedReflectedNonuniformScale(float length)
+        {
+            var bone = m_Session.mesh.bones[0];
+            bone.localLength = length;
+            var toReference = Matrix4x4.TRS(new Vector3(11, 19, 0), Quaternion.Euler(0, 0, 67), new Vector3(-2, .4f, 1));
+            var bindings = Enumerable.Repeat(Matrix4x4.identity, m_Session.mesh.boneCount).ToArray();
+            bindings[0] = toReference.inverse;
+            m_Session.UpdateBindings((Vector2[])m_Session.mesh.vertices.Clone(), bindings);
+            var data = m_Session.GetAutoBoneData(0);
+            Assert.That(Vector2.Distance(data.position, toReference.MultiplyPoint3x4(Vector3.zero)), Is.LessThan(.0001f));
+            Assert.That(Vector2.Distance(data.endPosition, toReference.MultiplyPoint3x4(new Vector3(length, 0, 0))), Is.LessThan(.0001f));
+            var generated = new SpriteMeshData { bones = new System.Collections.Generic.List<SpriteBoneData> { data } };
+            new SpriteMeshDataController { spriteMeshData = generated }.GetControlPoints(out var points, out var edges, out var pins);
+            Assert.AreEqual(length == 0 ? 1 : 0, pins.Length);
+            Assert.AreEqual(length == 0 ? 0 : 1, edges.Length);
+        }
+
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]

@@ -21,6 +21,7 @@ namespace Fedorov.Uniskin
         bool m_HasMesh;
         bool m_Supported;
         int m_CachedRigRevision = -1;
+        readonly SceneSpriteWireframe m_Wireframe = new SceneSpriteWireframe();
 
         void OnEnable()
         {
@@ -94,21 +95,8 @@ namespace Fedorov.Uniskin
             {
                 var renderer = target as SpriteRenderer;
                 var sprite = renderer != null ? renderer.sprite : null;
-                var path = sprite != null ? AssetDatabase.GetAssetPath(sprite) : null;
-                var hash = !string.IsNullOrEmpty(path) ? AssetDatabase.GetAssetDependencyHash(path) : default;
-                var rig = UniskinRigUtility.Find(sprite);
+                RefreshMeshCache(sprite);
                 var clipping = UniskinClippingMaskUtility.Find(sprite);
-                var revision = clipping != null ? clipping.revision : rig != null ? rig.revision : -1;
-                if (sprite != m_CachedSprite || hash != m_CachedHash || revision != m_CachedRigRevision)
-                {
-                    m_CachedRigRevision = revision;
-                    m_CachedSprite = sprite;
-                    m_CachedHash = hash;
-                    m_HasMesh = m_Supported = false;
-                    if (sprite != null)
-                        try { m_HasMesh = new SceneMeshSource(sprite).hasAuthoredMesh; m_Supported = true; }
-                        catch (Exception) { /* Unsupported sprites retain Unity's inspector. */ }
-                }
                 var edit = m_HasMesh || SceneEditMeshWindow.IsEditingRenderer(renderer);
                 label.text = edit ? "Edit Mesh" : "Create Mesh";
                 button.SetEnabled(targets.Length == 1 && m_Supported && !EditorApplication.isPlayingOrWillChangePlaymode);
@@ -122,10 +110,34 @@ namespace Fedorov.Uniskin
             return root;
         }
 
+        void RefreshMeshCache(Sprite sprite)
+        {
+            var path = sprite != null ? AssetDatabase.GetAssetPath(sprite) : null;
+            var hash = !string.IsNullOrEmpty(path) ? AssetDatabase.GetAssetDependencyHash(path) : default;
+            var rig = UniskinRigUtility.Find(sprite);
+            var clipping = UniskinClippingMaskUtility.Find(sprite);
+            var revision = clipping != null ? clipping.revision : rig != null ? rig.revision : -1;
+            if (sprite == m_CachedSprite && hash == m_CachedHash && revision == m_CachedRigRevision) return;
+            m_CachedRigRevision = revision;
+            m_CachedSprite = sprite;
+            m_CachedHash = hash;
+            m_HasMesh = m_Supported = false;
+            if (sprite != null)
+                try { m_HasMesh = new SceneMeshSource(sprite).hasAuthoredMesh; m_Supported = true; }
+                catch (Exception) { /* Unsupported sprites retain Unity's inspector. */ }
+        }
+
         void OnSceneGUI()
         {
-            if (m_NativeEditor != null && !SceneEditMeshWindow.IsEditingRenderer(target as SpriteRenderer) && !SceneEditBoneWindow.IsEditingRenderer(target as SpriteRenderer) && !SceneEditWeightsWindow.IsEditingRenderer(target as SpriteRenderer))
-                m_NativeSceneGUI?.Invoke(m_NativeEditor, null);
+            var renderer = target as SpriteRenderer;
+            if (SceneEditMeshWindow.IsEditingRenderer(renderer) || SceneEditBoneWindow.IsEditingRenderer(renderer) ||
+                SceneEditWeightsWindow.IsEditingRenderer(renderer)) return;
+            if (m_NativeEditor != null) m_NativeSceneGUI?.Invoke(m_NativeEditor, null);
+            if (Event.current.type == EventType.Repaint && renderer != null)
+            {
+                RefreshMeshCache(renderer.sprite);
+                m_Wireframe.Draw(renderer, !m_Supported || m_HasMesh);
+            }
         }
 
         public override bool HasPreviewGUI() => m_NativeEditor != null && m_NativeEditor.HasPreviewGUI();

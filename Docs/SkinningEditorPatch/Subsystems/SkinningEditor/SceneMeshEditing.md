@@ -1,5 +1,21 @@
 # Scene View Mesh Editing
 
+## Selected sprite wireframe
+
+Selecting a SpriteRenderer under an Uniskin root displays its Sprite triangle wireframe in Scene View, including layers without SpriteSkin. Root membership is determined by an ancestor `UniskinRigBinding` with a rig assigned (including inactive ancestors). Selected SpriteSkin objects outside a rig retain their wireframe. `UniskinSpriteRendererEditor` owns the single drawing entry point and delegates to `SceneSpriteWireframe`; SpriteSkin's Inspector does not draw a second overlay. Drawing runs during Repaint only and uses Preferences > Uniskin > Mesh Line Color. Multiple selected sprites are supported; a locked Inspector does not draw an unselected object. Unselected sibling sprites are not drawn. The overlay does not capture input or change mesh, scene, component or asset data.
+
+The wireframe samples the current bone Transforms and Sprite bind poses/weights directly, supporting CPU and GPU deformation without requiring a readable current deformation buffer. Renderer transforms and Flip X/Y apply after local skinning. An absent, disabled or invalid SpriteSkin displays the source mesh. Missing sprites, disabled renderers, renderers hidden by Scene authoring previews and the renderer currently edited by a Mesh/Bone/Weight popup are skipped so the popups retain their own staged mesh display. Deselecting the object removes the overlay.
+
+The overlay and Inspector share `RefreshMeshCache` and the same `SceneMeshSource.hasAuthoredMesh` classification, invalidated by Sprite identity, asset dependency hash and rig/mask revision. When **Edit Mesh** is available, the overlay shows the saved Sprite mesh and its current deformation. When **Create Mesh** is available, it shows the source-frame rectangle with four corners and exactly two triangles, matching initial Create Mesh authoring; Unity's automatically generated tight rendering outline is not shown. The rectangle uses Sprite rect size and pivot in local units, with renderer flips/transforms, and is not skinned or saved. Unsupported Sprite providers retain the existing runtime wireframe fallback.
+
+Manual verification: select/deselect one or multiple skinned and unskinned sprites under an Uniskin root, select an ordinary sprite outside a rig (no new overlay), animate bones, flip/rotate/scale the renderer, toggle SpriteSkin, and open Mesh/Bone/Weight authoring windows. Confirm the displayed triangles follow the rendered sprite, popup previews are not doubled and selection alone leaves assets clean.
+
+For an untouched tight-outline sprite showing Create Mesh, selection must display only the rectangle's two triangles. Open Create Mesh and compare its four corners; save authored geometry, close and confirm selection switches to that saved mesh. Check noncentral pivots, atlas/downscaled sprites, flips, multiple selection and rig Save/Undo invalidation. These remain interactive checks.
+
+On 2026-10-15, the shared classification and two-triangle fallback compiled without errors in the connected Unity 6000.0.81f1 editor and passed `git diff --check`. No version-sensitive API was introduced; Unity 6000.5+ and interactive appearance remain unverified.
+
+Verification on 2026-10-14: compiled in the connected Unity 6000.0.81f1 editor and passed `git diff --check`. Interactive appearance and Unity 6000.5+ execution remain unverified. No version-sensitive API was introduced. The consuming project's local `file:` dependency recompiles directly from this checkout.
+
 ## Purpose and storage
 
 For an enabled [UniskinRig](UniskinRig.md), Scene authoring resolves to its independent provider and Save updates the rig/generated Sprite subassets without PSB reimport. The native importer workflow below applies when no rig is enabled. Bake explicitly synchronizes the source PSB, and Skinning Editor entry auto-bakes.

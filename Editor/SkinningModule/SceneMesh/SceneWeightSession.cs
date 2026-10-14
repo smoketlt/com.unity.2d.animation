@@ -328,28 +328,49 @@ namespace UnityEditor.U2D.Animation
             var selected = selectedBones;
             var bones = selected.Length > 0 ? selected : Enumerable.Range(0, mesh.boneCount).ToArray();
             if (bones.Length == 0) return;
+            // Resolve and solve before touching weights or donor history. A missing
+            // reference must not leave a partially changed session.
+            SpriteMeshData generated = null;
+            m_Context.WithSourcePose(() =>
+            {
+                generated = new SpriteMeshData();
+                generated.SetFrame(mesh.frame);
+                generated.SetVertices((Vector2[])mesh.vertices.Clone(), mesh.vertexWeights.Select(w => new EditableBoneWeight()).ToArray());
+                generated.SetIndices((int[])mesh.indices.Clone());
+                generated.SetEdges((Unity.Mathematics.int2[])mesh.edges.Clone());
+                generated.bones = bones.Select(GetAutoBoneData).ToList();
+                new SpriteMeshDataController { spriteMeshData = generated }.CalculateWeights(new RefinedBiharmonicWeightsGenerator(), null, .01f);
+            });
             using (cache.UndoScope("Auto Mesh Weights"))
             {
+                Undo.RegisterCompleteObjectUndo(this, "Auto Mesh Weights");
                 ForgetDonors();
-                m_Context.WithSourcePose(() =>
+                foreach (var vertex in targets)
                 {
-                    var generated = new SpriteMeshData();
-                    generated.SetFrame(mesh.frame);
-                    generated.SetVertices((Vector2[])mesh.vertices.Clone(), mesh.vertexWeights.Select(w => new EditableBoneWeight()).ToArray());
-                    generated.SetIndices((int[])mesh.indices.Clone());
-                    generated.SetEdges((Unity.Mathematics.int2[])mesh.edges.Clone());
-                    generated.bones = bones.Select(i => mesh.GetBoneData(i)).ToList();
-                    new SpriteMeshDataController { spriteMeshData = generated }.CalculateWeights(new BoundedBiharmonicWeightsGenerator(), null, .01f);
-                    foreach (var vertex in targets)
-                    {
-                        var values = new float[mesh.boneCount];
-                        foreach (var channel in generated.vertexWeights[vertex])
-                            if (channel.enabled && channel.boneIndex < bones.Length) values[bones[channel.boneIndex]] += channel.weight;
-                        SetDistribution(vertex, values);
-                    }
-                });
+                    var values = new float[mesh.boneCount];
+                    foreach (var channel in generated.vertexWeights[vertex])
+                        if (channel.enabled && channel.boneIndex < bones.Length) values[bones[channel.boneIndex]] += channel.weight;
+                    SetDistribution(vertex, values);
+                }
                 Changed();
             }
+        }
+
+        internal SpriteBoneData GetAutoBoneData(int index)
+        {
+            var data = mesh.GetBoneData(index);
+            if (bindingPose == null) return data;
+            var bone = mesh.bones[index];
+            var binding = bindingPose.FindBone(bone.guid);
+            if (!binding.HasValue || !SceneMeshBindingPose.IsFinite(binding.Value) || Mathf.Abs(binding.Value.determinant) < 1e-12f)
+                throw new InvalidOperationException("Auto requires a valid mesh binding for " + bone.name + ". Use Update Bindings before Auto.");
+            // pixelsToBone includes the provider PPU conversion: its inverse maps
+            // bone-local pixel coordinates into this mesh's saved reference pose.
+            // Never use the animated scene pose or mix source bones with rebound vertices.
+            var boneToPixels = binding.Value.inverse;
+            data.position = boneToPixels.MultiplyPoint3x4(Vector3.zero);
+            data.endPosition = boneToPixels.MultiplyPoint3x4(new Vector3(data.length, 0, 0));
+            return data;
         }
 
         internal float[] Values(int vertex)
