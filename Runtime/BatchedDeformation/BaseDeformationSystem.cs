@@ -108,6 +108,11 @@ namespace UnityEngine.U2D.Animation
 
         internal void CopyToSpriteSkinData(SpriteSkin spriteSkin)
         {
+            // Disabled and newly re-enabled skins can retain an index now owned by
+            // another skin until deferred registration is processed.
+            if (spriteSkin == null || !m_SpriteSkins.Contains(spriteSkin) || m_SpriteSkinsToRemove.Contains(spriteSkin))
+                return;
+
             if (!m_SpriteSkinData.IsCreated)
                 throw new InvalidOperationException("Sprite Skin Data not initialized.");
 

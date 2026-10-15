@@ -724,6 +724,50 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.DoesNotThrow(() => UniskinRigUtility.CheckSource(m_Rig));
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void DeletedBoneSaveUndoRedoRestoresBindingsPosesAndWeights(bool removeParent)
+        {
+            AddBones();
+            var binding = m_Root.GetComponent<UniskinRigBinding>();
+            var original = m_Rig.authoringData;
+            var transforms = binding.bones.Select(link => link.transform).ToArray();
+            transforms[0].localRotation *= Quaternion.Euler(0, 0, 23);
+            transforms[1].localPosition += new Vector3(.05f, .03f, 0);
+            var positions = transforms.Select(bone => bone.position).ToArray();
+            var rotations = transforms.Select(bone => bone.rotation).ToArray();
+            var weights = m_Renderer.sprite.GetVertexAttribute<BoneWeight>(VertexAttribute.BlendWeight).ToArray();
+            var source = Source();
+            var session = Session<SceneBoneSession>();
+            session.Load(m_Renderer.sprite, source);
+            session.CaptureScenePose(m_Renderer, source.rect.rect);
+            using (session.cache.UndoScope("Delete rig test bone"))
+            {
+                session.skeleton.DestroyBone(session.skeleton.bones.Single(bone => bone.name == (removeParent ? "Root" : "Child")));
+                session.Changed(true);
+            }
+            session.Save(source);
+            Undo.FlushUndoRecordObjects();
+            Assert.AreEqual(1, binding.bones.Length);
+            var survivor = removeParent ? 1 : 0;
+            Assert.That(Vector3.Distance(positions[survivor], binding.bones[0].transform.position), Is.LessThan(.00001f));
+            Undo.PerformUndo();
+            Assert.AreEqual(original, m_Rig.authoringData);
+            CollectionAssert.AreEqual(transforms, binding.bones.Select(link => link.transform));
+            for (var i = 0; i < transforms.Length; ++i)
+            {
+                Assert.That(Vector3.Distance(positions[i], transforms[i].position), Is.LessThan(.00001f));
+                Assert.That(Quaternion.Angle(rotations[i], transforms[i].rotation), Is.LessThan(.001f));
+                Assert.AreEqual(m_Rig.characterBones[i], binding.bones[i].sourcePose);
+            }
+            CollectionAssert.AreEqual(weights, m_Renderer.sprite.GetVertexAttribute<BoneWeight>(VertexAttribute.BlendWeight).ToArray());
+            CollectionAssert.AreEqual(transforms, m_Renderer.GetComponent<SpriteSkin>().boneTransforms);
+            Undo.PerformRedo();
+            Assert.AreEqual(1, binding.bones.Length);
+            Assert.AreEqual(1, m_Renderer.GetComponent<SpriteSkin>().boneTransforms.Length);
+            Assert.That(Vector3.Distance(positions[survivor], binding.bones[0].transform.position), Is.LessThan(.00001f));
+        }
+
         [Test]
         public void UndoRigSaveRestoresGeneratedMeshAndPreservesSource()
         {

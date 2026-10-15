@@ -14,6 +14,11 @@
           <ui:Button name="split" text="Split" tooltip="Click a bone body to split it at the cursor." />
           <ui:Button name="setParent" text="Set Parent" tooltip="Select a child, then click its parent. Click empty space to detach." />
         </ui:VisualElement>
+        <ui:VisualElement class="mesh-row">
+          <ui:Button name="copy" text="Copy" tooltip="Copy selected bones and all descendants." />
+          <ui:Button name="paste" text="Paste" tooltip="Paste copied chains under their original parents." />
+          <ui:Button name="pasteMirror" text="Paste Mirror" tooltip="Reflect copied chains along their parent bones and swap left/right names." />
+        </ui:VisualElement>
         <ui:VisualElement name="properties" class="bone-properties">
           <ui:TextField name="boneName" label="Name" is-delayed="true" tooltip="Rename the bone, its scene GameObjects and animation bindings when saving." />
           <ui:VisualElement class="bone-color-row">

@@ -22,6 +22,38 @@ This host edits the **source Sprite/PSB skeleton**, not scene Transform objects.
 
 ## Controls and gestures
 
+### Bone chain clipboard
+
+The second command row provides icon buttons **Copy**, **Paste** and **Paste Mirror**.
+Copy snapshots selected bones and all their descendants, including branches; overlapping
+selections include each bone once. Paste creates new GUIDs and preserves the copied
+hierarchy, chained endpoints, color, depth and icon settings. Original bones and their
+weights are unchanged. New bones follow the mesh-entry/skeleton-only influence policy.
+Pasted bones become selected and the entire insertion supports staged Undo/Redo and
+the normal automatic save on close.
+
+Each copied chain retains its original external parent by GUID. Positions are captured
+relative to that parent's joint and rotation; paste uses the parent's current frame.
+Paste Mirror reflects all chain joints and endpoints along the parent's longitudinal
+local X axis (negates local Y). A parentless chain, or a chain whose external parent is
+unavailable in the destination skeleton, uses the skeleton origin and X axis instead.
+It does not reparent to the currently selected bone.
+
+Mirroring swaps `Left`/`Right` (including lowercase and uppercase variants) and isolated
+`L`/`R` markers, such as `Leg_R` → `Leg_L`, in both directions. Existing destination
+names receive a numeric suffix rather than replacing an existing bone. The clipboard
+is an in-memory snapshot shared by Edit Bones popups until assembly reload; subsequent
+source edits/deletions do not mutate it. It does not copy mesh weights or animation clips.
+
+Verification on 2026-10-16: the connected Editor compiled without errors. A disposable
+live probe passed descendant copying, rotated-parent reflection, mirrored names,
+parent/chained-child links, Undo, ordinary paste, unique names and Sprite skeleton save;
+the updated UXML cloned with all three clipboard buttons. Temporary assets and probe
+source were removed. NUnit regression cases were added, but the consuming project's
+Test Runner discovered zero package tests, so those cases were not executed as a suite.
+Interactive layout/DPI and animated-pose pasting remain manual checks; exact Unity
+6000.0.7 and 6000.5+ execution was not performed. No version-sensitive API was introduced.
+
 The properties area includes a current-icon button opening the separate Spine-style [Bone Icons](BoneIcons.md) picker. Icon selection supports multiple bones and Undo, and saves by GUID to native importer or rig metadata.
 
 The selected GameObject's native transform handles are automatically hidden while Edit Bones is available, including after choosing Move/Rotate/Scale again. Custom bone handles remain available. The shared [Scene object tool scope](SceneMeshEditing.md#scene-object-tool-handles) restores the previous visibility when editing closes, reloads or becomes blocked; manually switching to View is unnecessary.

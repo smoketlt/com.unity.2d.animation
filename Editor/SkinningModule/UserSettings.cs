@@ -109,12 +109,14 @@ namespace UnityEditor.U2D.Animation
         public const string kSelectedVertexColorKey = UserSettings.kSettingsUniqueKey + "MeshEditor.selectedVertexColor";
         public const string kHoveredVertexColorKey = UserSettings.kSettingsUniqueKey + "MeshEditor.hoveredVertexColor";
         public const string kMeshLineColorKey = UserSettings.kSettingsUniqueKey + "MeshEditor.meshLineColor";
+        public const string kWeightTriangleColorKey = UserSettings.kSettingsUniqueKey + "MeshEditor.weightTriangleColor";
         public const float kDefaultSymmetryThreshold = 2f;
         static readonly GUIContent s_ThresholdLabel = new GUIContent("Symmetry Threshold (px)",
             "Maximum distance from the reflected source-image position when matching existing vertices. Independent of zoom; 0 requires a precise match.");
         static readonly GUIContent s_SelectedLabel = new GUIContent("Selected Vertex Color");
         static readonly GUIContent s_HoveredLabel = new GUIContent("Hovered Vertex Color", "Also used for the mirrored partner under Symmetry.");
         static readonly GUIContent s_LineLabel = new GUIContent("Mesh Line Color", "Color of unselected mesh edges and the Scene triangle overlay.");
+        static readonly GUIContent s_WeightTriangleLabel = new GUIContent("Weight Triangle Color", "Triangle line color in Edit Weights, including Preview Pose.");
 
         public static float symmetryThreshold
         {
@@ -143,6 +145,12 @@ namespace UnityEditor.U2D.Animation
             set => WriteColor(kMeshLineColorKey, value);
         }
 
+        public static Color weightTriangleColor
+        {
+            get => ReadColor(kWeightTriangleColorKey, "#FFFF00");
+            set => WriteColor(kWeightTriangleColorKey, value);
+        }
+
         static Color ReadColor(string key, string fallback)
         {
             if (ColorUtility.TryParseHtmlString(EditorPrefs.GetString(key, fallback), out var color)) return color;
@@ -158,6 +166,7 @@ namespace UnityEditor.U2D.Animation
             EditorPrefs.DeleteKey(kSelectedVertexColorKey);
             EditorPrefs.DeleteKey(kHoveredVertexColorKey);
             EditorPrefs.DeleteKey(kMeshLineColorKey);
+            EditorPrefs.DeleteKey(kWeightTriangleColorKey);
         }
 
         internal static void OnGUI()
@@ -169,12 +178,14 @@ namespace UnityEditor.U2D.Animation
             var selected = EditorGUILayout.ColorField(s_SelectedLabel, selectedVertexColor, true, false, false);
             var hovered = EditorGUILayout.ColorField(s_HoveredLabel, hoveredVertexColor, true, false, false);
             var lines = EditorGUILayout.ColorField(s_LineLabel, meshLineColor, true, false, false);
+            var triangles = EditorGUILayout.ColorField(s_WeightTriangleLabel, weightTriangleColor, true, false, false);
             if (EditorGUI.EndChangeCheck())
             {
                 symmetryThreshold = threshold;
                 selectedVertexColor = selected;
                 hoveredVertexColor = hovered;
                 meshLineColor = lines;
+                weightTriangleColor = triangles;
                 UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
             }
             if (GUILayout.Button("Reset Mesh Editing Defaults", GUILayout.ExpandWidth(false)))

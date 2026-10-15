@@ -578,7 +578,10 @@ namespace UnityEditor.U2D.Animation
                         BoneHierarchyIsCurrent(binding, rig, root) &&
                         group.All(renderer => renderer.sprite == rig.Find(renderer.sprite).sprite)) continue;
                     if (binding == null) binding = Undo.AddComponent<UniskinRigBinding>(root.gameObject);
-                    Undo.RecordObject(binding, "Update Rig Bindings");
+                    // Bone destruction/reparenting flushes RecordObject diffs before
+                    // the final GUID array and source-pose baselines are assigned.
+                    // Snapshot the complete binding across the entire operation.
+                    Undo.RegisterCompleteObjectUndo(binding, "Update Rig Bindings");
                     binding.rig = rig;
                     binding.renderers = group.ToArray();
                     var map = binding.bones.Where(link => link.transform != null).ToDictionary(link => link.guid);
@@ -674,7 +677,8 @@ namespace UnityEditor.U2D.Animation
                 parentChanged || hierarchyPoses.ContainsKey(bone.guid);
             if (changed)
             {
-                Undo.RecordObject(transform, "Update Rig Bone");
+                // Reparenting flushes pending diffs; the pose is assigned afterwards.
+                Undo.RegisterCompleteObjectUndo(transform, "Update Rig Bone");
                 if (created) transform.SetParent(parent, false);
                 else if (parentChanged)
                 {

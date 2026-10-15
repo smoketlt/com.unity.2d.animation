@@ -44,6 +44,16 @@ Batch synchronization now filters destroyed skins/renderers from pending additio
 
 Verified on 2026-10-14: all 20 compatibility cases passed with no skipped cases on Unity 6000.0.81f1/Common 9.1.2 and Unity 6000.5.7f1/Common 14.0.1. The disposable projects used a snapshot of published `420261d9` plus this runtime/test change, excluding unrelated working-tree edits. Both runs used `-batchmode -nographics`; the original scene and visual GPU output remain unverified.
 
+## Stale Registration Indices and Invalid World Bounds
+
+Re-enabling the body GameObject and zooming the Scene view exposed repeated `Invalid worldAABB` errors in Unity 6000.6.0f1. Live inspection found `a_Hand_R` with a 39-vertex cache but a batch entry containing 24 vertices and a different source pointer; the batch bounds were approximately 1e29. The body's own data remained finite. Renderer bounds alone did not reveal the corrupt batch entry.
+
+`CopyToSpriteSkinData` now ignores skins outside the registered set and skins queued for removal. Removed skins can retain an old data index that another skin owns after batch compaction; newly enabled skins can publish changes before their deferred addition assigns a new index. Those callbacks must not write through the stale index. Normal registered copies and the registration-time copy remain enabled. This fixes the stale-write path rather than clamping the resulting bounds or suppressing the native error.
+
+`DeformationBatchIgnoresCopiesFromUnregisteredSkins` covers CPU and GPU batches, removal/compaction, a stale copy, a pending re-addition and final registration. It verifies both renderer ownership and the sprite data's transform identity.
+
+Verified on 2026-10-16: the connected Unity 6000.6.0f1 Editor completed recompilation without errors. A disposable reflection-based harness exercised the same CPU/GPU removal and re-addition sequence and passed six ownership checks. A subsequent live deformation update showed matching batch/skin vertex counts and source pointers for all 27 scene skins, with finite normal bounds. The NUnit fixture was added but not run through Test Runner; Unity 6000.0 and 6000.5 were not recompiled during this task. The guard uses existing collection APIs with no new version-dependent Unity API. Repeating the user's interactive disable/re-enable/zoom gesture remains manual verification.
+
 ## Warning Maintenance
 
 Runtime IK culling, Sprite post-processing, Scene GPU picking and Scene mesh renderer discovery share the runtime object-discovery wrapper. Its explicit `UNITY_6000_5_OR_NEWER` branch avoids the deprecated sort-mode overload on newer editors while retaining the active-only, unordered query on 6000.0–6000.4. The runtime assembly already exposes internals to both the editor and IK assemblies.

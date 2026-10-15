@@ -75,6 +75,108 @@ namespace UnityEditor.U2D.Animation
         internal SkeletonCache skeleton => cache.GetEffectiveSkeleton(cache.selectedSprite);
         internal bool dirty => cache != null && m_Saved != SourceSnapshot();
 
+        sealed class CopiedBone
+        {
+            public string name, parentGuid, icon;
+            public int parent, chainedChild;
+            public Vector3 start, end;
+            public Color color;
+            public float depth, iconSize;
+        }
+
+        static CopiedBone[] s_BoneClipboard;
+        internal static bool hasBoneClipboard => s_BoneClipboard != null && s_BoneClipboard.Length > 0;
+
+        internal bool CopySelectedBones()
+        {
+            var selected = new HashSet<BoneCache>(cache.skeletonSelection.elements.Where(b => b != null && !b.IsConstraintParent()));
+            bool Included(BoneCache bone) => bone != null && (selected.Contains(bone) || Included(bone.parentBone));
+            var bones = new List<BoneCache>();
+            void Visit(BoneCache bone)
+            {
+                if (bone.IsConstraintParent() || bones.Contains(bone)) return;
+                if (bone.parentBone != null && Included(bone.parentBone)) Visit(bone.parentBone);
+                bones.Add(bone);
+            }
+            foreach (var bone in skeleton.bones.Where(Included)) Visit(bone);
+            if (bones.Count == 0) return false;
+            s_BoneClipboard = bones.Select(bone =>
+            {
+                var parent = bones.IndexOf(bone.parentBone);
+                var root = bone;
+                while (bones.Contains(root.parentBone)) root = root.parentBone;
+                var anchor = root.parentBone;
+                var frame = anchor != null ? Matrix4x4.TRS(anchor.position, anchor.rotation, Vector3.one) : Matrix4x4.identity;
+                return new CopiedBone
+                {
+                    name = bone.name, parent = parent, parentGuid = anchor?.guid,
+                    chainedChild = bones.IndexOf(bone.chainedChild),
+                    start = frame.inverse.MultiplyPoint3x4(bone.position),
+                    end = frame.inverse.MultiplyPoint3x4(bone.endPosition),
+                    color = bone.bindPoseColor, depth = bone.depth, icon = bone.iconId, iconSize = bone.iconSize
+                };
+            }).ToArray();
+            return true;
+        }
+
+        internal static string MirrorBoneName(string name)
+        {
+            return System.Text.RegularExpressions.Regex.Replace(name,
+                @"Left|Right|left|right|LEFT|RIGHT|(?<![A-Za-z])[LRlr](?![A-Za-z])",
+                match =>
+                {
+                    switch (match.Value)
+                    {
+                        case "Left": return "Right";
+                        case "Right": return "Left";
+                        case "left": return "right";
+                        case "right": return "left";
+                        case "LEFT": return "RIGHT";
+                        case "RIGHT": return "LEFT";
+                        case "L": return "R";
+                        case "R": return "L";
+                        case "l": return "r";
+                        default: return "l";
+                    }
+                });
+        }
+
+        internal BoneCache[] PasteBones(bool mirror)
+        {
+            if (!hasBoneClipboard) return Array.Empty<BoneCache>();
+            var created = new List<BoneCache>();
+            var names = new HashSet<string>(skeleton.bones.Select(bone => bone.name));
+            using (cache.UndoScope(mirror ? "Paste Mirror Bones" : "Paste Bones"))
+            {
+                foreach (var item in s_BoneClipboard)
+                {
+                    var anchor = skeleton.bones.FirstOrDefault(bone => bone.guid == item.parentGuid && !bone.IsConstraintParent());
+                    var frame = anchor != null ? Matrix4x4.TRS(anchor.position, anchor.rotation, Vector3.one) : Matrix4x4.identity;
+                    Vector3 Place(Vector3 point)
+                    {
+                        if (mirror) point.y = -point.y;
+                        return frame.MultiplyPoint3x4(point);
+                    }
+                    var baseName = mirror ? MirrorBoneName(item.name) : item.name;
+                    var name = baseName;
+                    for (var suffix = 1; !names.Add(name); ++suffix) name = baseName + "_" + suffix;
+                    var parent = item.parent >= 0 ? created[item.parent] : anchor;
+                    var bone = skeleton.CreateBone(parent, Place(item.start), Place(item.end), false, name);
+                    bone.bindPoseColor = item.color;
+                    bone.depth = item.depth;
+                    bone.iconId = item.icon;
+                    bone.iconSize = item.iconSize;
+                    created.Add(bone);
+                }
+                for (var i = 0; i < created.Count; ++i)
+                    if (s_BoneClipboard[i].chainedChild >= 0)
+                        created[i].chainedChild = created[s_BoneClipboard[i].chainedChild];
+                cache.skeletonSelection.elements = created.ToArray();
+                Changed(true);
+            }
+            return created.ToArray();
+        }
+
         internal void Load(Sprite sprite, SceneMeshSource source, bool skeletonOnly = false)
         {
             this.skeletonOnly = skeletonOnly;

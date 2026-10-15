@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.U2D.Animation;
@@ -7,6 +8,32 @@ namespace UnityEditor.U2D.Animation
 {
     internal static class SceneMeshTargetPicking
     {
+        internal const float meshEdgePadding = 12f;
+
+        // Work in GUI points so the protected contour does not shrink when zooming out.
+        internal static bool NearBoundary(Vector2 point, Vector2[] vertices, int[] indices, float padding)
+        {
+            var edges = new Dictionary<(int, int), int>();
+            for (var i = 0; i + 2 < indices.Length; i += 3)
+                for (var j = 0; j < 3; ++j)
+                {
+                    var a = indices[i + j];
+                    var b = indices[i + (j + 1) % 3];
+                    var key = a < b ? (a, b) : (b, a);
+                    edges.TryGetValue(key, out var count);
+                    edges[key] = count + 1;
+                }
+            foreach (var edge in edges)
+            {
+                if (edge.Value != 1) continue;
+                var a = vertices[edge.Key.Item1];
+                var delta = vertices[edge.Key.Item2] - a;
+                var t = delta.sqrMagnitude > 0f ? Mathf.Clamp01(Vector2.Dot(point - a, delta) / delta.sqrMagnitude) : 0f;
+                if ((point - a - t * delta).sqrMagnitude <= padding * padding) return true;
+            }
+            return false;
+        }
+
         internal static SpriteRenderer HierarchyTarget(SpriteRenderer current)
         {
             if (Selection.objects.Length != 1 || Selection.activeGameObject == null) return null;
@@ -36,7 +63,7 @@ namespace UnityEditor.U2D.Animation
         }
 
         // No native picking render: safe in the early Scene callback, including GPU skins.
-        internal static SpriteRenderer Pick(SceneView view, SpriteRenderer current, Vector3[] vertices, int[] indices)
+        internal static SpriteRenderer Pick(SceneView view, SpriteRenderer current, Vector3[] vertices, int[] indices, float edgePadding = 0f)
         {
             var evt = Event.current;
             if (evt == null || evt.type != EventType.MouseDown || evt.button != 0 || evt.alt || evt.shift ||
@@ -47,6 +74,9 @@ namespace UnityEditor.U2D.Animation
             var ray = HandleUtility.GUIPointToWorldRay(evt.mousePosition);
             // Vertex handles on the active mesh always retain their gesture.
             if (vertices.Any(vertex => Vector2.Distance(HandleUtility.WorldToGUIPoint(vertex), evt.mousePosition) < 10f)) return null;
+            // Let the active tool own clicks on either side of the displayed contour.
+            if (edgePadding > 0f && NearBoundary(evt.mousePosition,
+                vertices.Select(vertex => HandleUtility.WorldToGUIPoint(vertex)).ToArray(), indices, edgePadding)) return null;
             SpriteRenderer best = null;
             for (var i = 0; i + 2 < indices.Length; i += 3)
                 if (SceneSpriteDeformedMesh.Intersect(ray, vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]], out _))
@@ -87,7 +117,8 @@ namespace UnityEditor.U2D.Animation
             var displayed = Deformation()?.mesh ?? m_Session.mesh;
             var matrix = SceneMeshSession.PixelToWorld(m_Renderer, displayed.frame);
             var target = SceneMeshTargetPicking.Pick(view, m_Renderer,
-                displayed.vertices.Select(vertex => matrix.MultiplyPoint3x4(vertex)).ToArray(), displayed.indices);
+                displayed.vertices.Select(vertex => matrix.MultiplyPoint3x4(vertex)).ToArray(), displayed.indices,
+                SceneMeshTargetPicking.meshEdgePadding);
             if (target == null) return false;
             Event.current.Use();
             QueueMeshTarget(target);

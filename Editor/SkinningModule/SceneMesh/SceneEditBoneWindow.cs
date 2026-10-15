@@ -215,6 +215,9 @@ namespace UnityEditor.U2D.Animation
             Bind("create", "Bone_Create", 1);
             Bind("split", "Bone_Split", 2);
             Bind("setParent", "Bone_SetParent", 3);
+            BindClipboard("copy", "Copy", () => m_Session.CopySelectedBones());
+            BindClipboard("paste", "Paste", () => m_Session.PasteBones(false));
+            BindClipboard("pasteMirror", "Paste", () => m_Session.PasteBones(true));
             rootVisualElement.Q<Button>("boneIcon").clicked += ShowIconPicker;
             rootVisualElement.Q<TextField>("boneName").RegisterValueChangedCallback(evt =>
             {
@@ -257,6 +260,26 @@ namespace UnityEditor.U2D.Animation
             button.Add(label);
             if (name == "setParent") button.AddToClassList("mesh-last-action");
             button.clicked += () => { CancelRecreate(); m_Controller?.Reset(); m_Mode = m_Mode == mode ? 0 : mode; UpdateUI(); SceneView.RepaintAll(); };
+        }
+
+        void BindClipboard(string name, string iconName, Action action)
+        {
+            var button = rootVisualElement.Q<Button>(name);
+            var label = new Label(button.text) { pickingMode = PickingMode.Ignore };
+            button.text = string.Empty;
+            button.Add(new Image { image = ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/" + iconName + ".png"),
+                name = "commandIcon", pickingMode = PickingMode.Ignore });
+            button.Add(label);
+            if (name == "pasteMirror") button.AddToClassList("mesh-last-action");
+            button.clicked += () =>
+            {
+                if (m_Saving || BlockReason() != null) return;
+                CancelRecreate();
+                m_Controller?.Reset();
+                action();
+                UpdateUI();
+                SceneView.RepaintAll();
+            };
         }
 
         void ShowIconPicker()
@@ -317,6 +340,9 @@ namespace UnityEditor.U2D.Animation
             length.SetEnabled(selected.Length == 1);
             color.SetEnabled(selected.Length > 0);
             var editableIcons = selected.Where(bone => !bone.IsConstraintParent()).ToArray();
+            rootVisualElement.Q<Button>("copy").SetEnabled(editableIcons.Length > 0);
+            rootVisualElement.Q<Button>("paste").SetEnabled(SceneBoneSession.hasBoneClipboard);
+            rootVisualElement.Q<Button>("pasteMirror").SetEnabled(SceneBoneSession.hasBoneClipboard);
             var iconButton = rootVisualElement.Q<Button>("boneIcon");
             iconButton.SetEnabled(editableIcons.Length > 0);
             var iconId = editableIcons.Length > 0 ? editableIcons[0].iconId : BoneIconUtility.Default;

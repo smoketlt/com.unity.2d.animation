@@ -10,6 +10,56 @@ namespace UnityEditor.U2D.Animation.Tests
 {
     internal class UnityCompatibilityTests
     {
+        [TestCase(DeformationMethods.Cpu)]
+        [TestCase(DeformationMethods.Gpu)]
+        public void DeformationBatchIgnoresCopiesFromUnregisteredSkins(DeformationMethods method)
+        {
+            BaseDeformationSystem system = method == DeformationMethods.Gpu
+                ? (BaseDeformationSystem)new GpuDeformationSystem() : new CpuDeformationSystem();
+            var removed = new GameObject("Re-enabled batch skin", typeof(SpriteRenderer), typeof(SpriteSkin));
+            var survivor = new GameObject("Surviving batch skin", typeof(SpriteRenderer), typeof(SpriteSkin));
+            system.Initialize(system.GetHashCode());
+            try
+            {
+                var removedSkin = removed.GetComponent<SpriteSkin>();
+                var survivingSkin = survivor.GetComponent<SpriteSkin>();
+                system.AddSpriteSkin(removedSkin);
+                system.AddSpriteSkin(survivingSkin);
+                system.Update();
+                system.RemoveSpriteSkin(removedSkin);
+                system.Update();
+
+                // Removal compacts the survivor into the removed skin's old slot.
+                Assert.AreEqual(removedSkin.dataIndex, survivingSkin.dataIndex);
+                system.CopyToSpriteSkinData(removedSkin);
+                AssertBatchOwner(system, survivingSkin);
+
+                // OnEnable can publish sprite changes before the queued addition runs.
+                system.AddSpriteSkin(removedSkin);
+                system.CopyToSpriteSkinData(removedSkin);
+                AssertBatchOwner(system, survivingSkin);
+                system.Update();
+                AssertBatchOwner(system, survivingSkin);
+                AssertBatchOwner(system, removedSkin);
+            }
+            finally
+            {
+                system.Cleanup();
+                UnityEngine.Object.DestroyImmediate(removed);
+                UnityEngine.Object.DestroyImmediate(survivor);
+            }
+        }
+
+        static void AssertBatchOwner(BaseDeformationSystem system, SpriteSkin skin)
+        {
+            var data = (NativeArray<SpriteSkinData>)typeof(BaseDeformationSystem)
+                .GetField("m_SpriteSkinData", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(system);
+            Assert.AreEqual(skin.transform.GetObjectId(), data[skin.dataIndex].transformId);
+            var renderers = (SpriteRenderer[])typeof(BaseDeformationSystem)
+                .GetField("m_SpriteRenderers", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(system);
+            Assert.AreSame(skin.spriteRenderer, renderers[skin.dataIndex]);
+        }
+
         [TestCase(DeformationMethods.Cpu, false, false)]
         [TestCase(DeformationMethods.Gpu, false, false)]
         [TestCase(DeformationMethods.Cpu, true, false)]

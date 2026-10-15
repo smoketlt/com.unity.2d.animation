@@ -373,6 +373,55 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.AreEqual("UpperArm", Source().provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(Source().rect.spriteID)[0].name);
         }
 
+        [TestCase("Leg_R", "Leg_L")]
+        [TestCase("Leg_L", "Leg_R")]
+        [TestCase("LeftArm", "RightArm")]
+        [TestCase("RightHand", "LeftHand")]
+        [TestCase("LEFT_leg", "RIGHT_leg")]
+        [TestCase("left_foot", "right_foot")]
+        [TestCase("Root", "Root")]
+        public void MirrorNamesSwapSidesWithoutChangingOtherLetters(string source, string expected)
+        {
+            Assert.AreEqual(expected, SceneBoneSession.MirrorBoneName(source));
+        }
+
+        [Test]
+        public void BoneClipboardReflectsWholeChainAlongRotatedParentAndSupportsUndo()
+        {
+            Load();
+            var skeleton = m_Session.skeleton;
+            var parent = skeleton.CreateBone(null, new Vector3(10, 12), new Vector3(10, 20), false, "Body");
+            var leg = skeleton.CreateBone(parent, new Vector3(14, 17), new Vector3(17, 22), false, "Leg_R");
+            var foot = skeleton.CreateBone(leg, leg.endPosition, new Vector3(20, 23), true, "RightFoot");
+            leg.bindPoseColor = Color.cyan;
+            leg.iconSize = 27;
+            m_Session.Changed(true);
+            m_Session.SelectBone(leg.guid);
+            Assert.IsTrue(m_Session.CopySelectedBones());
+            Undo.IncrementCurrentGroup();
+            var pasted = m_Session.PasteBones(true);
+            Assert.AreEqual(2, pasted.Length);
+            Assert.AreEqual("Leg_L", pasted[0].name);
+            Assert.AreEqual("LeftFoot", pasted[1].name);
+            Assert.AreSame(parent, pasted[0].parentBone);
+            Assert.AreSame(pasted[0], pasted[1].parentBone);
+            Assert.AreSame(pasted[1], pasted[0].chainedChild);
+            Assert.That(Vector3.Distance(new Vector3(6, 17), pasted[0].position), Is.LessThan(.0001f));
+            Assert.That(Vector3.Distance(new Vector3(3, 22), pasted[0].endPosition), Is.LessThan(.0001f));
+            Assert.That(Vector3.Distance(new Vector3(0, 23), pasted[1].endPosition), Is.LessThan(.0001f));
+            Assert.AreEqual(Color.cyan, pasted[0].bindPoseColor);
+            Assert.AreEqual(27, pasted[0].iconSize);
+            Assert.AreNotEqual(leg.guid, pasted[0].guid);
+            Undo.PerformUndo();
+            m_Session.RestoreAfterUndo();
+            Assert.AreEqual(3, skeleton.boneCount);
+            var ordinary = m_Session.PasteBones(false);
+            Assert.AreEqual("Leg_R_1", ordinary[0].name);
+            Assert.That(Vector3.Distance(leg.position, ordinary[0].position), Is.LessThan(.0001f));
+            m_Session.Save(Source());
+            Assert.AreEqual(5, Source().provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(Source().rect.spriteID).Count());
+        }
+
         void Load()
         {
             m_Session = ScriptableObject.CreateInstance<SceneBoneSession>();

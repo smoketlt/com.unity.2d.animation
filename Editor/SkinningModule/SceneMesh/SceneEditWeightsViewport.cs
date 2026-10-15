@@ -533,7 +533,13 @@ namespace UnityEditor.U2D.Animation
             m_ModePopup?.SetValueWithoutNotify(m_Direct ? "Direct" : m_RemoveMode || evt.alt ? "Remove" : "Add");
             m_Control = GUIUtility.GetControlID("UniskinSceneWeights".GetHashCode(), FocusType.Passive);
             if (evt.type == EventType.Layout) HandleUtility.AddDefaultControl(m_Control);
-            if (m_PreviewPose) { PreviewPoseGUI(scene); return; }
+            if (m_PreviewPose)
+            {
+                if (evt.type == EventType.Repaint && m_Triangles)
+                    DrawMeshEdges(world.Select(HandleUtility.WorldToGUIPoint).ToArray(), false);
+                PreviewPoseGUI(scene);
+                return;
+            }
             var screen = world.Select(HandleUtility.WorldToGUIPoint).ToArray();
             if (evt.type == EventType.Repaint)
             {
@@ -723,7 +729,7 @@ namespace UnityEditor.U2D.Animation
 
         readonly HashSet<int2> m_TriangleEdges = new HashSet<int2>();
 
-        void DrawMeshEdges(Vector2[] positions)
+        void DrawMeshEdges(Vector2[] positions, bool drawAuthoredEdges = true)
         {
             Handles.BeginGUI();
             try
@@ -732,7 +738,7 @@ namespace UnityEditor.U2D.Animation
                 {
                     if (m_Triangles)
                     {
-                        Handles.color = new Color(.65f, .65f, .65f);
+                        Handles.color = MeshEditorSettings.weightTriangleColor;
                         m_TriangleEdges.Clear();
                         var indices = m_Session.mesh.indices;
                         for (var i = 0; i + 2 < indices.Length; i += 3)
@@ -742,9 +748,12 @@ namespace UnityEditor.U2D.Animation
                             DrawTriangleEdge(indices[i + 2], indices[i]);
                         }
                     }
-                    DrawEdges(m_Session.mesh.edges, new Color(1f, .65f, 0f));
-                    // Draw last so boundary edges also present in the authored list remain cyan.
-                    DrawEdges(m_Session.mesh.outlineEdges, Color.cyan);
+                    if (drawAuthoredEdges)
+                    {
+                        DrawEdges(m_Session.mesh.edges, new Color(1f, .65f, 0f));
+                        // Draw last so boundary edges also present in the authored list remain cyan.
+                        DrawEdges(m_Session.mesh.outlineEdges, Color.cyan);
+                    }
                 }
             }
             finally { Handles.EndGUI(); }
@@ -753,7 +762,7 @@ namespace UnityEditor.U2D.Animation
             {
                 if (a < 0 || b < 0 || a >= positions.Length || b >= positions.Length || a == b) return;
                 if (!m_TriangleEdges.Add(new int2(Math.Min(a, b), Math.Max(a, b)))) return;
-                Handles.DrawAAPolyLine(1f, positions[a], positions[b]);
+                Handles.DrawAAPolyLine(2f, positions[a], positions[b]);
             }
 
             void DrawEdges(int2[] edges, Color color)
