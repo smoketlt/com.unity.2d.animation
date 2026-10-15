@@ -24,6 +24,7 @@ namespace UnityEditor.U2D.Animation
             Undo.undoRedoPerformed += RefreshAfterUndo;
             EditorApplication.hierarchyChanged += QueueInstanceRefresh;
             EditorApplication.delayCall += RepairMissingTextureCoordinates;
+            EditorApplication.delayCall += QueueInstanceRefresh;
         }
 
         internal static string SourcePath(Sprite sprite)
@@ -557,7 +558,7 @@ namespace UnityEditor.U2D.Animation
                     if (binding != null && binding.rig != rig)
                         throw new InvalidOperationException("Two PSB rigs share one scene root. Give each character its own root.");
                     if (binding != null && binding.appliedRevision == rig.revision && binding.renderers.SequenceEqual(group) &&
-                        binding.bones.Length == rig.characterBones.Length && binding.bones.All(link => link.transform != null) &&
+                        BoneHierarchyIsCurrent(binding, rig, root) &&
                         group.All(renderer => renderer.sprite == rig.Find(renderer.sprite).sprite)) continue;
                     if (binding == null) binding = Undo.AddComponent<UniskinRigBinding>(root.gameObject);
                     Undo.RecordObject(binding, "Update Rig Bindings");
@@ -609,6 +610,24 @@ namespace UnityEditor.U2D.Animation
             finally { s_Refreshing = false; }
         }
 
+        static bool BoneHierarchyIsCurrent(UniskinRigBinding binding, UniskinRig rig, Transform root)
+        {
+            // Apply/OnEnable also advances appliedRevision in Edit Mode, but only
+            // RefreshInstances synchronizes bone GameObjects there. A matching
+            // Sprite revision therefore does not prove that the hierarchy or its
+            // source-pose baseline has been applied (reload, prefab refresh, Undo).
+            if (binding.bones.Length != rig.characterBones.Length) return false;
+            for (var i = 0; i < binding.bones.Length; ++i)
+            {
+                var link = binding.bones[i];
+                var bone = rig.characterBones[i];
+                if (link == null || link.transform == null || link.guid != bone.guid || !link.sourcePose.Equals(bone)) return false;
+                var parent = bone.parentId < 0 ? root : binding.bones[bone.parentId]?.transform;
+                if (link.transform.parent != parent) return false;
+            }
+            return true;
+        }
+
         static Transform EnsureBone(int index, UniskinRig rig, Transform root,
             Dictionary<string, UniskinRigBinding.BoneBinding> map, Transform[] transforms, HashSet<int> stack,
             Dictionary<string, UnityEngine.Pose> hierarchyPoses)
@@ -640,7 +659,23 @@ namespace UnityEditor.U2D.Animation
             {
                 Undo.RecordObject(transform, "Update Rig Bone");
                 if (created) transform.SetParent(parent, false);
-                else if (transform.parent != parent) Undo.SetTransformParent(transform, parent, "Reparent Rig Bone");
+                else if (parentChanged)
+                {
+                    // Unity does not permit reparenting inherited prefab objects.
+                    // Undo.SetTransformParent can leave the parent unchanged without
+                    // throwing, so a save must not acknowledge that as synchronized.
+                    // Unpack only when an inherited bone actually needs a new parent;
+                    // retain the same objects, scene overrides and animation references.
+                    while (PrefabUtility.IsPartOfPrefabInstance(transform) &&
+                        !PrefabUtility.IsAddedGameObjectOverride(transform.gameObject))
+                    {
+                        var instance = PrefabUtility.GetNearestPrefabInstanceRoot(transform.gameObject);
+                        PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.Completely, InteractionMode.UserAction);
+                    }
+                    Undo.SetTransformParent(transform, parent, "Reparent Rig Bone");
+                    if (transform.parent != parent)
+                        throw new InvalidOperationException("Unity could not change the scene parent of bone '" + bone.name + "'.");
+                }
                 var desired = bone.position / rig.pixelsPerUnit + (bone.parentId < 0 ? (Vector3)rig.rootOffset : Vector3.zero);
                 if (created)
                 {
@@ -696,7 +731,7 @@ namespace UnityEditor.U2D.Animation
             {
                 RefreshSprites(rig, new UniskinRigDataProvider(rig, NativeProvider(AssetDatabase.GUIDToAssetPath(rig.sourceGuid))));
                 UniskinClippingMaskUtility.Synchronize(rig, false);
-                foreach (var binding in Resources.FindObjectsOfTypeAll<UniskinRigBinding>().Where(binding => binding.rig == rig)) binding.Apply();
+                RefreshInstances(rig);
             }
         }
 

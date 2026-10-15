@@ -888,6 +888,18 @@ namespace UnityEditor.U2D.Animation.Tests
         [TestCase(1, true, true)]
         [TestCase(2, false, true)]
         [TestCase(2, true, true)]
+        [TestCase(3, false, false)]
+        [TestCase(3, true, false)]
+        [TestCase(3, false, true)]
+        [TestCase(3, true, true)]
+        [TestCase(4, false, false)]
+        [TestCase(4, true, false)]
+        [TestCase(4, false, true)]
+        [TestCase(4, true, true)]
+        [TestCase(5, false, false)]
+        [TestCase(5, true, false)]
+        [TestCase(5, false, true)]
+        [TestCase(5, true, true)]
         public void ReparentingPosedBonePreservesAuthoredWorldPose(int pathway, bool detach, bool move)
         {
             var provider = (UniskinRigDataProvider)Source().provider;
@@ -900,6 +912,13 @@ namespace UnityEditor.U2D.Animation.Tests
             };
             UpdateCharacterBoneMap(provider);
             provider.Apply();
+            if (pathway == 5)
+            {
+                var prefab = PrefabUtility.SaveAsPrefabAsset(m_Root, m_Folder + "/BeforeReparent.prefab");
+                Object.DestroyImmediate(m_Root);
+                m_Root = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+                m_Renderer = m_Root.GetComponent<SpriteRenderer>();
+            }
             var binding = m_Root.GetComponent<UniskinRigBinding>();
             var oldParent = binding.bones.Single(link => link.guid == "old-parent").transform;
             var newParent = binding.bones.Single(link => link.guid == "new-parent").transform;
@@ -953,8 +972,32 @@ namespace UnityEditor.U2D.Animation.Tests
                 catch { Object.DestroyImmediate(window); throw; }
                 apply = () => Object.DestroyImmediate(window);
             }
+            else if (pathway == 3)
+            {
+                // OnEnable/LateUpdate can acknowledge the Sprite revision before
+                // the Editor has applied the new source hierarchy and pose.
+                m_Rig.characterBones = UniskinRigData.Clone(bones);
+                ++m_Rig.revision;
+                binding.Apply();
+                Assert.AreEqual(m_Rig.revision, binding.appliedRevision);
+                apply = () => UniskinRigUtility.RefreshInstances(m_Rig);
+            }
+            else if (pathway == 4)
+            {
+                provider.Apply();
+                // A prefab/scene hierarchy can become stale even when both the
+                // revision and stored source-pose baseline are already current.
+                ear.SetParent(oldParent, true);
+                binding.Apply();
+                Assert.AreEqual(m_Rig.revision, binding.appliedRevision);
+                apply = () => UniskinRigUtility.RefreshInstances(m_Rig);
+            }
             else apply = () => provider.Apply();
+            Undo.IncrementCurrentGroup();
+            var applyGroup = Undo.GetCurrentGroup();
             apply();
+            Undo.FlushUndoRecordObjects();
+            Undo.CollapseUndoOperations(applyGroup);
             Assert.AreSame(detach ? m_Root.transform : newParent, ear.parent);
             Assert.That(Vector3.Distance(position, ear.position), Is.LessThan(.00001f));
             Assert.That(Quaternion.Angle(rotation, ear.rotation), Is.LessThan(.001f));
@@ -963,6 +1006,18 @@ namespace UnityEditor.U2D.Animation.Tests
             else UniskinRigUtility.RefreshInstances(m_Rig);
             Assert.That(Vector3.Distance(position, ear.position), Is.LessThan(.00001f), "Repeated synchronization must not apply another pose delta.");
             Assert.That(Quaternion.Angle(rotation, ear.rotation), Is.LessThan(.001f));
+            if (pathway == 5)
+            {
+                Assert.IsFalse(PrefabUtility.IsPartOfPrefabInstance(ear));
+                Undo.PerformUndo();
+                Assert.AreSame(oldParent, ear.parent, "Undo must restore the actual bone parent.");
+                Assert.IsTrue(PrefabUtility.IsPartOfPrefabInstance(ear), "Undo must restore the prefab connection.");
+                Undo.PerformRedo();
+                Assert.AreSame(detach ? m_Root.transform : newParent, ear.parent);
+                Assert.IsFalse(PrefabUtility.IsPartOfPrefabInstance(ear));
+                Assert.That(Vector3.Distance(position, ear.position), Is.LessThan(.00001f));
+                Assert.That(Vector3.Distance(tipPosition, tip.position), Is.LessThan(.00001f));
+            }
         }
 
         static void UpdateCharacterBoneMap(UniskinRigDataProvider provider)
