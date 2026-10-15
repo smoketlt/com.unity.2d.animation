@@ -86,6 +86,9 @@ namespace UnityEditor.U2D.Animation
         internal static bool IsEditingRenderer(SpriteRenderer renderer) => renderer != null &&
             Resources.FindObjectsOfTypeAll<SceneEditMeshWindow>().Any(window => window.m_Renderer == renderer);
 
+        internal static bool HasActiveSceneHost => Resources.FindObjectsOfTypeAll<SceneEditMeshWindow>()
+            .Any(window => window.m_Renderer != null && window.m_Session != null);
+
         internal static bool IsEditingAsset(string path) => Resources.FindObjectsOfTypeAll<SceneEditMeshWindow>()
             .Any(window => window.m_Session != null && window.m_Session.assetPath == path);
         internal string editingAssetPath => m_Session != null ? m_Session.assetPath : null;

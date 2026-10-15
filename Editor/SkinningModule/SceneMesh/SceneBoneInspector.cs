@@ -20,16 +20,45 @@ namespace UnityEditor.U2D.Animation
 
         static void DrawHeader(Editor editor)
         {
-            if (editor.targets.Length != 1 || !(editor.target is GameObject gameObject) ||
+            if (!(editor.target is GameObject gameObject) ||
                 gameObject.GetComponent<SpriteRenderer>() != null) return;
 
-            var hasBoneSource = TryGetSource(gameObject.transform, out var renderer, out var boneGuid);
-            if (hasBoneSource) DrawBoneButton(gameObject);
+            var objects = editor.targets.OfType<GameObject>().ToArray();
+            if (objects.Length != editor.targets.Length) return;
+            if (TryGetSources(objects, out _, out _)) DrawBoneButton(objects);
+            if (objects.Length != 1) return;
             if (UniskinRigInspectorControls.TryGetRootSource(gameObject, out var rigRenderer))
                 UniskinRigInspectorControls.DrawRoot(gameObject, rigRenderer.sprite);
         }
 
-        static void DrawBoneButton(GameObject gameObject)
+        internal static bool TryGetSources(GameObject[] objects, out SpriteRenderer renderer, out string[] boneGuids)
+        {
+            renderer = null;
+            boneGuids = Array.Empty<string>();
+            if (objects == null || objects.Length == 0) return false;
+            var guids = new System.Collections.Generic.List<string>();
+            Transform host = null;
+            foreach (var item in objects)
+            {
+                if (item == null || item.GetComponent<SpriteRenderer>() != null ||
+                    !TryGetSource(item.transform, out var candidate, out var guid)) return false;
+                var root = PrefabUtility.GetNearestPrefabInstanceRoot(candidate.gameObject);
+                var binding = candidate.GetComponentInParent<UniskinRigBinding>();
+                var candidateHost = binding != null ? binding.transform : root != null ? root.transform : candidate.transform.root;
+                if (renderer != null && (host != candidateHost ||
+                    UniskinRigUtility.SourcePath(renderer.sprite) != UniskinRigUtility.SourcePath(candidate.sprite))) return false;
+                // Ordinary sprites have independent skeletons even in the same image.
+                if (renderer != null && renderer.sprite != candidate.sprite &&
+                    new SceneMeshSource(candidate.sprite).provider.GetDataProvider<ICharacterDataProvider>() == null) return false;
+                renderer = renderer != null ? renderer : candidate;
+                host = candidateHost;
+                if (!string.IsNullOrEmpty(guid)) guids.Add(guid);
+            }
+            boneGuids = guids.Distinct().ToArray();
+            return true;
+        }
+
+        static void DrawBoneButton(GameObject[] objects)
         {
 
             if (s_EditBone == null)
@@ -42,8 +71,8 @@ namespace UnityEditor.U2D.Animation
                 EditorApplication.delayCall += () =>
                 {
                     // Re-resolve after the GUI event in case bindings or selection changed.
-                    if (gameObject != null && TryGetSource(gameObject.transform, out var renderer, out var boneGuid))
-                        SceneEditBoneWindow.OpenForBone(renderer, boneGuid);
+                    if (TryGetSources(objects, out var renderer, out var boneGuids))
+                        SceneEditBoneWindow.OpenForBones(renderer, boneGuids);
                 };
             }
         }

@@ -57,18 +57,23 @@ namespace UnityEditor.U2D.Animation
 
         internal static void OpenForBone(SpriteRenderer renderer, string boneGuid)
         {
+            OpenForBones(renderer, new[] { boneGuid });
+        }
+
+        internal static void OpenForBones(SpriteRenderer renderer, string[] boneGuids)
+        {
             try
             {
                 var source = new SceneMeshSource(renderer.sprite);
                 // Ordinary Sprites retain their existing per-sprite skeleton entry.
                 var characterProvider = source.provider.GetDataProvider<ICharacterDataProvider>();
                 var character = characterProvider != null && characterProvider.GetCharacterData().bones != null;
-                OpenForRenderer(renderer, boneGuid, skeletonOnly: character);
+                OpenForRenderer(renderer, skeletonOnly: character, boneGuids: boneGuids);
             }
             catch (Exception ex) { EditorUtility.DisplayDialog("Edit Bones", ex.Message, "OK"); }
         }
 
-        internal static void OpenForRenderer(SpriteRenderer renderer, string boneGuid = null, bool skeletonOnly = false)
+        internal static void OpenForRenderer(SpriteRenderer renderer, string boneGuid = null, bool skeletonOnly = false, string[] boneGuids = null)
         {
             SceneEditBoneWindow opening = null;
             try
@@ -95,7 +100,8 @@ namespace UnityEditor.U2D.Animation
                 {
                     if (existing.m_Renderer == renderer && existing.m_Session.skeletonOnly == skeletonOnly)
                     {
-                        if (boneGuid != null)
+                        if (boneGuids != null) existing.SelectBones(boneGuids);
+                        else if (boneGuid != null)
                         {
                             existing.SelectBone(boneGuid);
                         }
@@ -113,7 +119,8 @@ namespace UnityEditor.U2D.Animation
                 window.m_Session.Load(renderer.sprite, source, skeletonOnly);
                 window.m_Session.CaptureScenePose(renderer, source.rect.rect);
                 window.SetupController();
-                if (boneGuid != null) window.SelectBone(boneGuid);
+                if (boneGuids != null) window.SelectBones(boneGuids);
+                else if (boneGuid != null) window.SelectBone(boneGuid);
                 var blocked = window.BlockReason();
                 if (blocked != null) throw new InvalidOperationException(blocked);
                 var origin = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.position.position + new Vector2(35, 55) : new Vector2(100, 100);
@@ -132,6 +139,16 @@ namespace UnityEditor.U2D.Animation
         void SelectBone(string boneGuid)
         {
             if (!m_Session.SelectBone(boneGuid)) return;
+            m_Controller?.Reset();
+            m_Mode = 0;
+            UpdateUI();
+            SceneView.RepaintAll();
+        }
+
+        void SelectBones(string[] boneGuids)
+        {
+            m_Session.cache.skeletonSelection.elements = m_Session.skeleton.bones
+                .Where(bone => boneGuids.Contains(bone.guid) && !bone.IsConstraintParent()).ToArray();
             m_Controller?.Reset();
             m_Mode = 0;
             UpdateUI();

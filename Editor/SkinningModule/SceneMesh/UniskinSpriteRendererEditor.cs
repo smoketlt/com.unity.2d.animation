@@ -137,9 +137,12 @@ namespace Fedorov.Uniskin
         void OnSceneGUI()
         {
             var renderer = target as SpriteRenderer;
-            if (SceneEditMeshWindow.IsEditingRenderer(renderer) || SceneEditBoneWindow.IsEditingRenderer(renderer) ||
+            if (SceneEditMeshWindow.IsEditingRenderer(renderer) ||
                 SceneEditWeightsWindow.IsEditingRenderer(renderer)) return;
-            if (m_NativeEditor != null) m_NativeSceneGUI?.Invoke(m_NativeEditor, null);
+            // Bone editing keeps the live renderer and its selected-mesh wireframe.
+            // Only native sprite handles compete with the popup's bone controls.
+            if (!SceneEditBoneWindow.IsEditingRenderer(renderer) && m_NativeEditor != null)
+                m_NativeSceneGUI?.Invoke(m_NativeEditor, null);
             if (Event.current.type == EventType.Repaint && renderer != null)
             {
                 RefreshMeshCache(renderer.sprite);

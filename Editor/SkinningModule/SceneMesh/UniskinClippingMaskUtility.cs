@@ -111,7 +111,9 @@ namespace UnityEditor.U2D.Animation
             Undo.IncrementCurrentGroup(); var group = Undo.GetCurrentGroup();
             try
             {
-                Undo.RegisterCompleteObjectUndo(asset, "Save Clipping Contour"); Undo.RegisterCompleteObjectUndo(asset.sprite, "Save Clipping Contour");
+                // The Sprite is derived native data. Restore it from authoringData,
+                // rather than asking native Undo to restore its persistent structure.
+                Undo.RegisterCompleteObjectUndo(asset, "Save Clipping Contour");
                 asset.authoringData = provider.data.Serialize(); Rebuild(asset, provider); RefreshInstances(asset, true);
                 AssetDatabase.SaveAssetIfDirty(asset); Undo.CollapseUndoOperations(group);
             }
@@ -166,7 +168,7 @@ namespace UnityEditor.U2D.Animation
                 var provider = new UniskinRigDataProvider(asset, UniskinRigUtility.NativeProvider(AssetDatabase.GetAssetPath(asset.source)));
                 var data = provider.data; var item = data.sprites[0]; var bones = BorrowedBones(asset, data.pixelsPerUnit, item.rect);
                 if (SameBones(bones, JsonUtility.FromJson<UniskinRigData>(asset.authoringData).character.bones)) continue;
-                if (undo) { Undo.RegisterCompleteObjectUndo(asset, "Update Clipping Skeleton"); Undo.RegisterCompleteObjectUndo(asset.sprite, "Update Clipping Skeleton"); }
+                if (undo) Undo.RegisterCompleteObjectUndo(asset, "Update Clipping Skeleton");
                 var retained = item.bones.Where(bone => bones.Any(candidate => candidate.guid == bone.guid)).ToArray();
                 for (var vertex = 0; vertex < item.vertices.Length; ++vertex)
                 {

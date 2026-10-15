@@ -80,7 +80,14 @@ namespace UnityEditor.U2D.Animation
             SpriteRenderer best = null;
             for (var i = 0; i + 2 < indices.Length; i += 3)
                 if (SceneSpriteDeformedMesh.Intersect(ray, vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]], out _))
-                { best = current; break; }
+                {
+                    // Edit Mesh owns its entire displayed surface, even when a
+                    // sibling sprite sorts above it. Otherwise switching consumes
+                    // Create clicks before the geometry controller receives them.
+                    if (edgePadding > 0f) return null;
+                    best = current;
+                    break;
+                }
             var mesh = new SceneSpriteDeformedMesh();
             foreach (var renderer in root.GetComponentsInChildren<SpriteRenderer>())
             {

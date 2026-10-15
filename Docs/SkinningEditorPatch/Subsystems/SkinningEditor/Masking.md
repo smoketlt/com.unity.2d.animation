@@ -87,6 +87,26 @@ Geometry/weights are shared by users of the same contour asset; Transform refere
 
 ## Persistence and source boundaries
 
+Contour Undo records the authoring document, while the generated Sprite is
+rebuilt by the existing Undo restoration callback. It no longer records the
+derived native Sprite itself during contour saves or skeleton synchronization.
+Mesh and weight sessions clear their own temporary Undo records when destroyed;
+saved asset Undo remains available after switching popups. This addresses two
+unsafe restoration paths found while investigating the Unity 6000.6 native
+`StructureUndoBase::ApplyInternal` / `EnsurePersistence` crash reported after
+inserting a contour vertex, opening Edit Weights and repeatedly pressing Undo.
+The crash stack identifies native persistence restoration, but does not identify
+which recorded object triggered it; resolution still requires an Editor rerun.
+
+Regression coverage includes a saved inserted vertex, mesh-session destruction,
+weight-session entry and document/Sprite Undo/Redo, plus unchanged body data.
+On 2026-10-16, the complete editor assembly and focused authoring fixture compiled
+against the consuming project's Unity 6000.6.0f1 references. These were standalone
+compiler checks, not an Editor import or test execution. The Editor was closed
+during this task, so execution of these regression tests
+and the exact keyboard sequence remains unverified. No version-sensitive API
+was introduced. A local file dependency recompiles directly from this checkout.
+
 Undo-derived skeleton synchronization preserves intentionally empty contour vertex streams. The general SkinningCache image-outline fallback is cleared before saving synchronized influences, so Undo to an empty contour does not generate image geometry or throw `Sprite geometry changed. Reopen Edit Weights.` Body geometry and weights remain unchanged.
 
 When a GameObject is deactivated (including by Undo), clipping restores the body material and disables its rendering helpers immediately. In Edit Mode, helper destruction waits until the next Editor delay callback because Unity forbids destroying components during GameObject activation/deactivation. Immediate reactivation reuses the disabled SortingGroup and clear renderer; queued cleanup leaves reclaimed helpers intact. Ordinary component disabling and authoring preview cleanup still remove helpers immediately.

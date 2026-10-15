@@ -595,6 +595,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnDestroy()
         {
+            Undo.ClearUndo(this);
             if (m_WeldContext != null) DestroyImmediate(m_WeldContext);
             if (m_Context != null) DestroyImmediate(m_Context);
         }

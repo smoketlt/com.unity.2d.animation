@@ -10,7 +10,7 @@ The popup title and Inspector entries read **Edit Bones** (or **Edit Bones — S
 
 The Inspector entry uses separate Image and Label children in a centered horizontal row, matching Edit Mesh. Button.text remains empty so the button's own text does not overlap the icon.
 
-A single scene bone bound through `SpriteSkin.boneTransforms` also has an **Edit Bones** button in the GameObject Inspector header, above Transform. It uses Unity's `Editor.finishedDefaultHeaderGUI` extension so the native GameObject and Transform inspectors remain intact. The button resolves the bound SpriteRenderer in the same prefab instance/hierarchy and maps bound bone indices to imported GUIDs; unbound character bones use the unique hierarchy fallback described below. It opens the existing popup with that source bone selected and its Color and Length ready to edit. Selecting the bone alone does not dirty the session or reimport the source. The header entry is also available for a character container/root and uniquely identifiable unbound character bones. It remains hidden for unrelated objects, SpriteRenderer objects (which have their own entry), persistent prefab assets and multi-object inspection, and disabled during Play Mode. Both the bone header and SpriteRenderer Inspector use `SceneMeshIcons/EditBone.png`.
+A single scene bone bound through `SpriteSkin.boneTransforms` also has an **Edit Bones** button in the GameObject Inspector header, above Transform. It uses Unity's `Editor.finishedDefaultHeaderGUI` extension so the native GameObject and Transform inspectors remain intact. The button resolves the bound SpriteRenderer in the same prefab instance/hierarchy and maps bound bone indices to imported GUIDs; unbound character bones use the unique hierarchy fallback described below. It opens the existing popup with that source bone selected and its Color and Length ready to edit. Selecting the bone alone does not dirty the session or reimport the source. The header entry is also available for a character container/root and uniquely identifiable unbound character bones. It remains hidden for unrelated objects, SpriteRenderer objects (which have their own entry), persistent prefab assets and incompatible mixed selections, and disabled during Play Mode. Both the bone header and SpriteRenderer Inspector use `SceneMeshIcons/EditBone.png`.
 
 For PSB prefab instances, Scene bone coordinates use the instance root and the imported layer placement rather than the layer's scene Transform override. Moving one SpriteRenderer layer must not translate or rotate the shared character skeleton. Ordinary sprites and character renderers outside their source prefab retain the renderer-based mapping.
 
@@ -21,6 +21,23 @@ On entry, the session matches source bone GUIDs to SpriteSkin bindings in this c
 This host edits the **source Sprite/PSB skeleton**, not scene Transform objects. Ordinary Sprites use their own sprite skeleton. PSB character assets use their complete shared character skeleton, with matching per-layer skeletons and influence mappings. A shared external skeleton provider is read-only and must be edited at its source. Package identity and runtime component types remain unchanged.
 
 ## Controls and gestures
+
+The GameObject header also offers Edit Bones for multiple bones from the same
+character instance and source skeleton. Opening selects every resolved bone in
+the popup without creating an edit or an Undo record. Mixed unrelated objects,
+different character instances and independent Sprite skeletons are rejected.
+Root rig controls remain single-object only.
+
+On 2026-10-16, the multi-selection change and its focused authoring regression
+fixture compiled against Unity 6000.6.0f1 project references. Editor execution,
+popup selection/layout and Unity 6000.0/6000.5 execution remain unverified because
+no Editor was running. No version-sensitive API was added.
+
+Opening Edit Bones from a selected SpriteRenderer retains its live triangle wireframe,
+including the current deformed pose and renderer flips. The Inspector suppresses only
+native sprite handles during bone editing. Edit Mesh and Edit Weights continue to own
+their staged mesh overlays. Verify triangle visibility before opening, while editing
+bones and after closing the popup; animation should keep the wireframe on the mesh.
 
 ### Bone chain clipboard
 

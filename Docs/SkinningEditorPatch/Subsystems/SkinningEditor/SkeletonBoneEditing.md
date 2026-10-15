@@ -53,6 +53,8 @@ Multi-bone rename order follows the selected bones' order in the active skeleton
 
 ## Cursor Feedback
 
+During Scene Edit Mesh, native bone gizmos render without their interactive layout and input pass. Bone handles therefore cannot claim mesh clicks or replace the Create/Modify cursor. Normal bone interaction resumes when the mesh popup closes.
+
 Default bone bodies expose a screen-space selection strip along the bone segment, with a generous 13-point half-width multiplied by the Bone Size preference. Hits inside this strip register zero distance, allowing hover and selection over a SpriteRenderer's native picking area. Endpoint clamping is retained; joint/tail controls keep priority on equal distances. Custom icon bones still omit the invisible body and tail targets.
 
 Bone body dragging uses `MouseCursor.MoveArrow`. Bone ring and tail/end-position handles use `MouseCursor.ScaleArrow`. Hovering any bone part recolors the whole bone fill to amber `#FFB900`, preserving its opacity and dark contour, instead of tinting only the joint/end cap. `BoneDrawingUtility.GetHoveredColor` supplies the shared color for Skinning Editor and native Scene gizmos. The tail hit area is larger than the visual end cap so it is easier to hover and drag.

@@ -136,6 +136,54 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void BoneInspectorAcceptsMultipleBonesFromOneCharacterAndRejectsMixedObjects()
+        {
+            var bones = m_Mask.character.bones.Where(link => link.transform != null).Take(2).ToArray();
+            Assert.AreEqual(2, bones.Length);
+            var method = Type("SceneBoneInspector").GetMethod("TryGetSources", Flags);
+            var args = new object[] { bones.Select(link => link.transform.gameObject).ToArray(), null, null };
+            Assert.IsTrue((bool)method.Invoke(null, args));
+            CollectionAssert.AreEquivalent(bones.Select(link => link.guid), (string[])args[2]);
+            var unrelated = new GameObject("Unrelated"); m_Transient.Add(unrelated);
+            SceneManager.MoveGameObjectToScene(unrelated, m_Scene);
+            args[0] = new[] { bones[0].transform.gameObject, unrelated };
+            Assert.IsFalse((bool)method.Invoke(null, args));
+            args[0] = new[] { bones[0].transform.gameObject, m_Mask.gameObject };
+            Assert.IsFalse((bool)method.Invoke(null, args));
+        }
+
+        [Test]
+        public void SavedContourVertexUndoSurvivesMeshSessionDestructionAndWeightEntry()
+        {
+            DrawContour();
+            var before = m_Mask.contour.authoringData;
+            var body = m_Rig.authoringData;
+            Undo.IncrementCurrentGroup();
+            var session = ScriptableObject.CreateInstance(Type("SceneMeshSession"));
+            m_Transient.Add(session);
+            Call(session, "Load", m_Mask.contour.sprite, Source());
+            Call(session, "CreateClippingContourVertex", new Vector2(16, 3));
+            Call(session, "EndUndoOperation");
+            Undo.IncrementCurrentGroup();
+            Call(Source(), "WriteMesh", Get(session, "mesh"));
+            var after = m_Mask.contour.authoringData;
+            Assert.AreNotEqual(before, after);
+            Object.DestroyImmediate(session);
+            var weights = Weights(Source());
+            Undo.IncrementCurrentGroup();
+            Undo.PerformUndo();
+            Assert.AreEqual(before, m_Mask.contour.authoringData);
+            Assert.AreEqual(3, m_Mask.contour.sprite.vertices.Length);
+            Undo.PerformRedo();
+            Assert.AreEqual(after, m_Mask.contour.authoringData);
+            Assert.AreEqual(4, m_Mask.contour.sprite.vertices.Length);
+            Object.DestroyImmediate((Object)weights);
+            Undo.PerformUndo();
+            Assert.AreEqual(before, m_Mask.contour.authoringData);
+            Assert.AreEqual(body, m_Rig.authoringData);
+        }
+
+        [Test]
         public void NewContourIsEmptyAndLeavesBodyRenderingUntouched()
         {
             var source = Source(); var provider = (ISpriteEditorDataProvider)Get(source, "provider");

@@ -164,6 +164,13 @@ namespace UnityEditor.U2D.Animation
                 return;
 
             PrepareBones();
+            if (SceneEditMeshWindow.HasActiveSceneHost)
+            {
+                // Keep the skeleton visible without registering competing handles
+                // or bone cursors while the mesh popup owns Scene input.
+                DrawBoneAndOutlines();
+                return;
+            }
             DoBoneGUI();
         }
 

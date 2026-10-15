@@ -629,6 +629,12 @@ namespace UnityEditor.U2D.Animation
         public void EndUndoOperation() => isUndoOperationSet = false;
         public void IncrementCurrentGroup() => EndUndoOperation();
 
+        void OnDestroy()
+        {
+            // Staged edits belong to this popup. Saved document Undo remains alive.
+            Undo.ClearUndo(this);
+        }
+
         public void Load(Sprite sprite, SceneMeshSource source)
         {
             assetPath = source.assetPath;
