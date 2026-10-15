@@ -494,6 +494,7 @@ namespace UnityEditor.U2D.Animation
                 else toolScope.Hide();
             }
             var evt = Event.current;
+            if (!m_Saving && BlockReason() == null && PickWeightTarget(scene)) return;
             if (m_Weld && !m_Saving && BlockReason() == null && evt.type == EventType.MouseDown && evt.button == 0 && !evt.alt)
             {
                 PickWeldSource(evt.mousePosition);

@@ -67,7 +67,7 @@ Skinning Editor and native Scene gizmos draw each bone's outline and fill consec
 
 `BoneDrawingUtility` draws the body as one solid geometric diamond, from the outer edge of the start joint ring to the exact bone endpoint. The visible ring radius is 9 GUI points times Bone Size (inside the padded 24-point bitmap); both body fill and contour start there, leaving the transparent joint center clear. Bones shorter than this radius show only the joint. This inset changes drawing only, not the bone transform or picking. The shoulder is `visibleBodyLength * 0.1` GUI points from the joint rim; half-width is `min(projectedLength * 0.08, clamp(projectedLength * 0.025, 6 * scale, 10 * scale))` GUI points. Short bones shrink continuously rather than disappearing at a fixed slice-length threshold. The shoulder stays at 10% of the bone length without an early screen-space cap. Width retains its previous appearance at ordinary zoom, then grows gradually from a 6-point to a 10-point half-width (times Bone Size) at high zoom, following the supplied Spine comparisons.
 
-The fill uses a four-vertex world-space mesh and `Hidden/SkinningModule-BoneTexture` with a white texture. Lateral offsets use the projected perpendicular's size, keeping width independent of zoom and Handles transforms. The body tip is the exact bone endpoint and the visible root meets the joint rim, with no transparent bitmap padding or independent end cap to drift from the endpoint. A black antialiased closed line outlines the body; the selection pass draws a wider colored contour. Hover keeps the shared `#FFB900` fill. Joint circles retain `B_Circle` / `B_Circle_Selected`; custom bone icons are unchanged. Legacy embedded body slice textures remain available but are no longer used to render bodies.
+The fill uses a four-vertex world-space mesh and `Hidden/SkinningModule-BoneTexture` with a white texture. Lateral offsets use the projected perpendicular's size, keeping width independent of zoom and Handles transforms. The body tip is the exact bone endpoint and the visible root meets the joint rim, with no transparent bitmap padding or independent end cap to drift from the endpoint. A black antialiased closed line outlines the body; the selection pass draws a wider colored contour. Hover keeps the shared `#FFB900` fill. Joint circles use a projected geometric ring with the same antialiased contour layering as the body: a black 2-point contour and an outer 1-point selection accent. The ring fill is 3 points wide, with a 6.5-point centerline radius multiplied by Bone Size; its normal outer radius remains 9 points. Both Edit Bones and native Scene gizmos use `SelectionOutlineSettings.outlineColor` for selection. Custom bone icons are unchanged. Legacy embedded body slice textures remain available but are no longer used to render bodies.
 
 The toolbar icon is a separate UI resource:
 
@@ -87,7 +87,7 @@ On 2026-10-15, the connected Unity 6000.6.0f1 Editor recompiled the component op
 
 The scale applies immediately to joint circles, capped body width, and the body picking strip. It does not modify skeleton geometry, serialized bone data, or joint/tail picking areas.
 
-Selected bones use a wider geometric body contour and the selected joint bitmap in the outline pass so selection remains readable against bone colors and mesh overlays.
+Selected bones use the same wider geometric contour for the body and joint ring in the outline pass so selection remains readable against bone colors and mesh overlays. Edit Bones shares the native Scene selection outline color instead of hardcoding white.
 
 Unchained parent links are not drawn as ghost bones. `SkeletonController` draws them from the child joint to the parent bone's visual tail marker, and `BoneDrawingUtility.DrawBoneParentLink(...)` renders a colored thick dotted line with a filled triangle arrowhead at the parent tail marker. Links are semi-transparent by default and become fully opaque when their child bone is selected. Create Bone root-parent preview uses the same dotted arrow styling.
 
@@ -100,7 +100,7 @@ Scene bone gizmos additionally collect uniquely resolved unbound bones from the 
 `Preferences > Uniskin` exposes two user-specific color preferences stored in `EditorPrefs`:
 
 - `Default Bone Color` controls the color assigned to newly created bones and defaults to `#5B729A`. Changing it does not recolor existing bones.
-- `Selected Bone Color` controls the fill color of selected Sprite Skin bones in the Scene view and defaults to white.
+- `Selected Bone Color` controls the fill color of selected bones in Edit Bones, Skinning Editor and Sprite Skin Scene gizmos, and defaults to white. The shared `SkeletonView.DrawBone` applies it to the body, joint and custom icon while retaining the incoming opacity. Hover takes precedence and remains amber.
 
 ## Change Risks
 

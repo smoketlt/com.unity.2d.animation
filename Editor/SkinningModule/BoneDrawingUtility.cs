@@ -43,12 +43,35 @@ namespace UnityEditor.U2D.Animation
 
         public static void DrawBoneNode(Vector3 position, Vector3 forward, Color color, float scale = 1.0f)
         {
-            float displayScale = scale * SkinningModuleSettings.boneDisplayScale;
+            DrawJointRing(position, forward, new Color(0f, 0f, 0f, color.a), 5f, scale);
+            DrawJointRing(position, forward, color, 3f, scale);
+        }
 
-            if (scale <= 1f)
-                DrawTextureAt(position, B_Circle, color, kCircleSize * displayScale, kCircleSize * displayScale);
-            else
-                DrawTextureAt(position, B_Circle_Selected, color, kCircleSize * displayScale, kCircleSize * displayScale);
+        static void DrawJointRing(Vector3 position, Vector3 forward, Color color, float width, float scale)
+        {
+            if (Event.current.type != EventType.Repaint || color.a <= 0f)
+                return;
+
+            // Use GUI-space points projected onto the bone plane so the joint and
+            // body share the same antialiased contour at every zoom and DPI.
+            var center = HandleUtility.WorldToGUIPoint(position);
+            var matrix = Handles.matrix;
+            var plane = new Plane(matrix.MultiplyVector(forward).normalized, matrix.MultiplyPoint(position));
+            var points = new Vector3[49];
+            float radius = 6.5f * scale * SkinningModuleSettings.boneDisplayScale;
+            for (int i = 0; i < points.Length; ++i)
+            {
+                float angle = i * Mathf.PI * 2f / (points.Length - 1);
+                var gui = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+                var ray = HandleUtility.GUIPointToWorldRay(gui);
+                if (!plane.Raycast(ray, out float distance))
+                    return;
+                points[i] = matrix.inverse.MultiplyPoint(ray.GetPoint(distance));
+            }
+            var previousColor = Handles.color;
+            Handles.color = color;
+            Handles.DrawAAPolyLine(width, points);
+            Handles.color = previousColor;
         }
 
         public static void DrawBone(Vector3 position, Vector3 endPosition, Vector3 forward, Color color, float scale = 1.0f)
@@ -84,7 +107,7 @@ namespace UnityEditor.U2D.Animation
             float displayScale = scale * SkinningModuleSettings.boneDisplayScale;
             if (BoneIconUtility.Normalize(iconId) == BoneIconUtility.Default)
             {
-                DrawTextureAt(position, B_Circle_Selected, color, kCircleSize * displayScale, kCircleSize * displayScale);
+                DrawJointRing(position, forward, color, 7f, scale);
                 DrawBoneBody(position, endPosition, forward, color, color, true, scale);
             }
             else BoneIconUtility.Draw(position, iconId, color, true, iconSize);

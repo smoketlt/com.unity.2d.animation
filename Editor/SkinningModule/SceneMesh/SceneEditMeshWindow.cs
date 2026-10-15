@@ -573,8 +573,8 @@ namespace UnityEditor.U2D.Animation
             if (m_SaveInProgress) return;
             if (m_Renderer == null || m_SelectionRestoreQueued || m_SelectionObjects == null ||
                 Selection.objects.SequenceEqual(m_SelectionObjects)) return;
-            // Scene picking (including other Scene GUI handlers) must not turn a mesh
-            // authoring click into an exit request. Keep the entry renderer selected.
+            // Resolve an explicit same-rig target after GUI dispatch; otherwise keep
+            // the current renderer selected without closing the authoring window.
             m_SelectionRestoreQueued = true;
             EditorApplication.delayCall += () =>
             {
@@ -582,6 +582,7 @@ namespace UnityEditor.U2D.Animation
                 try
                 {
                     if (m_SaveInProgress || m_Renderer == null) return;
+                    SwitchHierarchyMeshTarget();
                     var pinned = m_SelectionObjects.Where(item => item != null).ToArray();
                     if (pinned.Length == 0) pinned = new UnityEngine.Object[] { m_Renderer.gameObject };
                     if (!Selection.objects.SequenceEqual(pinned)) Selection.objects = pinned;
@@ -915,6 +916,7 @@ namespace UnityEditor.U2D.Animation
                 // Consume Escape before SceneView's native object deselection.
                 // duringSceneGui runs too late to receive the original key event.
                 if (HandleSceneEscape(evt)) return;
+                if (PickMeshTarget(scene)) return;
                 // Native inspector handles run before duringSceneGui. Reserve the
                 // press now, then release it to our mesh handles in OnSceneGUI.
                 int control = GUIUtility.GetControlID("UniskinSceneMeshInput".GetHashCode(), FocusType.Passive);
@@ -1073,7 +1075,7 @@ namespace UnityEditor.U2D.Animation
             if (evt.type == EventType.Repaint)
             {
                 DrawImage(matrix, deformation?.mesh);
-                DrawImageBounds(matrix, scene);
+                DrawImageBounds(matrix, scene, deformation?.mesh);
             }
             if (HandleSymmetryAxis(matrix, scene)) return;
             if (evt.button == 1 || evt.button == 2) return;
@@ -1510,14 +1512,27 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        void DrawImageBounds(Matrix4x4 matrix, SceneView scene)
+        internal static Rect ImageBounds(SpriteMeshData source, SpriteMeshData deformed)
+        {
+            if (deformed == null || deformed.vertexCount == 0) return new Rect(Vector2.zero, source.frame.size);
+            var min = deformed.vertices[0];
+            var max = min;
+            foreach (var vertex in deformed.vertices)
+            {
+                min = Vector2.Min(min, vertex);
+                max = Vector2.Max(max, vertex);
+            }
+            return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+        }
+
+        void DrawImageBounds(Matrix4x4 matrix, SceneView scene, SpriteMeshData deformed = null)
         {
             if (m_Source?.clipping != null) return;
-            var size = m_Session.mesh.frame.size;
-            m_ImageBoundsPoints[0] = Vector3.zero;
-            m_ImageBoundsPoints[1] = new Vector3(size.x, 0f);
-            m_ImageBoundsPoints[2] = new Vector3(size.x, size.y);
-            m_ImageBoundsPoints[3] = new Vector3(0f, size.y);
+            var bounds = ImageBounds(m_Session.mesh, deformed);
+            m_ImageBoundsPoints[0] = new Vector3(bounds.xMin, bounds.yMin, 0f);
+            m_ImageBoundsPoints[1] = new Vector3(bounds.xMax, bounds.yMin, 0f);
+            m_ImageBoundsPoints[2] = new Vector3(bounds.xMax, bounds.yMax, 0f);
+            m_ImageBoundsPoints[3] = new Vector3(bounds.xMin, bounds.yMax, 0f);
             using (new Handles.DrawingScope(Color.white, Matrix4x4.identity))
             {
                 for (var i = 0; i < m_ImageBoundsPoints.Length; ++i)

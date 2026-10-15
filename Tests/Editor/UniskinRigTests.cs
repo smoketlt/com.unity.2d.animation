@@ -60,6 +60,110 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         Sprite SourceSprite() => AssetDatabase.LoadAllAssetsAtPath(m_Path).OfType<Sprite>().First();
+
+        [TestCase(false, false)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(true, true)]
+        public void SceneTargetSwitchSavesPreviousSessionAndFirstClickOnlyClearsVertices(bool weights, bool hierarchy)
+        {
+            AddBones();
+            var binding = m_Root.GetComponent<UniskinRigBinding>() ?? m_Root.AddComponent<UniskinRigBinding>();
+            binding.rig = m_Rig;
+            var target = new GameObject("Second Mesh").AddComponent<SpriteRenderer>();
+            target.transform.SetParent(m_Root.transform);
+            target.sprite = m_Renderer.sprite;
+            var previousSelection = Selection.objects;
+            var metadata = File.ReadAllBytes(m_Path + ".meta");
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            SceneEditWindow window = null;
+            try
+            {
+                if (weights)
+                {
+                    var session = Session<SceneWeightSession>();
+                    session.Load(m_Renderer.sprite, Source());
+                    session.context.CaptureScenePose(m_Renderer, Source().rect.rect);
+                    var popup = BindingWindow(session); window = popup;
+                    var boneIndex = Array.FindIndex(session.mesh.bones, bone => bone.name == "Child");
+                    session.SetRow(boneIndex, .75f);
+                    session.SelectVertices(new[] { 0 });
+                    if (hierarchy)
+                    {
+                        Selection.activeGameObject = target.gameObject;
+                        popup.SwitchHierarchyWeightTarget();
+                    }
+                    else popup.QueueWeightTarget(target);
+                    Assert.Zero(session.vertices.Count);
+                    Assert.AreSame(m_Renderer, typeof(SceneEditWeightsWindow).GetField("m_Renderer", flags).GetValue(popup));
+                    Assert.IsTrue(session.dirty, "First click must not save or switch.");
+                    var transforms = m_Renderer.GetComponent<SpriteSkin>().boneTransforms;
+                    var baseline = transforms.Select(bone => bone.localPosition).ToArray();
+                    session.SelectBone(session.context.skeleton.bones.First(), false);
+                    typeof(SceneEditWeightsWindow).GetMethod("SetPreviewPose", flags).Invoke(popup, new object[] { true });
+                    typeof(SceneEditWeightsWindow).GetMethod("MovePreviewBones", flags).Invoke(popup,
+                        new object[] { Vector3.right, Quaternion.identity, Vector3.zero });
+                    Assert.IsTrue(transforms.Where((bone, i) => bone.localPosition != baseline[i]).Any());
+                    var reference = (Dictionary<Transform, (Vector3 position, Quaternion rotation, Vector3 scale)>)
+                        typeof(SceneEditWeightsWindow).GetField("m_PreviewPoseBaseline", flags).GetValue(popup);
+                    var touched = ((HashSet<Transform>)typeof(SceneEditWeightsWindow).GetField("m_PreviewPoseTouched", flags).GetValue(popup))
+                        .ToDictionary(bone => bone, bone => reference[bone]);
+                    if (hierarchy) popup.SwitchHierarchyWeightTarget();
+                    else popup.SwitchWeightTarget(target);
+                    Assert.AreSame(target, typeof(SceneEditWeightsWindow).GetField("m_Renderer", flags).GetValue(popup));
+                    Assert.IsTrue(session == null, "Old cache must be disposed after saving.");
+                    var next = (SceneWeightSession)typeof(SceneEditWeightsWindow).GetField("m_Session", flags).GetValue(popup);
+                    var savedIndex = Array.FindIndex(next.mesh.bones, bone => bone.name == "Child");
+                    Assert.That(next.Values(0)[savedIndex], Is.EqualTo(.75f).Within(.0001f));
+                    Assert.IsFalse(next.dirty);
+                    Assert.Zero(next.vertices.Count);
+                    foreach (var item in touched)
+                    {
+                        Assert.That(Vector3.Distance(item.Value.position, item.Key.localPosition), Is.LessThan(.0001f));
+                        Assert.That(Quaternion.Angle(item.Value.rotation, item.Key.localRotation), Is.LessThan(.001f));
+                        Assert.That(Vector3.Distance(item.Value.scale, item.Key.localScale), Is.LessThan(.0001f));
+                    }
+                    Assert.IsFalse((bool)typeof(SceneEditWeightsWindow).GetField("m_PreviewPose", flags).GetValue(popup));
+                }
+                else
+                {
+                    var popup = Session<SceneEditMeshWindow>(); window = popup;
+                    var type = typeof(SceneEditMeshWindow);
+                    var session = (SceneMeshSession)type.GetField("m_Session", flags).GetValue(popup);
+                    type.GetField("m_Renderer", flags).SetValue(popup, m_Renderer);
+                    type.GetField("m_Source", flags).SetValue(popup, Source());
+                    session.Load(m_Renderer.sprite, Source());
+                    var position = session.mesh.vertices[0] + new Vector2(1, 2);
+                    session.mesh.vertices[0] = position; session.selection.Select(0, true);
+                    if (hierarchy)
+                    {
+                        Selection.activeGameObject = target.gameObject;
+                        popup.SwitchHierarchyMeshTarget();
+                    }
+                    else popup.QueueMeshTarget(target);
+                    Assert.Zero(session.selection.Count);
+                    Assert.AreSame(m_Renderer, type.GetField("m_Renderer", flags).GetValue(popup));
+                    Assert.IsTrue(session.dirty, "First click must not save or switch.");
+                    if (hierarchy) popup.SwitchHierarchyMeshTarget();
+                    else popup.SwitchMeshTarget(target);
+                    Assert.AreSame(target, type.GetField("m_Renderer", flags).GetValue(popup));
+                    Assert.IsTrue(session == null);
+                    Assert.AreEqual(position, Source().ReadMesh(m_Renderer.sprite).vertices[0]);
+                    var next = (SceneMeshSession)type.GetField("m_Session", flags).GetValue(popup);
+                    Assert.IsFalse(next.dirty);
+                    Assert.Zero(next.selection.Count);
+                }
+                CollectionAssert.AreEqual(metadata, File.ReadAllBytes(m_Path + ".meta"));
+                Assert.IsFalse(m_Renderer.forceRenderingOff);
+                Assert.IsNotNull(window, "The same popup remains alive.");
+            }
+            finally
+            {
+                if (window != null) Object.DestroyImmediate(window);
+                Selection.objects = previousSelection;
+            }
+        }
+
         SceneMeshSource Source() => new SceneMeshSource(m_Renderer.sprite);
         T Session<T>() where T : ScriptableObject
         {

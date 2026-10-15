@@ -565,6 +565,12 @@ namespace UnityEditor.U2D.Animation
         public void DrawBone(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, bool isChained, bool isSelected, bool isJointHovered, bool isTailHovered, bool isHot, string iconId = null, float iconSize = BoneIconUtility.DefaultSize)
         {
             Vector3 endPosition = position + right * length;
+            if (isSelected)
+            {
+                var alpha = color.a;
+                color = SkinningModuleSettings.selectedBoneColor;
+                color.a = alpha;
+            }
             if (isJointHovered || isTailHovered)
                 color = BoneDrawingUtility.GetHoveredColor(color);
             Color boneJointColor = color;

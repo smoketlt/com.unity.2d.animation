@@ -16,6 +16,23 @@ namespace UnityEditor.U2D.Animation.Tests
 {
     internal class SceneMeshEditingTests
     {
+        [Test]
+        public void ImageBoundsFollowDeformedVerticesAndReturnToSourceFrame()
+        {
+            var source = new SpriteMeshData();
+            source.SetFrame(new Rect(100, 200, 64, 32));
+            var posed = new SpriteMeshData();
+            posed.AddVertex(new Vector2(-20, 40), default);
+            posed.AddVertex(new Vector2(10, 70), default);
+            posed.AddVertex(new Vector2(5, 25), default);
+            Assert.AreEqual(new Rect(-20, 25, 30, 45), SceneEditMeshWindow.ImageBounds(source, posed));
+            posed.vertices[1] = new Vector2(80, 100);
+            Assert.AreEqual(new Rect(-20, 25, 100, 75), SceneEditMeshWindow.ImageBounds(source, posed));
+            Assert.AreEqual(new Rect(0, 0, 64, 32), SceneEditMeshWindow.ImageBounds(source, null));
+            Assert.AreEqual(new Rect(0, 0, 64, 32), SceneEditMeshWindow.ImageBounds(source, new SpriteMeshData()));
+            Assert.AreEqual(new Rect(100, 200, 64, 32), source.frame);
+        }
+
         sealed class MeshPreferencesScope : IDisposable
         {
             readonly string[] m_Keys = { MeshEditorSettings.kSelectedVertexColorKey, MeshEditorSettings.kHoveredVertexColorKey, MeshEditorSettings.kMeshLineColorKey };

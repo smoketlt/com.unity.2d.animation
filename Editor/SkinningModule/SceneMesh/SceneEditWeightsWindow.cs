@@ -653,6 +653,7 @@ namespace UnityEditor.U2D.Animation
                 try
                 {
                     if (m_Saving || m_Renderer == null) return;
+                    SwitchHierarchyWeightTarget();
                     var pinned = m_EntrySelection.Where(item => item != null).ToArray();
                     if (pinned.Length == 0) pinned = new UnityEngine.Object[] { m_Renderer.gameObject };
                     if (!Selection.objects.SequenceEqual(pinned)) Selection.objects = pinned;

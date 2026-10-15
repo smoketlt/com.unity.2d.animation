@@ -1,10 +1,16 @@
 # Scene View Weight Editing
 
+## Switching meshes without closing
+
+Edit Weights shares the [Scene mesh switching workflow](SceneMeshEditing.md#switching-meshes-without-closing). Click another visible authored mesh in the same rig in Scene View or select its GameObject alone in Hierarchy; if vertices are selected, the first click only clears them and the next click switches. A target without authored geometry is silently ignored without a Create Mesh dialog, saving or preview cleanup. Bone hits, modifier gestures, brush drags, Bind and Weld picking retain their existing input.
+
+The outgoing session finishes its gesture and saves weights before restoring temporary Preview Pose changes and destroying its sorted preview. The old renderer's prior forceRenderingOff value is restored. Preview Pose resets the touched bones using the existing saved reference/animation-channel cleanup, then all pose tracking, bone lookup, vertex/bone selection, locks and donor history are discarded with the old session. The new session captures the cleaned scene pose. Brush/display preferences remain window preferences; Preview Pose and Weld do not carry over. The same popup remains open and selects the new renderer in Unity. Save or validation failure prevents the target change. See the linked page for verification and remaining interactive checks.
+
 ## Entry and scope
 
 For an enabled [UniskinRig](UniskinRig.md), Save persists weights, bindings and draw ranks in the rig and updates its generated Sprite subassets without PSB reimport. The native importer workflow described below applies when no rig is enabled; Bake transfers the same provider payload to PSB.
 
-The SpriteRenderer Inspector exposes **Edit Weights** below Edit Mesh and Edit Bone when the Sprite has authored importer geometry. This button opens the floating UI Toolkit popup; there is no Window menu entry. The popup is pinned to its entry renderer and locks Unity object selection to the opening selection until explicitly closed. Empty Scene clicks and selecting another object restore that selection on the next editor update; they never request closing or display a save prompt. Merely selecting an object does not activate the host.
+The SpriteRenderer Inspector exposes **Edit Weights** below Edit Mesh and Edit Bone when the Sprite has authored importer geometry. This button opens the floating UI Toolkit popup; there is no Window menu entry. The popup pins Unity selection to the current editing renderer. Explicit same-rig Scene or Hierarchy mesh switching updates that target and its pinned selection without closing. Empty Scene clicks and unrelated or multiple Hierarchy selection restore the current pinned selection on the next editor update; they never request closing or display a save prompt. Merely selecting an object does not activate the host.
 
 The window follows Edit Mesh/Bone's dark styling, draggable title and red close button. Drag its bottom edge grip to resize height; the scrollable bone list fills the available space. Supplied `Weights.png`, `Smooth.png`, `Bind.png`, `Auto.png`, `Prune.png`, `Swap.png`, `Weld.png`, `UpdateBind.png` and `Delete.png` are used; Delete is assigned to Remove. Influence is absent. **Update Bindings** is a full-width, 30-pixel-high button below the Bind/Swap/Remove row.
 

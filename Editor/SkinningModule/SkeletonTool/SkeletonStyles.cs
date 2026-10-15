@@ -43,7 +43,7 @@ namespace UnityEditor.U2D.Animation
         public Color GetOutlineColor(BoneCache bone, bool isSelected, bool isHovered)
         {
             if (isSelected)
-                return Color.white;
+                return SelectionOutlineSettings.outlineColor;
 
             if (isHovered)
                 return Handles.preselectionColor;
