@@ -18,6 +18,8 @@ Cache construction loads icons into character and sprite-sheet bones; character-
 
 Normal Scene gizmos resolve a clipping contour back to its owning rig before reading bone display metadata. The contour borrows that skeleton but retains a private authoring document, whose icon metadata may predate later Edit Bones saves. Both bound contour bones and unbound character bones use the owner's current icon/Size. Unbound discovery deduplicates by host and owning source path, so renderer traversal order cannot overwrite an icon with a stale contour default. Closing Edit Bones therefore continues displaying the saved icon without copying metadata into the contour or changing its weights.
 
+Unbound Transform discovery uses the shared `SceneBoneInspector.FindCharacterTransform` GUID-first rig lookup. A source/scene parent mismatch must not hide a still-bound rig bone or remove its Inspector entry. Name-chain lookup remains the fallback for native sources and filtered native-duplicate reconciliation.
+
 ## Sources
 
 - `Editor/SkinningModule/BoneIconUtility.cs`: choices, original textures, rotations, metadata and drawing.
@@ -29,6 +31,8 @@ Normal Scene gizmos resolve a clipping contour back to its owning rig before rea
 - `Tests/Editor/SceneBoneEditingTests.cs` and `UniskinRigTests.cs`: metadata/resource and native/rig round-trips.
 
 ## Verification
+
+On 2026-10-15, a read-only diagnostic in Unity **6000.0.81f1** confirmed that `Ear_Pin_L` still existed, was active and retained its GUID binding, but source parent `Head` versus scene parent `Face` caused both Scene lookup and Inspector resolution to fail. After centralizing GUID-first lookup, both resolve the same Transform, and a fresh native gizmo cache contains its saved icon. The original rig and scene Transforms were not edited. A directly invoked regression passed GUID lookup across mismatched parents, ancestor-owner scope, filter/native-duplicate fallback, disabled-rig fallback and rejection of ambiguous rig Transforms. Full Runtime/Editor assemblies and the fixture compile against **6000.0.81f1** and **6000.5.7f1** references. Exact 6000.0.7 and live 6000.5 execution remain unverified for this change; no version-sensitive API was introduced.
 
 Unity 6000.0.81f1 compiles the implementation. Three regression methods were directly invoked on disposable native Sprite/PSB/rig fixtures, with Setup/Cleanup, because the consuming project's Test Runner did not discover the package tests. All three passed: icon Undo/Redo, GUID persistence across save/reopen/rename and reset to Default; original resource availability/eight directions/unrelated metadata preservation; rig save/reload and native Bake metadata. This direct invocation is not a full Test Runner suite. The temporary rig fixture copy omitted its global Undo.ClearAll cleanup to preserve the user's Undo history.
 

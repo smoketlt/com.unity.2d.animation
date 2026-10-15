@@ -179,6 +179,55 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.IsTrue(m_Rig.hasUnbakedChanges);
         }
 
+        [Test]
+        public void RigBoneLookupUsesGuidAcrossHierarchyMismatchAndHonorsFiltersAndAmbiguity()
+        {
+            var root = new GameObject("GuidLookupTest");
+            var rig = ScriptableObject.CreateInstance<UniskinRig>();
+            try
+            {
+                rig.characterBones = new[]
+                {
+                    new SpriteBone { guid = "head", name = "Head", parentId = -1, rotation = Quaternion.identity },
+                    new SpriteBone { guid = "ear", name = "Ear_Pin_L", parentId = 0, rotation = Quaternion.identity }
+                };
+                var head = new GameObject("Head").transform;
+                head.SetParent(root.transform);
+                var face = new GameObject("Face").transform;
+                face.SetParent(root.transform);
+                var ear = new GameObject("Ear_Pin_L").transform;
+                ear.SetParent(face);
+                var binding = root.AddComponent<UniskinRigBinding>();
+                binding.rig = rig;
+                binding.bones = new[]
+                {
+                    new UniskinRigBinding.BoneBinding { guid = "head", transform = head, sourcePose = rig.characterBones[0] },
+                    new UniskinRigBinding.BoneBinding { guid = "ear", transform = ear, sourcePose = rig.characterBones[1] }
+                };
+                Assert.AreSame(ear, SceneBoneInspector.FindCharacterTransform(root.transform, rig.characterBones, 1));
+                Assert.AreSame(ear, SceneBoneInspector.FindCharacterTransform(face, rig.characterBones, 1));
+                Assert.IsNull(SceneBoneInspector.FindCharacterTransform(root.transform, rig.characterBones, 1, candidate => candidate != ear));
+                // Bake reconciliation excludes the authored Transform and must still
+                // be able to find a regenerated native duplicate by its source path.
+                var native = new GameObject("Ear_Pin_L").transform;
+                native.SetParent(head);
+                Assert.AreSame(ear, SceneBoneInspector.FindCharacterTransform(root.transform, rig.characterBones, 1));
+                Assert.AreSame(native, SceneBoneInspector.FindCharacterTransform(root.transform, rig.characterBones, 1, candidate => candidate != ear));
+                rig.editingEnabled = false;
+                Assert.AreSame(native, SceneBoneInspector.FindCharacterTransform(root.transform, rig.characterBones, 1));
+                rig.editingEnabled = true;
+                var other = new GameObject("OtherRig");
+                other.transform.SetParent(root.transform);
+                var otherEar = new GameObject("Ear_Pin_L").transform;
+                otherEar.SetParent(other.transform);
+                var otherBinding = other.AddComponent<UniskinRigBinding>();
+                otherBinding.rig = rig;
+                otherBinding.bones = new[] { new UniskinRigBinding.BoneBinding { guid = "ear", transform = otherEar, sourcePose = rig.characterBones[1] } };
+                Assert.IsNull(SceneBoneInspector.FindCharacterTransform(root.transform, rig.characterBones, 1));
+            }
+            finally { Object.DestroyImmediate(root); Object.DestroyImmediate(rig); }
+        }
+
         void AddBones()
         {
             var source = Source();

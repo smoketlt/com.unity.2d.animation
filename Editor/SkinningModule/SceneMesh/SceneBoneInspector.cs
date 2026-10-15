@@ -88,7 +88,7 @@ namespace UnityEditor.U2D.Animation
                 var character = characterProvider.GetCharacterData();
                 if (character.bones == null) continue;
                 var matches = Enumerable.Range(0, character.bones.Length)
-                    .Where(index => MatchesCharacterPath(bone, host, character.bones, index)).ToArray();
+                    .Where(index => FindCharacterTransform(host, character.bones, index) == bone).ToArray();
                 var isContainer = group.Any(item => item.transform.IsChildOf(bone));
                 if (matches.Length != 1 && !isContainer) continue;
                 if (matches.Length > 1 || found != null) return false;
@@ -119,6 +119,19 @@ namespace UnityEditor.U2D.Animation
 
         internal static Transform FindCharacterTransform(Transform host, SpriteBone[] bones, int index, Func<Transform, bool> filter = null)
         {
+            // A rig's GUID map survives source/scene parent differences. Unweighted
+            // bones have no SpriteSkin entry, so both gizmos and Inspector resolution
+            // must consult this map before trying the imported name hierarchy.
+            var owner = host.GetComponentInParent<UniskinRigBinding>();
+            var rigs = host.GetComponentsInChildren<UniskinRigBinding>(true).AsEnumerable();
+            if (owner != null) rigs = rigs.Append(owner).Distinct();
+            var guid = bones[index].guid;
+            var rigMatches = rigs.Where(binding => binding.rig != null && binding.rig.editingEnabled &&
+                    binding.rig.characterBones.Any(bone => bone.guid == guid))
+                .SelectMany(binding => binding.bones).Where(binding => binding.guid == guid && binding.transform != null &&
+                    binding.transform.IsChildOf(host) && (filter == null || filter(binding.transform)))
+                .Select(binding => binding.transform).Distinct().Take(2).ToArray();
+            if (rigMatches.Length > 0) return rigMatches.Length == 1 ? rigMatches[0] : null;
             var matches = host.GetComponentsInChildren<Transform>(true)
                 .Where(transform => (filter == null || filter(transform)) && MatchesCharacterPath(transform, host, bones, index)).Take(2).ToArray();
             return matches.Length == 1 ? matches[0] : null;

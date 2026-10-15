@@ -166,17 +166,11 @@ namespace UnityEditor.U2D.Animation
                 var source = new SceneMeshSource(renderer.sprite);
                 var characterProvider = source.provider.GetDataProvider<ICharacterDataProvider>();
                 var bones = characterProvider != null ? characterProvider.GetCharacterData().bones : null;
-                var rigBinding = renderer.GetComponentInParent<UniskinRigBinding>();
                 if (bones != null)
                     for (var i = 0; i < bones.Length; ++i)
                     {
                         if (string.IsNullOrEmpty(bones[i].guid) || bindings.ContainsKey(bones[i].guid)) continue;
-                        // Unweighted rig bones still have a persistent GUID binding.
-                        // Their scene hierarchy can differ from the source after a
-                        // prefab update, so a source-name-chain lookup is insufficient.
-                        var rigTransform = rigBinding != null && rigBinding.rig == source.rig ?
-                            Array.Find(rigBinding.bones, link => link.guid == bones[i].guid)?.transform : null;
-                        var transform = rigTransform != null ? rigTransform : SceneBoneInspector.FindCharacterTransform(host, bones, i);
+                        var transform = SceneBoneInspector.FindCharacterTransform(host, bones, i);
                         if (transform != null) bindings[bones[i].guid] = (transform, SceneBoneInspector.CharacterBoneLocalLength(source.provider, bones[i].length));
                     }
             }
