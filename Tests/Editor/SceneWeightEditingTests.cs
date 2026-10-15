@@ -52,6 +52,72 @@ namespace UnityEditor.U2D.Animation.Tests
             if (m_Texture != null) Object.DestroyImmediate(m_Texture);
         }
 
+        [Test]
+        public void WeightClipboardPreservesReselectionOrderAndPastesPairsWithUndo()
+        {
+            var weights = m_Session.mesh.vertexWeights;
+            weights[0].Clear(); weights[0].AddChannel(0, 1, true);
+            weights[1].Clear(); weights[1].AddChannel(1, 1, true);
+            m_Session.SelectVertices(new[] { 0, 1 });
+            m_Session.SelectVertices(new[] { 1 });
+            m_Session.SelectVertices(new[] { 1, 0 });
+            m_Session.CopyWeights();
+            m_Session.SelectVertices(new[] { 2, 3 });
+            var before = m_Session.Values(2);
+            Undo.FlushUndoRecordObjects(); Undo.IncrementCurrentGroup();
+            m_Session.PasteWeights();
+            Assert.AreEqual(1, m_Session.Values(2)[1]);
+            Assert.AreEqual(1, m_Session.Values(3)[0]);
+            Undo.FlushUndoRecordObjects(); Undo.PerformUndo(); m_Session.context.RestoreAfterUndo();
+            CollectionAssert.AreEqual(before, m_Session.Values(2));
+        }
+
+        [Test]
+        public void WeightClipboardBroadcastsSnapshotAndRequiresMatchingCounts()
+        {
+            m_Session.SelectVertices(new[] { 0 }); m_Session.CopyWeights();
+            var expected = m_Session.Values(0);
+            m_Session.mesh.vertexWeights[0].Clear();
+            m_Session.SelectVertices(new[] { 1, 2 }); m_Session.PasteWeights();
+            CollectionAssert.AreEqual(expected, m_Session.Values(1));
+            CollectionAssert.AreEqual(expected, m_Session.Values(2));
+            m_Session.CopyWeights(); m_Session.SelectVertices(new[] { 3 });
+            Assert.IsFalse(m_Session.canPasteWeights);
+            m_Session.SelectVertices(Array.Empty<int>());
+            Assert.IsFalse(m_Session.canPasteWeights);
+        }
+
+        [Test]
+        public void WeightClipboardMapsBoneIdentityAndSkipsOnlyIncompatiblePairs()
+        {
+            var weights = m_Session.mesh.vertexWeights;
+            weights[0].Clear(); weights[0].AddChannel(0, 1, true);
+            weights[1].Clear(); weights[1].AddChannel(1, 1, true);
+            m_Session.SelectVertices(new[] { 0, 1 }); m_Session.CopyWeights();
+            var missing = m_Session.mesh.bones[0];
+            var oldGuid = missing.guid;
+            try
+            {
+                missing.guid = GUID.Generate().ToString();
+                var before = m_Session.Values(2);
+                m_Session.SelectVertices(new[] { 2, 3 }); m_Session.PasteWeights();
+                CollectionAssert.AreEqual(before, m_Session.Values(2));
+                Assert.AreEqual(1, m_Session.Values(3)[1]);
+            }
+            finally { missing.guid = oldGuid; }
+        }
+
+        [Test]
+        public void WeightClipboardSkipsConflictingLockedVertices()
+        {
+            m_Session.mesh.vertexWeights[0].Clear(); m_Session.mesh.vertexWeights[0].AddChannel(0, 1, true);
+            m_Session.SelectVertices(new[] { 0 }); m_Session.CopyWeights();
+            m_Session.ToggleLock(m_Session.mesh.bones[1]);
+            var before = m_Session.Values(1);
+            m_Session.SelectVertices(new[] { 1 }); m_Session.PasteWeights();
+            CollectionAssert.AreEqual(before, m_Session.Values(1));
+        }
+
         [TestCase(true, false)]
         [TestCase(true, true)]
         [TestCase(false, false)]

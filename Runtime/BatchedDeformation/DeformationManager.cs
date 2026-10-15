@@ -171,7 +171,8 @@ namespace UnityEngine.U2D.Animation
                 else if (!SpriteSkinUtility.CanSpriteSkinUseGpuDeformation(spriteSkin))
                 {
                     deformationMethod = DeformationMethods.Cpu;
-                    Debug.LogWarning($"{spriteSkin.name} is using a shader without GPU deformation support. Switching the renderer over to CPU deformation.", spriteSkin);
+                    if (!GpuDeformationSystem.DoesShaderSupportGpuDeformation(spriteSkin.spriteRenderer.sharedMaterial))
+                        Debug.LogWarning($"{spriteSkin.name} is using a shader without GPU deformation support. Switching the renderer over to CPU deformation.", spriteSkin);
                 }
             }
 

@@ -42,6 +42,85 @@ namespace UnityEditor.U2D.Animation.Tests
 
         SceneMeshSource Source() => new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path));
 
+        [TestCase(0.25f)]
+        [TestCase(1f)]
+        [TestCase(2f)]
+        public void BoneBodyZoomDimensionsStayCappedAndShrinkContinuously(float scale)
+        {
+            float previousWidth = 0f;
+            float previousShoulder = 0f;
+            foreach (float length in new[] { 0.1f, 1f, 10f, 31f, 32f, 33f, 100f, 1000f, 10000f })
+            {
+                BoneDrawingUtility.GetBodyDimensions(length, scale, out float shoulder, out float halfWidth);
+                Assert.That(halfWidth, Is.GreaterThan(0f).And.LessThanOrEqualTo(10f * scale));
+                Assert.That(shoulder, Is.GreaterThan(0f).And.LessThan(length));
+                Assert.That(halfWidth, Is.GreaterThanOrEqualTo(previousWidth));
+                Assert.That(shoulder, Is.GreaterThanOrEqualTo(previousShoulder));
+                Assert.That(shoulder / length, Is.EqualTo(0.1f).Within(0.00001f));
+                previousWidth = halfWidth;
+                previousShoulder = shoulder;
+            }
+        }
+
+        sealed class BodyPickingGUI : GUIWrapper, IGUIWrapper
+        {
+            internal Vector2 pointer;
+            internal EventType currentEvent = EventType.Layout;
+            int nextControl;
+            int nearest = -1;
+            float nearestDistance = 0f; // Native sprite picking already owns the cursor.
+            Vector2 IGUIWrapper.mousePosition => pointer;
+            EventType IGUIWrapper.eventType => currentEvent;
+            bool IGUIWrapper.isAltDown => false;
+            bool IGUIWrapper.isShiftDown => false;
+            int IGUIWrapper.GetControlID(int hint, FocusType focus) => ++nextControl;
+            void IGUIWrapper.LayoutControl(int id, float distance)
+            {
+                if (distance <= nearestDistance) { nearest = id; nearestDistance = distance; }
+            }
+            bool IGUIWrapper.IsControlNearest(int id) => nearest == id;
+            bool IGUIWrapper.IsControlHot(int id) => id == 0;
+            bool IGUIWrapper.IsMultiStepControlHot(int id) => id == 0;
+            bool IGUIWrapper.IsMouseDown(int button) => currentEvent == EventType.MouseDown && button == 0;
+            bool IGUIWrapper.HasCurrentCamera() => false;
+            Vector3 IGUIWrapper.GUIToWorld(Vector2 point, Vector3 normal, Vector3 origin) => point;
+            float IGUIWrapper.DistanceToSegmentClamp(Vector3 start, Vector3 end) => MathUtility.DistanceToSegmentClamp(pointer, start, end);
+            public override float DistanceToCircle(Vector3 center, float radius) => Mathf.Max(0f, Vector2.Distance(pointer, center) - radius);
+            void IGUIWrapper.Repaint() { }
+            void IGUIWrapper.SetGuiChanged(bool changed) { }
+        }
+
+        [TestCase(0.25f, 50f, 2f, false, true)]
+        [TestCase(1f, 50f, 8f, false, true)]
+        [TestCase(2f, 50f, 16f, false, true)]
+        [TestCase(1f, 50f, 20f, false, false)]
+        [TestCase(1f, 120f, 8f, false, false)]
+        [TestCase(1f, 50f, 8f, true, false)]
+        public void BoneBodyHoverAndClickCompeteWithNativeSpritePicking(float scale, float x, float y, bool iconOnly, bool expected)
+        {
+            float previousScale = SkinningModuleSettings.boneDisplayScale;
+            var boneObject = new GameObject("Body picking test");
+            try
+            {
+                SkinningModuleSettings.boneDisplayScale = scale;
+                var gui = new BodyPickingGUI { pointer = new Vector2(x, y) };
+                var view = new SkeletonView(gui) { mode = SkeletonMode.EditPose };
+                var id = UnityEngine.U2D.Animation.UnityObjectCompatibility.GetObjectId(boneObject.transform);
+                view.BeginLayout();
+                view.LayoutBone(id, Vector3.zero, Vector3.right * 100f, Vector3.forward, Vector3.up, Vector3.right, false, iconOnly);
+                view.EndLayout();
+                Assert.AreEqual(expected, view.hoveredBodyID.Equals(id));
+                gui.currentEvent = EventType.MouseDown;
+                Assert.AreEqual(expected, view.DoSelectBone(out var selected, out _));
+                if (expected) Assert.AreEqual(id, selected);
+            }
+            finally
+            {
+                SkinningModuleSettings.boneDisplayScale = previousScale;
+                Object.DestroyImmediate(boneObject);
+            }
+        }
+
         sealed class IconPickingGUI : GUIWrapper, IGUIWrapper
         {
             internal int bodyCalls;

@@ -9,7 +9,7 @@ namespace UnityEditor.U2D.Animation
     internal sealed class SceneSpriteWireframe
     {
         Vector3[] m_WireVertices;
-        Matrix4x4[] m_WireBoneMatrices;
+        readonly SceneSpriteDeformedMesh m_Mesh = new SceneSpriteDeformedMesh();
         readonly Vector3[] m_WireTriangle = new Vector3[4];
 
         internal void Draw(SpriteRenderer renderer, bool hasAuthoredMesh)
@@ -35,46 +35,10 @@ namespace UnityEditor.U2D.Animation
                 DrawTriangles(default, true);
                 return;
             }
-            var vertices = sprite.GetVertexAttribute<Vector3>(VertexAttribute.Position);
-            var indices = sprite.GetIndices();
-            if (vertices.Length == 0 || indices.Length < 3) return;
-
-            if (m_WireVertices == null || m_WireVertices.Length != vertices.Length)
-                m_WireVertices = new Vector3[vertices.Length];
-
-            var bindPoses = sprite.GetBindPoses();
-            var bones = skin != null ? skin.boneTransforms : null;
-            var deform = skin != null && skin.isActiveAndEnabled && skin.isValid && bones != null &&
-                bones.Length == bindPoses.Length && bindPoses.Length > 0;
-            if (deform)
-            {
-                if (m_WireBoneMatrices == null || m_WireBoneMatrices.Length != bones.Length)
-                    m_WireBoneMatrices = new Matrix4x4[bones.Length];
-                for (var i = 0; i < bones.Length; ++i)
-                {
-                    if (bones[i] == null) { deform = false; break; }
-                    m_WireBoneMatrices[i] = renderer.transform.worldToLocalMatrix *
-                        bones[i].localToWorldMatrix * bindPoses[i];
-                }
-            }
-
-            var weights = sprite.HasVertexAttribute(VertexAttribute.BlendWeight) ?
-                sprite.GetVertexAttribute<BoneWeight>(VertexAttribute.BlendWeight) : default;
-            deform &= weights.Length == vertices.Length;
-            // Sample the pose directly so GPU skinning and culled CPU buffers also work.
-            for (var i = 0; i < vertices.Length; ++i)
-            {
-                var position = vertices[i];
-                if (deform)
-                {
-                    var weight = weights[i];
-                    position = WeightedPosition(position, weight);
-                }
-                m_WireVertices[i] = ToWorld(renderer, position);
-            }
-            DrawTriangles(indices, false);
+            if (!m_Mesh.Sample(renderer)) return;
+            m_WireVertices = m_Mesh.vertices;
+            DrawTriangles(m_Mesh.indices, false);
         }
-
         static Vector3 ToWorld(SpriteRenderer renderer, Vector3 position)
         {
             if (renderer.flipX) position.x = -position.x;
@@ -110,22 +74,6 @@ namespace UnityEditor.U2D.Animation
             m_WireTriangle[2] = m_WireVertices[c];
             m_WireTriangle[3] = m_WireTriangle[0];
             Handles.DrawAAPolyLine(1.5f, m_WireTriangle);
-        }
-
-        Vector3 WeightedPosition(Vector3 position, BoneWeight weight)
-        {
-            var result = Vector3.zero;
-            Add(weight.boneIndex0, weight.weight0);
-            Add(weight.boneIndex1, weight.weight1);
-            Add(weight.boneIndex2, weight.weight2);
-            Add(weight.boneIndex3, weight.weight3);
-            return result;
-
-            void Add(int index, float value)
-            {
-                if (value > 0f && index >= 0 && index < m_WireBoneMatrices.Length)
-                    result += m_WireBoneMatrices[index].MultiplyPoint3x4(position) * value;
-            }
         }
 
     }

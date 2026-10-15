@@ -10,6 +10,7 @@ Because the fork replaces the entire package, compatibility also requires change
 
 | Boundary | Old path | New path |
 | --- | --- | --- |
+| Unity 6000.5+ active-object discovery | `FindObjectsByType<T>(FindObjectsSortMode.None)` | `FindObjectsByType<T>()` through `UnityObjectCompatibility.FindObjectsByType<T>` |
 | Unity 6000.4+ object identity | `int` / `GetInstanceID` | full `EntityId` / `GetEntityId` |
 | Unity 6000.4+ editor object lookup | `InstanceIDToObject` | `EntityIdToObject` |
 | Visibility TreeView | non-generic before 6000.2; `TreeView<int>` in 6000.2–6000.3 | `TreeView<EntityId>` in 6000.4+ |
@@ -42,6 +43,14 @@ Batch synchronization now filters destroyed skins/renderers from pending additio
 `DeformationBatchDropsDestroyedSkins` destroys actual GameObjects in CPU/GPU batches, including pending additions, queued removal of the last skin, and deletion combined with truncated arrays. It checks the native deactivation boundary with a stale renderer, surviving membership and indices, repeated Update, and the final empty batch.
 
 Verified on 2026-10-14: all 20 compatibility cases passed with no skipped cases on Unity 6000.0.81f1/Common 9.1.2 and Unity 6000.5.7f1/Common 14.0.1. The disposable projects used a snapshot of published `420261d9` plus this runtime/test change, excluding unrelated working-tree edits. Both runs used `-batchmode -nographics`; the original scene and visual GPU output remain unverified.
+
+## Warning Maintenance
+
+Runtime IK culling, Sprite post-processing, Scene GPU picking and Scene mesh renderer discovery share the runtime object-discovery wrapper. Its explicit `UNITY_6000_5_OR_NEWER` branch avoids the deprecated sort-mode overload on newer editors while retaining the active-only, unordered query on 6000.0–6000.4. The runtime assembly already exposes internals to both the editor and IK assemblies.
+
+The Constraints ListView subscribes to `selectionChanged`, available on the minimum supported Unity version. `SkinningCache.m_Events` and `BaseTool.m_LayoutOverlay` are session-only fields without `[SerializeField]`: Unity cannot serialize their types. Events retain their field initializer and module listener wiring; the VisualElement reference is assigned by `BaseTool.Initialize`. Removing the ignored attributes does not add these fields to Undo or persistence.
+
+Verified on 2026-10-15 in the connected Unity 6000.6.0f1 Editor consuming this checkout: requested script compilation, confirmed compilation/import had finished, and read zero warning/error Console entries. The 6000.0–6000.4 branch retains the previous query; it was not recompiled in an older Editor during this warning-maintenance task.
 
 ## Identity Rules
 

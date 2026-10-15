@@ -1040,7 +1040,7 @@ namespace UnityEditor.U2D.Animation
             }
             if (m_Isolate && m_HiddenObjects.Count == 0)
             {
-                foreach (var renderer in FindObjectsByType<SpriteRenderer>(FindObjectsSortMode.None))
+                foreach (var renderer in UnityObjectCompatibility.FindObjectsByType<SpriteRenderer>())
                     if (renderer != m_Renderer && !SceneVisibilityManager.instance.IsHidden(renderer.gameObject))
                     {
                         SceneVisibilityManager.instance.Hide(renderer.gameObject, false);

@@ -53,22 +53,21 @@ Multi-bone rename order follows the selected bones' order in the active skeleton
 
 ## Cursor Feedback
 
-Bone body dragging uses `MouseCursor.MoveArrow`. Bone ring and tail/end-position handles use `MouseCursor.ScaleArrow`. Hovering any bone part draws that whole bone in white instead of drawing a preselection highlight or tinting only the joint/end cap. The tail hit area is larger than the visual end cap so it is easier to hover and drag.
+Default bone bodies expose a screen-space selection strip along the bone segment, with a generous 13-point half-width multiplied by the Bone Size preference. Hits inside this strip register zero distance, allowing hover and selection over a SpriteRenderer's native picking area. Endpoint clamping is retained; joint/tail controls keep priority on equal distances. Custom icon bones still omit the invisible body and tail targets.
+
+Bone body dragging uses `MouseCursor.MoveArrow`. Bone ring and tail/end-position handles use `MouseCursor.ScaleArrow`. Hovering any bone part recolors the whole bone fill to amber `#FFB900`, preserving its opacity and dark contour, instead of tinting only the joint/end cap. `BoneDrawingUtility.GetHoveredColor` supplies the shared color for Skinning Editor and native Scene gizmos. The tail hit area is larger than the visual end cap so it is easier to hover and drag.
 
 Zero-length bones only expose the start joint circle in the viewport. Their body and tail hit areas are not laid out, so Edit Bone interactions can move the joint but cannot rotate the bone or change its length from the viewport. Length can still be changed from the Bone inspector field.
 
-## Bitmap Bone Drawing
+## Bone Compositing Order
 
-Skinning Editor bones are drawn in IMGUI through `BoneDrawingUtility` using embedded bitmap slices.
+Skinning Editor and native Scene gizmos draw each bone's outline and fill consecutively in existing skeleton order. Parent links remain behind bones. There is no global all-outlines-then-all-fills pass: a later bone covers both the fill and contour of earlier bones. Scene gizmo batches are flushed between each outline/fill and the next bone to preserve this order. Custom icons draw their own black contour immediately beneath their fill; selected outlines remain behind that contour.
 
-The current bone shape uses four normal slices and four selected-outline slices:
+## Bone Drawing and Zoom
 
-- `B_Circle` / `B_Circle_Selected` (`24x24`)
-- `B_Head` / `B_Head_Selected` (`26x20`)
-- `B_Stretch` / `B_Stretch_Selected` (`26x53`)
-- `B_EndCap` / `B_EndCap_Selected` (`10x10`)
+`BoneDrawingUtility` draws the body as one solid geometric diamond, from the outer edge of the start joint ring to the exact bone endpoint. The visible ring radius is 9 GUI points times Bone Size (inside the padded 24-point bitmap); both body fill and contour start there, leaving the transparent joint center clear. Bones shorter than this radius show only the joint. This inset changes drawing only, not the bone transform or picking. The shoulder is `visibleBodyLength * 0.1` GUI points from the joint rim; half-width is `min(projectedLength * 0.08, clamp(projectedLength * 0.025, 6 * scale, 10 * scale))` GUI points. Short bones shrink continuously rather than disappearing at a fixed slice-length threshold. The shoulder stays at 10% of the bone length without an early screen-space cap. Width retains its previous appearance at ordinary zoom, then grows gradually from a 6-point to a 10-point half-width (times Bone Size) at high zoom, following the supplied Spine comparisons.
 
-`B_Head`, `B_Stretch`, and `B_EndCap` are drawn as world-space textured quads with `Hidden/SkinningModule-BoneTexture` instead of long rotated IMGUI texture rects, because Unity can clip very large GUI texture rects while zoomed in. The bone texture shader is separate from `Hidden/SkinningModule-GUITextureClip` so Scene view bone drawing is not clipped by GUI clip masks. Body world positions and widths are derived from the projected screen length, avoiding GUI raycast plane failures in the Sprite Editor view. Body UVs map the bone start to the bottom of each PNG and the bone end to the top. The body slices do not overlap, so semi-transparent bones do not double-blend at the `B_Head` / `B_Stretch` seam. Selected bones draw selected slices in the outline pass as a thicker underlay, then normal slices are drawn above them; normal unselected bones do not draw an outline pass. Hovered bones use their normal slices recolored to white. When the projected bone length is shorter than the fixed head and end-cap slices, the body is skipped so the joint circle remains as the fallback shape.
+The fill uses a four-vertex world-space mesh and `Hidden/SkinningModule-BoneTexture` with a white texture. Lateral offsets use the projected perpendicular's size, keeping width independent of zoom and Handles transforms. The body tip is the exact bone endpoint and the visible root meets the joint rim, with no transparent bitmap padding or independent end cap to drift from the endpoint. A black antialiased closed line outlines the body; the selection pass draws a wider colored contour. Hover keeps the shared `#FFB900` fill. Joint circles retain `B_Circle` / `B_Circle_Selected`; custom bone icons are unchanged. Legacy embedded body slice textures remain available but are no longer used to render bodies.
 
 The toolbar icon is a separate UI resource:
 
@@ -76,15 +75,19 @@ The toolbar icon is a separate UI resource:
 - dark theme: `Editor/Assets/EditorIcons/Dark/d_Create Bones.png`
 - selected: `Editor/Assets/EditorIcons/Selected/Create Bones.png`
 
-`BoneDrawingUtility.DrawBone(...)` draws the sliced bitmap body and `DrawBoneNode(...)` draws joint circles. Tail circles are not drawn over `B_EndCap`, and legacy square IMGUI handle caps are not drawn over bitmap joints. Preview bones use the same drawing methods as saved bones.
+`BoneDrawingUtility.DrawBone(...)` draws the geometric body and `DrawBoneNode(...)` draws joint circles. There is no separate end-cap marker or legacy square handle over the body. Preview bones use the same drawing methods as saved bones.
 
 ## Bone Display Size
 
+The **Uniskin Rig Binding** component Inspector exposes **Always Show Bones**. This per-instance serialized option defaults to off and persists in scenes/prefabs with Undo and multi-object editing. Enabled active bindings in the current stage contribute their own hierarchy to Scene bone display even without selection, including bound and source-resolved unbound bones. Selection, hierarchy changes, Undo/Redo and Inspector property changes refresh the display. Scene Gizmos and existing Edit Bones/Edit Weights drawing suppression still apply. Preferences has no global Always Show Bones option. Runtime deformation is unaffected.
+
+On 2026-10-15, the connected Unity 6000.6.0f1 Editor recompiled the component option with no Console errors. A read-only diagnostic created the actual custom Inspector for the loaded Hippo binding and verified both its serialized boolean and the PropertyField binding path. Interactive deselection/display, Undo/prefab persistence and Unity 6000.0/6000.5 execution remain unverified for this option. The consuming project uses this checkout as a local file dependency and recompiles directly.
+
 `Preferences > Uniskin > Bone Size` controls the screen-space size of Skinning Editor bones and Sprite Skin Scene view gizmos. The user preference defaults to `1.0` and is clamped to `0.25-2.0`. Existing values from the former `2D > Animation` page are retained.
 
-The scale applies immediately to joint circles, textured body widths, fixed head/end-cap lengths, and the minimum projected length required to draw the textured body. It does not modify skeleton geometry, serialized bone data, or picking areas, so small displayed bones remain easy to select.
+The scale applies immediately to joint circles, capped body width, and the body picking strip. It does not modify skeleton geometry, serialized bone data, or joint/tail picking areas.
 
-Selected bones use the selected bitmap slices in the outline pass so selection remains readable against bone colors and mesh overlays.
+Selected bones use a wider geometric body contour and the selected joint bitmap in the outline pass so selection remains readable against bone colors and mesh overlays.
 
 Unchained parent links are not drawn as ghost bones. `SkeletonController` draws them from the child joint to the parent bone's visual tail marker, and `BoneDrawingUtility.DrawBoneParentLink(...)` renders a colored thick dotted line with a filled triangle arrowhead at the parent tail marker. Links are semi-transparent by default and become fully opaque when their child bone is selected. Create Bone root-parent preview uses the same dotted arrow styling.
 

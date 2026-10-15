@@ -17,7 +17,7 @@ namespace UnityEditor.U2D.Animation
             var status = new Label();
             root.Add(status);
             root.Add(new Button(() => Run(() => UniskinRigUtility.Enable(rig))) { text = "Use UniskinRig" });
-            root.Add(new Button(() => Run(() => UniskinRigUtility.Bake(rig))) { name = "bakeToPsb", text = "Bake to PSB" });
+            root.Add(new Button(() => Run(() => UniskinRigUtility.BakeWithConflictConfirmation(rig))) { name = "bakeToPsb", text = "Bake to PSB" });
             root.Add(new Button(() => Run(() => UniskinRigUtility.OpenSkinningEditor(rig))) { text = "Open Skinning Editor (Auto Bake)" });
             root.Add(new Button(() => Run(() => UniskinRigUtility.UsePsb(rig))) { text = "Bake and Use PSB" });
             root.Add(new Button(() => Run(() =>

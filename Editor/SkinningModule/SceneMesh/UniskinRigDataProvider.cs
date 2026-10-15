@@ -52,6 +52,19 @@ namespace UnityEditor.U2D.Animation
         [Serializable] sealed class Box<T> { public T value; }
         internal static T Clone<T>(T value) => JsonUtility.FromJson<Box<T>>(JsonUtility.ToJson(new Box<T> { value = value })).value;
         internal string Serialize() => JsonUtility.ToJson(this);
+
+        internal bool MatchesSerialized(string baseline)
+        {
+            if (string.IsNullOrEmpty(baseline)) return false;
+            try
+            {
+                // Compare through the current serializer. Unity releases can print
+                // different decimal tails for the exact same stored float value.
+                var previous = JsonUtility.FromJson<UniskinRigData>(baseline);
+                return previous?.sprites != null && Serialize() == previous.Serialize();
+            }
+            catch (ArgumentException) { return false; }
+        }
     }
 
     // Own a detached document per provider instance. Staged setters never mutate the

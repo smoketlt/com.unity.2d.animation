@@ -153,7 +153,9 @@ namespace UnityEditor.U2D.Animation
 
             if (!isZeroLength)
             {
-                float distance = m_GUIWrapper.DistanceToSegmentClamp(position, endPosition);
+                // A zero distance across the visible body lets it compete with
+                // native Scene sprite picking, which also reports zero inside a sprite.
+                float distance = Mathf.Max(0f, m_GUIWrapper.DistanceToSegmentClamp(position, endPosition) - BoneDrawingUtility.bodyPickingRadius);
 
                 if (distance <= m_NearestDistance)
                 {
@@ -563,18 +565,15 @@ namespace UnityEditor.U2D.Animation
         public void DrawBone(Vector3 position, Vector3 right, Vector3 forward, float length, Color color, bool isChained, bool isSelected, bool isJointHovered, bool isTailHovered, bool isHot, string iconId = null, float iconSize = BoneIconUtility.DefaultSize)
         {
             Vector3 endPosition = position + right * length;
+            if (isJointHovered || isTailHovered)
+                color = BoneDrawingUtility.GetHoveredColor(color);
             Color boneJointColor = color;
             Color endCapColor = color;
-            Color hoveredColor = Handles.preselectionColor;
             Color selectedColor = Handles.selectedColor;
 
-            if (isJointHovered)
-                boneJointColor = hoveredColor;
             if (isHot && (IsActionHot(SkeletonAction.MoveBone) || IsActionHot(SkeletonAction.MoveJoint)))
                 boneJointColor = selectedColor;
 
-            if (isTailHovered)
-                endCapColor = hoveredColor;
             if (isHot && (IsActionHot(SkeletonAction.ChangeLength) || IsActionHot(SkeletonAction.MoveEndPosition)))
                 endCapColor = selectedColor;
 

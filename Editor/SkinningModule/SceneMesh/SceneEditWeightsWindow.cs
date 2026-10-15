@@ -230,6 +230,8 @@ namespace UnityEditor.U2D.Animation
             rootVisualElement.Q<Button>("weightDecrease").clicked += () => OffsetSelectedWeights(-1);
             rootVisualElement.Q<Button>("weightIncrease").clicked += () => OffsetSelectedWeights(1);
             Command("smooth", "Smooth", () => Run(m_Session.Smooth));
+            Command("copyWeights", "Copy", () => Run(m_Session.CopyWeights));
+            Command("pasteWeights", "Paste", () => Run(m_Session.PasteWeights));
             Command("auto", "Auto", () => Run(m_Session.Auto));
             Command("prune", "Prune", ShowPrune);
             Command("weld", "Weld", ShowWeld);
@@ -513,6 +515,8 @@ namespace UnityEditor.U2D.Animation
             RebuildRows();
             AlignBoneSliders();
             var selected = m_Session.selectedBones; var locked = m_Session.lockedBones;
+            rootVisualElement.Q<Button>("copyWeights").SetEnabled(!m_PreviewPose && !m_Bind && m_Session.vertices.Count > 0);
+            rootVisualElement.Q<Button>("pasteWeights").SetEnabled(!m_PreviewPose && !m_Bind && m_Session.canPasteWeights);
             var controller = new SpriteMeshDataController { spriteMeshData = m_Session.mesh };
             for (var i = 0; i < m_Rows.Count; ++i)
             {

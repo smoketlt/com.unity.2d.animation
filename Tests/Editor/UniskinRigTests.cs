@@ -84,11 +84,57 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void SourceCheckAcceptsSerializerFloatFormattingDrift()
+        {
+            var native = UniskinRigData.Read(UniskinRigUtility.NativeProvider(m_Path), AssetImporter.GetAtPath(m_Path).userData);
+            native.pixelsPerUnit = 171.65174865722656f;
+            var baseline = native.Serialize().Replace("171.65174865722656", "171.65174865722657");
+            Assert.IsTrue(native.MatchesSerialized(baseline));
+            native.pixelsPerUnit += 0.01f;
+            Assert.IsFalse(native.MatchesSerialized(baseline));
+            Assert.IsFalse(native.MatchesSerialized("different-native-data"));
+        }
+
+        [Test]
+        public void BakeAcceptsEquivalentBaselineSerialization()
+        {
+            var baseline = JsonUtility.FromJson<UniskinRigData>(m_Rig.sourceBaseline);
+            m_Rig.sourceBaseline = JsonUtility.ToJson(baseline, true);
+            Assert.AreNotEqual(baseline.Serialize(), m_Rig.sourceBaseline);
+            var source = Source();
+            var mesh = source.ReadMesh(m_Renderer.sprite);
+            mesh.vertices[0] = new Vector2(2.25f, 3.5f);
+            Assert.IsTrue(source.WriteMesh(mesh));
+            Assert.IsTrue(m_Rig.hasUnbakedChanges);
+            Assert.IsTrue(UniskinRigUtility.Bake(m_Rig));
+            Assert.IsFalse(m_Rig.hasUnbakedChanges);
+            var imported = UniskinRigData.Read(UniskinRigUtility.NativeProvider(m_Path), AssetImporter.GetAtPath(m_Path).userData);
+            Assert.IsTrue(imported.MatchesSerialized(m_Rig.authoringData));
+        }
+
+        [Test]
+        public void BakeRejectsChangedNativeBaseline()
+        {
+            var source = Source();
+            var mesh = source.ReadMesh(m_Renderer.sprite);
+            mesh.vertices[0] = new Vector2(2.25f, 3.5f);
+            Assert.IsTrue(source.WriteMesh(mesh));
+            var baseline = JsonUtility.FromJson<UniskinRigData>(m_Rig.sourceBaseline);
+            baseline.pixelsPerUnit += 1f;
+            m_Rig.sourceBaseline = baseline.Serialize();
+            var metadata = File.ReadAllBytes(m_Path + ".meta");
+            var error = Assert.Throws<UniskinRigUtility.SourceConflictException>(() => UniskinRigUtility.Bake(m_Rig));
+            StringAssert.Contains("source provider changed", error.Message);
+            CollectionAssert.AreEqual(metadata, File.ReadAllBytes(m_Path + ".meta"));
+            Assert.IsTrue(m_Rig.hasUnbakedChanges);
+        }
+
+        [Test]
         public void SourceCheckRejectsChangedImageEvenWithUnchangedNativeData()
         {
             m_Rig.sourceDependencyHash = "different-project-dependency-hash";
             m_Rig.sourceFileHash = "different-image-content";
-            Assert.Throws<InvalidOperationException>(() => UniskinRigUtility.CheckSource(m_Rig));
+            Assert.Throws<UniskinRigUtility.SourceConflictException>(() => UniskinRigUtility.CheckSource(m_Rig));
             Assert.AreEqual("different-image-content", m_Rig.sourceFileHash);
             Assert.AreEqual("different-project-dependency-hash", m_Rig.sourceDependencyHash);
         }
@@ -99,7 +145,7 @@ namespace UnityEditor.U2D.Animation.Tests
             m_Rig.sourceFileHash = null;
             m_Rig.sourceDependencyHash = "different-project-dependency-hash";
             m_Rig.sourceBaseline = "different-native-data";
-            Assert.Throws<InvalidOperationException>(() => UniskinRigUtility.CheckSource(m_Rig));
+            Assert.Throws<UniskinRigUtility.SourceConflictException>(() => UniskinRigUtility.CheckSource(m_Rig));
             Assert.IsNull(m_Rig.sourceFileHash);
         }
 
@@ -549,9 +595,29 @@ namespace UnityEditor.U2D.Animation.Tests
             importer.userData += "\nExternal change";
             importer.SaveAndReimport();
             var metadata = File.ReadAllBytes(m_Path + ".meta");
-            Assert.Throws<InvalidOperationException>(() => UniskinRigUtility.Bake(m_Rig));
+            Assert.Throws<UniskinRigUtility.SourceConflictException>(() => UniskinRigUtility.Bake(m_Rig));
             Assert.AreEqual(rigData, m_Rig.authoringData);
             CollectionAssert.AreEqual(metadata, File.ReadAllBytes(m_Path + ".meta"));
+        }
+
+        [Test]
+        public void ForceBakeOverwritesExternalSkinningDataAndPreservesImage()
+        {
+            var mesh = Source().ReadMesh(m_Renderer.sprite);
+            mesh.vertices[0] = new Vector2(3, 4);
+            Source().WriteMesh(mesh);
+            var rigData = m_Rig.authoringData;
+            var image = File.ReadAllBytes(m_Path);
+            var importer = AssetImporter.GetAtPath(m_Path);
+            importer.userData += "\nExternal change";
+            importer.SaveAndReimport();
+            Assert.IsTrue(UniskinRigUtility.Bake(m_Rig, force: true));
+            Assert.AreEqual(rigData, m_Rig.authoringData);
+            Assert.IsFalse(m_Rig.hasUnbakedChanges);
+            var native = UniskinRigData.Read(UniskinRigUtility.NativeProvider(m_Path), importer.userData);
+            Assert.IsTrue(native.MatchesSerialized(rigData));
+            CollectionAssert.AreEqual(image, File.ReadAllBytes(m_Path));
+            Assert.DoesNotThrow(() => UniskinRigUtility.CheckSource(m_Rig));
         }
 
         [Test]

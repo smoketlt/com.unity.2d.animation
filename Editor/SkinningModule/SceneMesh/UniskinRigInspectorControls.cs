@@ -120,7 +120,7 @@ namespace UnityEditor.U2D.Animation
                             if (rig != null && rig.editingEnabled) UniskinRigUtility.UsePsb(rig);
                             break;
                         case Command.Bake:
-                            if (rig != null && rig.hasUnbakedChanges) UniskinRigUtility.Bake(rig);
+                            if (rig != null && rig.hasUnbakedChanges) UniskinRigUtility.BakeWithConflictConfirmation(rig);
                             break;
                     }
                 }

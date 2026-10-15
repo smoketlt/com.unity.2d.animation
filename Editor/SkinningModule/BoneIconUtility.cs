@@ -100,7 +100,14 @@ namespace UnityEditor.U2D.Animation
                 if (outline)
                     foreach (var offset in new[] { Vector2.left, Vector2.right, Vector2.up, Vector2.down })
                         GUI.DrawTexture(new Rect(center - Vector2.one * size * .5f + offset * 2f, Vector2.one * size), texture);
-                else GUI.DrawTexture(new Rect(center - Vector2.one * size * .5f, Vector2.one * size), texture);
+                else
+                {
+                    GUI.color = new Color(0f, 0f, 0f, color.a);
+                    foreach (var offset in new[] { Vector2.left, Vector2.right, Vector2.up, Vector2.down })
+                        GUI.DrawTexture(new Rect(center - Vector2.one * size * .5f + offset, Vector2.one * size), texture);
+                    GUI.color = color;
+                    GUI.DrawTexture(new Rect(center - Vector2.one * size * .5f, Vector2.one * size), texture);
+                }
             }
             finally { GUI.matrix = matrix; GUI.color = oldColor; Handles.EndGUI(); }
         }

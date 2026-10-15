@@ -5,12 +5,7 @@ namespace UnityEditor.U2D.Animation
     internal static class BoneDrawingUtility
     {
         const float kCircleSize = 24f;
-        const float kHeadWidth = 26f;
-        const float kHeadLength = 20f;
-        const float kStretchWidth = 26f;
-        const float kEndCapSize = 10f;
-        const float kSliceOverlap = 0f;
-        const float kMinimumTexturedBoneLength = kHeadLength + kEndCapSize + 2f;
+        const float kBodyWidth = 12f;
         const float kParentLinkDashLength = 4f;
         const float kParentLinkDashGap = 3f;
         const float kParentLinkLineWidth = 2f;
@@ -28,6 +23,13 @@ namespace UnityEditor.U2D.Animation
         };
         static Mesh s_BonePartMesh;
         static Material s_BonePartMaterial;
+
+        internal static float bodyPickingRadius => 13f * SkinningModuleSettings.boneDisplayScale;
+
+        internal static Color GetHoveredColor(Color color)
+        {
+            return new Color(1f, 185f / 255f, 0f, color.a);
+        }
 
         public static float GetBoneRadius(Vector3 position, float scale = 1.0f)
         {
@@ -51,12 +53,12 @@ namespace UnityEditor.U2D.Animation
 
         public static void DrawBone(Vector3 position, Vector3 endPosition, Vector3 forward, Color color, float scale = 1.0f)
         {
-            DrawTexturedBone(position, endPosition, forward, color, color, false, scale);
+            DrawBoneBody(position, endPosition, forward, color, color, false, scale);
         }
 
         public static void DrawBone(Vector3 position, Vector3 endPosition, Vector3 forward, Color color, Color endCapColor, float scale = 1.0f)
         {
-            DrawTexturedBone(position, endPosition, forward, color, endCapColor, false, scale);
+            DrawBoneBody(position, endPosition, forward, color, endCapColor, false, scale);
         }
 
         public static void DrawBoneParentLink(Vector3 position, Vector3 endPosition, Vector3 forward, Color color)
@@ -83,7 +85,7 @@ namespace UnityEditor.U2D.Animation
             if (BoneIconUtility.Normalize(iconId) == BoneIconUtility.Default)
             {
                 DrawTextureAt(position, B_Circle_Selected, color, kCircleSize * displayScale, kCircleSize * displayScale);
-                DrawTexturedBone(position, endPosition, forward, color, color, true, scale);
+                DrawBoneBody(position, endPosition, forward, color, color, true, scale);
             }
             else BoneIconUtility.Draw(position, iconId, color, true, iconSize);
         }
@@ -97,32 +99,63 @@ namespace UnityEditor.U2D.Animation
         {
             Vector2 start = HandleUtility.WorldToGUIPoint(position);
             Vector2 end = HandleUtility.WorldToGUIPoint(endPosition);
-            return (end - start).magnitude >= kMinimumTexturedBoneLength * scale;
+            return (end - start).sqrMagnitude > 0.0001f;
         }
 
-        static void DrawTexturedBone(Vector3 position, Vector3 endPosition, Vector3 forward, Color color, Color endCapColor, bool selected, float scale)
+        static void DrawBoneBody(Vector3 position, Vector3 endPosition, Vector3 forward, Color color, Color endCapColor, bool selected, float scale)
         {
             if (Event.current.type != EventType.Repaint)
                 return;
 
             scale *= SkinningModuleSettings.boneDisplayScale;
-
-            Vector2 start = HandleUtility.WorldToGUIPoint(position);
-            Vector2 end = HandleUtility.WorldToGUIPoint(endPosition);
-            Vector2 direction = end - start;
-            float length = direction.magnitude;
-
-            if (!ShouldDrawBoneBodyAtScale(position, endPosition, scale))
+            Vector2 startGUI = HandleUtility.WorldToGUIPoint(position);
+            Vector2 endGUI = HandleUtility.WorldToGUIPoint(endPosition);
+            float length = (endGUI - startGUI).magnitude;
+            // B_Circle's visible outer ring has a 9-point radius inside its
+            // padded 24-point texture. Its center is transparent, so drawing
+            // the body to the joint center leaves a line visible inside it.
+            float jointInset = 9f * scale;
+            if (length <= jointInset + 0.0001f)
                 return;
 
-            Texture2D head = selected ? B_Head_Selected : B_Head;
-            Texture2D stretch = selected ? B_Stretch_Selected : B_Stretch;
-            Texture2D endCap = selected ? B_EndCap_Selected : B_EndCap;
-            float stretchLength = Mathf.Max(1f, length - (kHeadLength + kEndCapSize) * scale);
+            Vector3 bodyStart = Vector3.Lerp(position, endPosition, jointInset / length);
 
-            DrawBonePartTexture(position, endPosition, forward, length, color, 0f, kHeadLength * scale, kHeadWidth * scale, head);
-            DrawBonePartTexture(position, endPosition, forward, length, color, kHeadLength * scale - kSliceOverlap * scale, kHeadLength * scale + stretchLength + kSliceOverlap * scale, kStretchWidth * scale, stretch);
-            DrawBonePartTexture(position, endPosition, forward, length, endCapColor, length - kEndCapSize * scale, length, kEndCapSize * scale, endCap);
+            Vector3 axis = endPosition - position;
+            Vector3 side = Vector3.Cross(forward, axis.normalized).normalized;
+            float projectedSide = ((Vector2)HandleUtility.WorldToGUIPoint(position + side) - startGUI).magnitude;
+            if (projectedSide <= 0.0001f)
+                return;
+
+            GetBodyDimensions(length - jointInset, scale, out float shoulderDistance, out float halfWidth);
+            Vector3 shoulder = Vector3.Lerp(position, endPosition, (jointInset + shoulderDistance) / length);
+            Vector3 wing = side * (halfWidth / projectedSide);
+            var points = new[] { bodyStart, shoulder + wing, endPosition, shoulder - wing, bodyStart };
+            Color previousColor = Handles.color;
+            if (!selected)
+            {
+                EnsureBonePartMesh();
+                s_BonePartMesh.vertices = new[] { points[0], points[1], points[2], points[3] };
+                s_BonePartMesh.uv = s_BonePartUVs;
+                s_BonePartMesh.SetIndices(s_BonePartIndices, MeshTopology.Triangles, 0);
+                s_BonePartMesh.RecalculateBounds();
+                s_BonePartMaterial.mainTexture = Texture2D.whiteTexture;
+                s_BonePartMaterial.color = color;
+                s_BonePartMaterial.SetFloat("_Opacity", 1f);
+                s_BonePartMaterial.SetFloat("_VertexColorBlend", 0f);
+                DrawingUtility.DrawMesh(s_BonePartMesh, s_BonePartMaterial, Matrix4x4.identity);
+            }
+            Handles.color = selected ? color : new Color(0f, 0f, 0f, color.a);
+            Handles.DrawAAPolyLine(selected ? 4f : 2f, points);
+            Handles.color = previousColor;
+        }
+
+        // Dimensions are in GUI points. Short bones shrink continuously instead of
+        // dropping a slice or moving a padded bitmap tip away from the endpoint.
+        internal static void GetBodyDimensions(float length, float scale, out float shoulderDistance, out float halfWidth)
+        {
+            shoulderDistance = length * 0.1f;
+            halfWidth = Mathf.Min(length * 0.08f,
+                Mathf.Clamp(length * 0.025f, kBodyWidth * 0.5f * scale, 10f * scale));
         }
 
         static void DrawParentLinkDashes(Vector3 position, Vector3 endPosition, Vector3 forward)
@@ -176,41 +209,6 @@ namespace UnityEditor.U2D.Animation
                 return 0f;
 
             return Mathf.Min(kParentLinkArrowLength, guiLength * 0.45f);
-        }
-
-        static void DrawBonePartTexture(Vector3 position, Vector3 endPosition, Vector3 forward, float length, Color color, float startDistance, float endDistance, float width, Texture2D texture)
-        {
-            Vector3 boneVector = endPosition - position;
-            if (boneVector.sqrMagnitude <= 0f || length <= 0f)
-                return;
-
-            Vector3 right = boneVector.normalized;
-            Vector3 up = Vector3.Cross(forward, right).normalized;
-            float worldPerGuiPixel = boneVector.magnitude / length;
-            Vector3 partStart = position + right * (startDistance * worldPerGuiPixel);
-            Vector3 partEnd = position + right * (endDistance * worldPerGuiPixel);
-            Vector3 halfWidth = up * (width * worldPerGuiPixel * 0.5f);
-
-            EnsureBonePartMesh();
-
-            s_BonePartMesh.vertices = new[]
-            {
-                partStart - halfWidth,
-                partStart + halfWidth,
-                partEnd + halfWidth,
-                partEnd - halfWidth
-            };
-
-            s_BonePartMesh.uv = s_BonePartUVs;
-            s_BonePartMesh.SetIndices(s_BonePartIndices, MeshTopology.Triangles, 0);
-            s_BonePartMesh.RecalculateBounds();
-
-            s_BonePartMaterial.mainTexture = texture;
-            s_BonePartMaterial.SetFloat("_Opacity", 1f);
-            s_BonePartMaterial.SetFloat("_VertexColorBlend", 0f);
-            s_BonePartMaterial.color = color;
-
-            DrawingUtility.DrawMesh(s_BonePartMesh, s_BonePartMaterial, Matrix4x4.identity);
         }
 
         static void EnsureBonePartMesh()

@@ -8,7 +8,7 @@ namespace UnityEditor.U2D.Animation
 
     internal abstract class BaseTool : SkinningObject, ITool
     {
-        [SerializeField]
+        // VisualElements are rebuilt by Initialize, not serialized with the tool cache.
         private LayoutOverlay m_LayoutOverlay;
 
         internal LayoutOverlay layoutOverlay

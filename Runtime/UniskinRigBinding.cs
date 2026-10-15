@@ -21,6 +21,8 @@ namespace UnityEngine.U2D.Animation
         }
 
         public UniskinRig rig;
+        [Tooltip("Show this rig's bones in the Scene view even when it is not selected. Requires Scene view Gizmos.")]
+        public bool alwaysShowBones;
         [HideInInspector] public SpriteRenderer[] renderers = Array.Empty<SpriteRenderer>();
         [HideInInspector] public BoneBinding[] bones = Array.Empty<BoneBinding>();
         [NonSerialized] int m_AppliedRevision = -1;

@@ -378,7 +378,7 @@ namespace UnityEditor.U2D.Animation
             EndGesture();
             if (m_Bind) Run(() => SetBindMode(false));
             m_Session.vertices.EndSelection(false);
-            m_Session.vertices.Clear();
+            m_Session.SelectVertices(Array.Empty<int>());
             UpdateUI(); SceneView.RepaintAll();
         }
 
@@ -565,10 +565,10 @@ namespace UnityEditor.U2D.Animation
                 if ((evt.control || evt.command) && hitBone == null && !m_Bind)
                 {
                     m_Gesture = Gesture.Select;
-                    m_SelectionBefore = m_Session.vertices.elements.ToArray();
+                    m_SelectionBefore = m_Session.orderedVertices;
                     var vertex = NearestVertex(screen, evt.mousePosition);
                     if (vertex >= 0)
-                        m_Session.vertices.elements = m_SelectionBefore.Contains(vertex) ? m_SelectionBefore.Except(new[] { vertex }).ToArray() : m_SelectionBefore.Concat(new[] { vertex }).ToArray();
+                        m_Session.SelectVertices(m_SelectionBefore.Contains(vertex) ? m_SelectionBefore.Except(new[] { vertex }).ToArray() : m_SelectionBefore.Concat(new[] { vertex }).ToArray());
                 }
                 else
                 {
@@ -584,7 +584,7 @@ namespace UnityEditor.U2D.Animation
                     if (vertex >= 0)
                     {
                         if (!m_Session.vertices.Contains(vertex))
-                            m_Session.vertices.elements = m_Additive ? m_Session.vertices.elements.Concat(new[] { vertex }).ToArray() : new[] { vertex };
+                            m_Session.SelectVertices(m_Additive ? m_Session.orderedVertices.Concat(new[] { vertex }).ToArray() : new[] { vertex });
                         m_Gesture = Gesture.Piece;
                     }
                     else if (bone != null)
@@ -595,11 +595,11 @@ namespace UnityEditor.U2D.Animation
                     else if (m_Direct && !m_Bind)
                     {
                         m_Gesture = Gesture.Select;
-                        m_SelectionBefore = m_Session.vertices.elements.ToArray();
+                        m_SelectionBefore = m_Session.orderedVertices;
                         if (!m_Additive)
                         {
                             m_Session.vertices.EndSelection(false);
-                            m_Session.vertices.Clear();
+                            m_Session.SelectVertices(Array.Empty<int>());
                         }
                     }
                     else if (!m_Bind && !m_Direct && m_Session.selectedBones.Length > 0)
@@ -617,7 +617,7 @@ namespace UnityEditor.U2D.Animation
                 {
                     var rect = SelectionRect(m_GestureStart, evt.mousePosition);
                     var inside = Enumerable.Range(0, screen.Length).Where(i => rect.Contains(screen[i]));
-                    m_Session.vertices.elements = m_Additive ? m_SelectionBefore.Union(inside).ToArray() : inside.ToArray();
+                    m_Session.SelectVertices(m_Additive ? m_SelectionBefore.Union(inside).ToArray() : inside.ToArray());
                 }
                 else if (m_Gesture == Gesture.Piece && m_Session.selectedBones.Length > 0)
                 {

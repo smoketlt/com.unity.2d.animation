@@ -20,6 +20,63 @@ namespace UnityEditor.U2D.Animation
         [SerializeField] SceneMeshBindingPose m_BindingPose;
         [SerializeField] bool m_HasBindingPose;
         int[] m_DrawIndices;
+        [SerializeField] int[] m_VertexOrder = Array.Empty<int>();
+        static KeyValuePair<string, float>[][] s_WeightClipboard;
+
+        internal int[] orderedVertices => m_VertexOrder.Where(vertices.Contains)
+            .Concat(vertices.elements.Where(i => !m_VertexOrder.Contains(i)))
+            .Where(i => i >= 0 && i < mesh.vertexCount).ToArray();
+
+        internal void SelectVertices(IEnumerable<int> selection)
+        {
+            m_VertexOrder = selection.Distinct().ToArray();
+            vertices.elements = m_VertexOrder;
+        }
+
+        internal bool canPasteWeights => s_WeightClipboard != null && orderedVertices.Length > 0 &&
+            (s_WeightClipboard.Length == 1 || s_WeightClipboard.Length == orderedVertices.Length);
+
+        internal void CopyWeights()
+        {
+            var selected = orderedVertices;
+            if (selected.Length == 0) return;
+            s_WeightClipboard = selected.Select(vertex => mesh.vertexWeights[vertex]
+                .Where(channel => channel.enabled && channel.weight > 0)
+                .Select(channel => new KeyValuePair<string, float>(mesh.bones[channel.boneIndex].guid, channel.weight)).ToArray()).ToArray();
+        }
+
+        internal void PasteWeights()
+        {
+            if (!canPasteWeights) return;
+            var selected = orderedVertices;
+            var bones = mesh.bones.Select(bone => bone.guid).ToArray();
+            var locked = lockedBones;
+            var changes = new List<(int vertex, EditableBoneWeight weight)>();
+            for (var i = 0; i < selected.Length; ++i)
+            {
+                var source = s_WeightClipboard[s_WeightClipboard.Length == 1 ? 0 : i];
+                if (source.Any(channel => Array.IndexOf(bones, channel.Key) < 0)) continue;
+                var weight = new EditableBoneWeight();
+                var values = new float[bones.Length];
+                foreach (var channel in source)
+                {
+                    var bone = Array.IndexOf(bones, channel.Key);
+                    weight.AddChannel(bone, channel.Value, true);
+                    values[bone] += channel.Value;
+                }
+                var old = Values(selected[i]);
+                if (locked.Any(bone => old[bone] != values[bone])) continue;
+                if (old.SequenceEqual(values)) continue;
+                changes.Add((selected[i], weight));
+            }
+            if (changes.Count == 0) return;
+            using (cache.UndoScope("Paste Vertex Weights"))
+            {
+                ForgetDonors();
+                foreach (var change in changes) mesh.vertexWeights[change.vertex] = change.weight;
+                Changed();
+            }
+        }
         const string kBindingPrefix = "Uniskin.WeightBindings.v1:";
         [Serializable] sealed class Bindings { public List<Binding> sprites = new List<Binding>(); }
         [Serializable] sealed class Binding { public string id; public string[] bones; public string[] drawOrder; }

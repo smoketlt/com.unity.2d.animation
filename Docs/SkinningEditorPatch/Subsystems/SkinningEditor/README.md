@@ -37,7 +37,7 @@ This subsystem covers the Unity Sprite Editor Skinning module and this fork's cu
 
 ## Entity Pages
 
-- [Masking](Masking.md): texture-based Sprite Mask and independently weighted Clipping Mask contours, Scene authoring and stencil rendering.
+- [Masking](Masking.md): Mesh Mask from a skinned SpriteRenderer using native Mask Interaction, texture-based Sprite Mask, and independently weighted Clipping Mask contours.
 - [UniskinRig](UniskinRig.md): independent mesh/bone/weight storage, Scene/runtime bindings and explicit/automatic baking into the source PSB.
 - [SceneMeshEditing](SceneMeshEditing.md): Scene View authoring of the same shared Sprite asset mesh.
 - [SceneBoneEditing](SceneBoneEditing.md): Edit Bones Scene View authoring of the shared Sprite/PSB skeleton with live animated poses, Create, Split, Set Parent and bone properties.

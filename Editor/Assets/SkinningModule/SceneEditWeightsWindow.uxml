@@ -16,6 +16,10 @@
         <ui:VisualElement class="mesh-row">
           <ui:Button name="smooth" text="Smooth" /><ui:Button name="auto" text="Auto" /><ui:Button name="weld" text="Weld" class="mesh-last-action" tooltip="Weight transfer between meshes: workflow pending discussion." />
         </ui:VisualElement>
+        <ui:VisualElement class="mesh-row">
+          <ui:Button name="copyWeights" text="Copy" tooltip="Copy selected vertex weights in selection order. Rectangle selection uses vertex index order." />
+          <ui:Button name="pasteWeights" text="Paste" class="mesh-last-action" tooltip="Paste one vertex to all selected vertices, or equal counts in selection order. Skip vertices missing required bones or conflicting with locked weights." />
+        </ui:VisualElement>
         <ui:VisualElement class="mesh-row mesh-options">
           <ui:Toggle name="pieces" text="Pieces" class="mesh-option-toggle" /><ui:Toggle name="overlay" text="Overlay" class="mesh-option-toggle" /><ui:Toggle name="selected" text="Selected" class="mesh-option-toggle" /><ui:Toggle name="triangles" text="Triangles" class="mesh-option-toggle" tooltip="Show all triangle edges on the deformed mesh. Hidden during Preview." /><ui:Toggle name="preview" text="Preview" class="mesh-option-toggle" tooltip="Show only the sprite, hiding weight colors, mesh lines, vertices, bones and brush handles. Editing gestures remain available." />
         </ui:VisualElement>

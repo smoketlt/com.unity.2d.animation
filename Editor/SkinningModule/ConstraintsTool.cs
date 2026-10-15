@@ -758,7 +758,7 @@ namespace UnityEditor.U2D.Animation
             m_ListView.style.flexGrow = 1;
             m_ListView.style.height = 120;
             m_ListView.style.marginTop = 4;
-            m_ListView.onSelectionChange += OnSelectionChange;
+            m_ListView.selectionChanged += OnSelectionChange;
             popup.Add(m_ListView);
 
             m_FindConstraintButton = new Button(() => onFindConstraintForSelected())

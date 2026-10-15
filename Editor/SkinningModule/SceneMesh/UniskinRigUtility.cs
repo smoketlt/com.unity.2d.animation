@@ -16,6 +16,11 @@ namespace UnityEditor.U2D.Animation
     [InitializeOnLoad]
     internal static class UniskinRigUtility
     {
+        internal sealed class SourceConflictException : InvalidOperationException
+        {
+            internal SourceConflictException(string message) : base(message) { }
+        }
+
         static Dictionary<string, UniskinRig> s_Rigs;
         static bool s_Baking, s_Refreshing;
 
@@ -133,9 +138,9 @@ namespace UnityEditor.U2D.Animation
                 // portable between projects. Compare the actual source contract instead.
                 var native = UniskinRigData.Read(NativeProvider(path), AssetImporter.GetAtPath(path).userData);
                 var fileHash = SourceFileHash(path);
-                if (native.Serialize() != rig.sourceBaseline ||
+                if (!native.MatchesSerialized(rig.sourceBaseline) ||
                     (!string.IsNullOrEmpty(rig.sourceFileHash) && fileHash != rig.sourceFileHash))
-                    throw new InvalidOperationException("The PSB changed outside UniskinRig. Editing and bake are blocked to protect both versions. Reload from PSB after backing up the rig, or restore the source.");
+                    throw new SourceConflictException("The PSB changed outside UniskinRig. Editing and bake are blocked to protect both versions. Reload from PSB after backing up the rig, or restore the source.");
                 CaptureSourceHashes(rig, path);
                 EditorUtility.SetDirty(rig);
                 AssetDatabase.SaveAssetIfDirty(rig);
@@ -351,22 +356,34 @@ namespace UnityEditor.U2D.Animation
             return true;
         }
 
-        internal static bool Bake(UniskinRig rig, ISpriteEditorDataProvider activeProvider = null)
+        internal static bool BakeWithConflictConfirmation(UniskinRig rig)
+        {
+            try { return Bake(rig); }
+            catch (SourceConflictException exception)
+            {
+                if (!EditorUtility.DisplayDialog("Force Bake to PSB", exception.Message +
+                    "\n\nReplace the PSB Importer's mesh, bones and weights with the saved Uniskin rig? External skinning edits will be overwritten. PSB image bytes are preserved.",
+                    "Force Bake", "Cancel")) return false;
+                return Bake(rig, force: true);
+            }
+        }
+
+        internal static bool Bake(UniskinRig rig, ISpriteEditorDataProvider activeProvider = null, bool force = false)
         {
             if (rig == null || s_Baking) return false;
             var path = AssetDatabase.GUIDToAssetPath(rig.sourceGuid);
             if (!CloseSceneTools(path)) return false;
             if (activeProvider == null && SkinningModule.IsEditingAsset(path))
                 throw new InvalidOperationException("Close Skinning Editor before baking the rig.");
-            CheckSource(rig);
-            if (!rig.hasUnbakedChanges) return true;
+            if (!force) CheckSource(rig);
+            if (!force && !rig.hasUnbakedChanges) return true;
             var importer = AssetImporter.GetAtPath(path);
             var provider = activeProvider ?? NativeProvider(path);
             var desired = JsonUtility.FromJson<UniskinRigData>(rig.authoringData);
             Validate(desired);
             var before = UniskinRigData.Read(provider, importer.userData);
-            if (before.Serialize() != rig.sourceBaseline)
-                throw new InvalidOperationException("The source provider changed outside UniskinRig. Bake would overwrite those edits.");
+            if (!force && !before.MatchesSerialized(rig.sourceBaseline))
+                throw new SourceConflictException("The source provider changed outside UniskinRig. Bake would overwrite those edits.");
             var backup = EditorJsonUtility.ToJson(importer);
             var previousBaked = rig.bakedData;
             var previousBaseline = rig.sourceBaseline;

@@ -18,7 +18,6 @@ namespace UnityEditor.U2D.Animation
         static readonly string k_DefaultRootName = "root";
         static readonly string k_DefaultBoneName = "bone";
         const float k_MinCreateBoneLength = 0.01f;
-        const float k_BoneTailMarkerOffset = 5f;
         static Regex s_Regex = new Regex(@"\w+_\d+$", RegexOptions.IgnoreCase);
 
         [SerializeField]
@@ -444,17 +443,6 @@ namespace UnityEditor.U2D.Animation
             {
                 BoneCache bone = skeleton.GetBone(i);
 
-                if ((view.IsActionActive(SkeletonAction.SplitBone) && hoveredBone == bone && isNotOnVisualElement) || bone.isVisible == false || bone.IsConstraintParent())
-                    continue;
-
-                bool isSelected = selection.Contains(bone.ToCharacterIfNeeded());
-                DrawBoneOutline(bone, ApplyConstraintFlashAlpha(bone, style.GetOutlineColor(bone, isSelected, false)), style.GetOutlineScale(isSelected));
-            }
-
-            for (int i = 0; i < skeleton.boneCount; ++i)
-            {
-                BoneCache bone = skeleton.GetBone(i);
-
                 if ((view.IsActionActive(SkeletonAction.SplitBone) && hoveredBone == bone && isNotOnVisualElement) || bone.isVisible == false)
                     continue;
 
@@ -463,6 +451,9 @@ namespace UnityEditor.U2D.Animation
                     view.DrawConstraintParent(bone.position, bone.right, bone.up, ApplyConstraintFlashAlpha(bone, style.GetColor(bone)));
                     continue;
                 }
+
+                bool isSelected = selection.Contains(bone.ToCharacterIfNeeded());
+                DrawBoneOutline(bone, ApplyConstraintFlashAlpha(bone, style.GetOutlineColor(bone, isSelected, false)), style.GetOutlineScale(isSelected));
 
                 Color color = ApplyConstraintFlashAlpha(bone, style.GetColor(bone));
                 if (IsBoneHovered(bone))
@@ -482,9 +473,7 @@ namespace UnityEditor.U2D.Animation
 
         static Color GetHoveredBoneColor(Color baseColor)
         {
-            Color color = Color.white;
-            color.a = baseColor.a;
-            return color;
+            return BoneDrawingUtility.GetHoveredColor(baseColor);
         }
 
         void DrawBone(BoneCache bone, Color color)
@@ -507,15 +496,7 @@ namespace UnityEditor.U2D.Animation
         static Vector3 GetBoneTailMarkerPosition(BoneCache bone)
         {
             if (bone.iconId != BoneIconUtility.Default) return bone.position;
-            Vector3 endPosition = bone.endPosition;
-            Vector2 startGUI = HandleUtility.WorldToGUIPoint(bone.position);
-            Vector2 endGUI = HandleUtility.WorldToGUIPoint(endPosition);
-            float guiLength = (endGUI - startGUI).magnitude;
-            if (guiLength <= 0f)
-                return endPosition;
-
-            float worldPerGuiPixel = bone.length / guiLength;
-            return endPosition - bone.right * (k_BoneTailMarkerOffset * worldPerGuiPixel);
+            return bone.endPosition;
         }
 
         void DrawBoneOutline(BoneCache bone, Color color, float outlineScale)

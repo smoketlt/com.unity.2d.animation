@@ -45,6 +45,8 @@ namespace UnityEditor.U2D.Animation
         void RegisterCallbacks()
         {
             Selection.selectionChanged += OnSelectionChanged;
+            EditorApplication.hierarchyChanged += OnSelectionChanged;
+            Undo.undoRedoPerformed += OnSelectionChanged;
             SceneView.duringSceneGui += OnSceneGUI;
             AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
             EditorApplication.playModeStateChanged += PlayModeStateChanged;
@@ -117,6 +119,10 @@ namespace UnityEditor.U2D.Animation
         internal void OnSelectionChanged()
         {
             m_SelectionRoots.Clear();
+
+            foreach (var binding in UnityEditor.SceneManagement.StageUtility.GetCurrentStageHandle().FindComponentsOfType<UniskinRigBinding>())
+                if (binding != null && binding.isActiveAndEnabled && binding.alwaysShowBones)
+                    m_SelectionRoots.Add(binding.transform);
 
             foreach (Transform selectedTransform in Selection.transforms)
             {
@@ -465,50 +471,17 @@ namespace UnityEditor.U2D.Animation
             if (!m_View.IsRepainting())
                 return;
 
-            DrawBoneOutlines();
             DrawBones();
         }
 
-        void DrawBoneOutlines()
+        void DrawBoneOutline(Transform bone, float length)
         {
-            Color selectedOutlineColor = SelectionOutlineSettings.outlineColor;
-            float selectedOutlineSize = SelectionOutlineSettings.selectedBoneOutlineSize;
-            Color defaultOutlineColor = Color.black.AlphaMultiplied(0.5f);
-
-            foreach (KeyValuePair<Transform, Vector2> boneData in m_BoneData)
-            {
-                Transform bone = boneData.Key;
-
-                if (bone == null)
-                    continue;
-
-                Vector2 value = boneData.Value;
-                float length = value.x;
-                float alpha = value.y;
-
-                if (alpha == 0f || !bone.gameObject.activeInHierarchy)
-                    continue;
-
-                Color color = defaultOutlineColor;
-                float outlineSize = 1.25f;
-
-                bool isSelected = Selection.Contains(bone.gameObject);
-                bool isHovered = hoveredBody == bone && m_View.IsActionHot(SkeletonAction.None);
-
-                if (isSelected)
-                {
-                    color = selectedOutlineColor;
-                    outlineSize = selectedOutlineSize * 0.5f + 1f;
-                }
-                else if (isHovered)
-                    color = Handles.preselectionColor;
-
-                m_BoneIcons.TryGetValue(bone, out var icon);
-                m_BoneIconSizes.TryGetValue(bone, out var iconSize);
-                m_View.DrawBoneOutline(bone.position, bone.GetScaledRight(), bone.forward, length, color, outlineSize, icon, iconSize);
-            }
-
-            BatchedDrawing.Draw();
+            bool isSelected = Selection.Contains(bone.gameObject);
+            Color color = isSelected ? SelectionOutlineSettings.outlineColor : Color.black.AlphaMultiplied(0.5f);
+            float outlineSize = isSelected ? SelectionOutlineSettings.selectedBoneOutlineSize * 0.5f + 1f : 1.25f;
+            m_BoneIcons.TryGetValue(bone, out var icon);
+            m_BoneIconSizes.TryGetValue(bone, out var iconSize);
+            m_View.DrawBoneOutline(bone.position, bone.GetScaledRight(), bone.forward, length, color, outlineSize, icon, iconSize);
         }
 
         void DrawBones()
@@ -526,7 +499,10 @@ namespace UnityEditor.U2D.Animation
                 if (alpha == 0f || !bone.gameObject.activeInHierarchy)
                     continue;
 
+                DrawBoneOutline(bone, length);
+                BatchedDrawing.Draw();
                 DrawBone(bone, length, GetBoneColor(bone, alpha));
+                BatchedDrawing.Draw();
             }
 
             BatchedDrawing.Draw();
@@ -541,6 +517,8 @@ namespace UnityEditor.U2D.Animation
                 color = BoneColorUtility.DefaultCreatedBoneColor;
 
             color.a = alpha;
+            if (hoveredBone == bone && m_View.IsActionHot(SkeletonAction.None))
+                color = BoneDrawingUtility.GetHoveredColor(color);
             return color;
         }
 

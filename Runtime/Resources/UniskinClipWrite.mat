@@ -11,7 +11,8 @@ Material:
   m_Shader: {fileID: 4800000, guid: c69f1bc699f247a69d8eb3bb05b31c78, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
-  m_ValidKeywords: []
+  m_ValidKeywords:
+  - SKINNED_SPRITE
   m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
@@ -33,10 +34,12 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _UniskinUseLighting: 1
     - _UniskinMaskEnabled: 0
     - _UniskinStencilRef: 128
+    - _UniskinUseLighting: 1
     - _ZWrite: 0
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _RendererColor: {r: 1, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []
+  m_AllowLocking: 1

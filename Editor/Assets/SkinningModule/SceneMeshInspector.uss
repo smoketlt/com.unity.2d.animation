@@ -7,3 +7,7 @@
 .uniskin-rig-mode-row > .uniskin-rig-action { flex-grow: 1; flex-basis: 0; }
 .uniskin-rig-current { border-color: rgb(60, 130, 190); }
 .uniskin-rig-hidden { display: none; }
+.uniskin-mesh-info { margin-top: 8px; margin-bottom: 4px; }
+.uniskin-mesh-info-row { flex-direction: row; margin-top: 2px; margin-bottom: 2px; }
+.uniskin-mesh-info-title { width: 140px; flex-shrink: 0; }
+.uniskin-mesh-info-value { flex-grow: 1; flex-shrink: 1; white-space: normal; }

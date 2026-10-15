@@ -20,6 +20,7 @@ namespace Fedorov.Uniskin
         Hash128 m_CachedHash;
         bool m_HasMesh;
         bool m_Supported;
+        string m_SupportError;
         int m_CachedRigRevision = -1;
         readonly SceneSpriteWireframe m_Wireframe = new SceneSpriteWireframe();
 
@@ -91,6 +92,9 @@ namespace Fedorov.Uniskin
             root.Add(weightsButton);
             var rigControls = new UniskinRigInspectorControls(() => (target as SpriteRenderer)?.sprite);
             root.Add(rigControls);
+            var supportMessage = new HelpBox(string.Empty, HelpBoxMessageType.Warning);
+            root.Add(supportMessage);
+            root.Add(new SceneSpriteMeshInfo(() => targets));
             void Refresh()
             {
                 var renderer = target as SpriteRenderer;
@@ -103,6 +107,8 @@ namespace Fedorov.Uniskin
                 boneButton.SetEnabled(targets.Length == 1 && m_Supported && clipping == null && !EditorApplication.isPlayingOrWillChangePlaymode);
                 weightsButton.SetEnabled(targets.Length == 1 && m_Supported && m_HasMesh && !EditorApplication.isPlayingOrWillChangePlaymode);
                 rigControls.Refresh(sprite, targets.Length == 1 && m_Supported);
+                supportMessage.text = m_SupportError ?? string.Empty;
+                supportMessage.style.display = string.IsNullOrEmpty(m_SupportError) ? DisplayStyle.None : DisplayStyle.Flex;
                 icon.image = ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/" + (edit ? "EditMesh" : "CreateMesh") + ".png");
             }
             root.schedule.Execute(Refresh).Every(200);
@@ -122,9 +128,10 @@ namespace Fedorov.Uniskin
             m_CachedSprite = sprite;
             m_CachedHash = hash;
             m_HasMesh = m_Supported = false;
+            m_SupportError = null;
             if (sprite != null)
                 try { m_HasMesh = new SceneMeshSource(sprite).hasAuthoredMesh; m_Supported = true; }
-                catch (Exception) { /* Unsupported sprites retain Unity's inspector. */ }
+                catch (Exception ex) { m_SupportError = ex.Message; }
         }
 
         void OnSceneGUI()

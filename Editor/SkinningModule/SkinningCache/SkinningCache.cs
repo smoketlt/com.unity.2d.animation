@@ -37,7 +37,7 @@ namespace UnityEditor.U2D.Animation
         [Serializable]
         class CharacterPartMap : SerializableDictionary<SpriteCache, CharacterPartCache> { }
 
-        [SerializeField]
+        // Session event listeners are wired when the module is initialized.
         SkinningEvents m_Events = new SkinningEvents();
         [SerializeField]
         List<BaseTool> m_Tools = new List<BaseTool>();
