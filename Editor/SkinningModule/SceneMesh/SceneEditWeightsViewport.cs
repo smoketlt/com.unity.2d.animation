@@ -384,6 +384,8 @@ namespace UnityEditor.U2D.Animation
 
         void EndGesture()
         {
+            m_WeightClickTarget = null;
+            m_DeferredWeightStamp = false;
             if (m_PoseView != null && (m_PoseView.IsActionHot(SkeletonAction.RotateBone) || m_PoseView.IsActionHot(SkeletonAction.MoveBone)))
                 GUIUtility.hotControl = 0;
             m_PoseView = null;
@@ -494,7 +496,7 @@ namespace UnityEditor.U2D.Animation
                 else toolScope.Hide();
             }
             var evt = Event.current;
-            if (!m_Saving && BlockReason() == null && PickWeightTarget(scene)) return;
+            if (!m_Saving && BlockReason() == null && PickWeightTarget(scene, evt)) return;
             if (m_Weld && !m_Saving && BlockReason() == null && evt.type == EventType.MouseDown && evt.button == 0 && !evt.alt)
             {
                 PickWeldSource(evt.mousePosition);
@@ -525,7 +527,7 @@ namespace UnityEditor.U2D.Animation
                 if (!m_EscapeHandledBeforeSceneGUI && m_Session?.cache != null) Cancel();
                 evt.Use(); return;
             }
-            if (BlockReason() != null) { RestoreTool(); return; }
+            if (BlockReason() != null) { EndGesture(); RestoreTool(); return; }
             RefreshLiveBoneBindings();
             var world = WorldVertices();
             toolScope.Hide();
@@ -561,6 +563,11 @@ namespace UnityEditor.U2D.Animation
                 if (evt.type == EventType.MouseMove) scene.Repaint();
                 return;
             }
+            HandleWeightInput(scene, screen, evt);
+        }
+
+        void HandleWeightInput(SceneView scene, Vector2[] screen, Event evt)
+        {
             if (evt.rawType == EventType.MouseUp && m_Gesture != Gesture.None)
             { EndGesture(); UpdateUI(); scene.Repaint(); evt.Use(); return; }
             if (evt.button != 0 && evt.type != EventType.MouseMove) return;
@@ -603,7 +610,7 @@ namespace UnityEditor.U2D.Animation
                     {
                         m_Gesture = Gesture.Select;
                         m_SelectionBefore = m_Session.orderedVertices;
-                        if (!m_Additive)
+                        if (!m_Additive && m_WeightClickTarget == null)
                         {
                             m_Session.vertices.EndSelection(false);
                             m_Session.SelectVertices(Array.Empty<int>());
@@ -612,7 +619,8 @@ namespace UnityEditor.U2D.Animation
                     else if (!m_Bind && !m_Direct && m_Session.selectedBones.Length > 0)
                     {
                         m_Gesture = Gesture.Paint; m_LastStamp = evt.mousePosition;
-                        Stamp(screen, evt.mousePosition, BrushRadius(), evt.alt);
+                        m_DeferredWeightStamp = m_WeightClickTarget != null;
+                        if (!m_DeferredWeightStamp) Stamp(screen, evt.mousePosition, BrushRadius(), evt.alt);
                     }
                 }
                 if (m_Gesture != Gesture.None) GUIUtility.hotControl = m_Control;
@@ -635,6 +643,11 @@ namespace UnityEditor.U2D.Animation
                 else if (m_Gesture == Gesture.Paint)
                 {
                     var radius = BrushRadius();
+                    if (m_DeferredWeightStamp)
+                    {
+                        m_DeferredWeightStamp = false;
+                        Stamp(screen, m_GestureStart, radius, evt.alt);
+                    }
                     var distance = Vector2.Distance(m_LastStamp, evt.mousePosition);
                     var step = Mathf.Max(2, radius * .25f);
                     var count = Mathf.Min(64, Mathf.FloorToInt(distance / step));

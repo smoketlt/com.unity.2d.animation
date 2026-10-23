@@ -72,6 +72,91 @@ namespace UnityEditor.U2D.Animation.Tests
             CollectionAssert.AreEqual(before, m_Session.Values(2));
         }
 
+        [TestCase(false, false, false)]
+        [TestCase(false, true, false)]
+        [TestCase(false, false, true)]
+        [TestCase(false, true, true)]
+        [TestCase(true, false, false)]
+        [TestCase(true, false, true)]
+        public void WeightTargetClickWaitsForReleaseAndDragKeepsEditing(bool direct, bool remove, bool drag)
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var type = typeof(SceneEditWeightsWindow);
+            var previousHot = GUIUtility.hotControl;
+            var previousTool = UnityEditor.Tools.current;
+            var root = new GameObject("Weight Click Test");
+            var scene = ScriptableObject.CreateInstance<SceneView>();
+            var window = ScriptableObject.CreateInstance<SceneEditWeightsWindow>();
+            try
+            {
+                var renderer = root.AddComponent<SpriteRenderer>(); renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                var child = new GameObject("Click Target"); child.transform.SetParent(root.transform);
+                var target = child.AddComponent<SpriteRenderer>(); target.sprite = renderer.sprite;
+                type.GetField("m_Renderer", flags).SetValue(window, renderer);
+                type.GetField("m_Source", flags).SetValue(window, Source());
+                type.GetField("m_Session", flags).SetValue(window, m_Session);
+                type.GetField("m_Direct", flags).SetValue(window, direct);
+                type.GetField("m_RemoveMode", flags).SetValue(window, remove);
+                type.GetField("m_Strength", flags).SetValue(window, 100f);
+                scene.drawGizmos = false;
+                UnityEditor.Tools.current = Tool.Move;
+                GUIUtility.hotControl = 0;
+                m_Session.SelectBone(m_Session.mesh.bones[0], false);
+                m_Session.SelectVertices(new[] { 0 });
+                var before = m_Session.Values(0);
+                var start = new Vector2(100, 100);
+                var screen = Enumerable.Repeat(direct ? start + Vector2.one * 100 : start, m_Session.mesh.vertexCount).ToArray();
+                // Seed the geometric pick, then exercise the same input methods used by Scene GUI.
+                type.GetField("m_WeightClickTarget", flags).SetValue(window, target);
+                type.GetField("m_WeightClickStart", flags).SetValue(window, start);
+                void Input(EventType kind, Vector2 point)
+                {
+                    var evt = new Event { type = kind, button = 0, mousePosition = point };
+                    if (kind != EventType.MouseDown && (bool)type.GetMethod("PickWeightTarget", flags).Invoke(window, new object[] { scene, evt })) return;
+                    type.GetMethod("HandleWeightInput", flags).Invoke(window, new object[] { scene, screen, evt });
+                }
+                Input(EventType.MouseDown, start);
+                Assert.IsFalse(m_Session.dirty, "Mouse down must neither switch nor paint a pending mesh click.");
+                Assert.AreEqual(1, m_Session.vertices.Count);
+                Assert.IsFalse((bool)type.GetField("m_TargetSwitchQueued", flags).GetValue(window));
+                if (drag)
+                {
+                    Input(EventType.MouseDrag, start + Vector2.one * 30);
+                    if (!direct)
+                    {
+                        Assert.IsTrue(m_Session.dirty, "The deferred first stamp must paint the original mesh.");
+                        Assert.That(m_Session.Values(0)[0], remove ? Is.LessThan(before[0]) : Is.GreaterThan(before[0]));
+                    }
+                    // Returning to the press position must not turn a stroke back into a click.
+                    Input(EventType.MouseDrag, start);
+                }
+                Input(EventType.MouseUp, start);
+                Assert.IsFalse((bool)type.GetField("m_TargetSwitchQueued", flags).GetValue(window));
+                Assert.AreSame(renderer, type.GetField("m_Renderer", flags).GetValue(window));
+                if (!drag)
+                {
+                    Assert.Zero(m_Session.vertices.Count, "A click clears selected vertices on release before allowing a switch.");
+                    CollectionAssert.AreEqual(before, m_Session.Values(0));
+                    Assert.IsFalse(m_Session.dirty);
+                    type.GetField("m_WeightClickTarget", flags).SetValue(window, target);
+                    Input(EventType.MouseDown, start);
+                    Assert.IsFalse((bool)type.GetField("m_TargetSwitchQueued", flags).GetValue(window));
+                    Input(EventType.MouseUp, start);
+                    Assert.IsTrue((bool)type.GetField("m_TargetSwitchQueued", flags).GetValue(window), "The next completed click must queue the target switch.");
+                    Assert.IsFalse(m_Session.dirty, "Selecting a target must never stamp the outgoing mesh.");
+                }
+                Assert.IsNull(type.GetField("m_WeightClickTarget", flags).GetValue(window));
+                Assert.IsFalse((bool)type.GetField("m_DeferredWeightStamp", flags).GetValue(window));
+            }
+            finally
+            {
+                // These checks inspect staged changes only; never auto-save on window disposal.
+                type.GetField("m_DiscardOnClose", flags).SetValue(window, true);
+                Object.DestroyImmediate(window); Object.DestroyImmediate(scene); Object.DestroyImmediate(root);
+                GUIUtility.hotControl = previousHot; UnityEditor.Tools.current = previousTool;
+            }
+        }
+
         [Test]
         public void WeightClipboardBroadcastsSnapshotAndRequiresMatchingCounts()
         {

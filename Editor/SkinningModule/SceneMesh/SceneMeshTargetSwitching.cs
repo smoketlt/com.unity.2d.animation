@@ -180,6 +180,9 @@ namespace UnityEditor.U2D.Animation
     internal sealed partial class SceneEditWeightsWindow
     {
         bool m_TargetSwitchQueued;
+        SpriteRenderer m_WeightClickTarget;
+        Vector2 m_WeightClickStart;
+        bool m_DeferredWeightStamp;
 
         internal void SwitchHierarchyWeightTarget()
         {
@@ -193,18 +196,36 @@ namespace UnityEditor.U2D.Animation
             else SwitchWeightTarget(target);
         }
 
-        bool PickWeightTarget(SceneView view)
+        bool PickWeightTarget(SceneView view, Event evt)
         {
-            if (Event.current.type != EventType.MouseDown || Event.current.button != 0) return false;
-            if (m_TargetSwitchQueued) { Event.current.Use(); return true; }
+            // Any drag cancels the click permanently, even if it returns to its origin.
+            if (evt.rawType == EventType.MouseDrag || evt.rawType == EventType.Ignore ||
+                evt.rawType == EventType.MouseLeaveWindow || evt.rawType == EventType.KeyDown)
+                m_WeightClickTarget = null;
+            if (evt.rawType == EventType.MouseUp)
+            {
+                var target = m_WeightClickTarget;
+                m_WeightClickTarget = null;
+                if (target == null || evt.button != 0 || evt.alt || evt.shift || evt.control || evt.command ||
+                    Vector2.Distance(m_WeightClickStart, evt.mousePosition) > 3f || m_Bind || m_Weld ||
+                    (GUIUtility.hotControl != 0 && GUIUtility.hotControl != m_Control) ||
+                    UnityEditor.Tools.current == Tool.View || UnityEditor.Tools.viewToolActive) return false;
+                EndGesture();
+                evt.Use();
+                QueueWeightTarget(target);
+                return true;
+            }
+            if (evt.type != EventType.MouseDown || evt.button != 0) return false;
+            m_WeightClickTarget = null;
+            if (m_TargetSwitchQueued) { evt.Use(); return true; }
             if (m_Bind || m_Weld) return false;
             RefreshLiveBoneBindings();
-            if (view.drawGizmos && (!m_Preview || m_PreviewPose) && NearestBone(Event.current.mousePosition) != null) return false;
-            var target = SceneMeshTargetPicking.Pick(view, m_Renderer, WorldVertices(), m_Session.mesh.indices);
-            if (target == null) return false;
-            Event.current.Use();
-            QueueWeightTarget(target);
-            return true;
+            if (view.drawGizmos && (!m_Preview || m_PreviewPose) && NearestBone(evt.mousePosition) != null) return false;
+            m_WeightClickTarget = SceneMeshTargetPicking.Pick(view, m_Renderer, WorldVertices(), m_Session.mesh.indices);
+            m_WeightClickStart = evt.mousePosition;
+            // Leave mouse down to the weight tool. A brush stamp waits until a
+            // drag proves this is painting rather than a click on another mesh.
+            return false;
         }
 
         internal void QueueWeightTarget(SpriteRenderer target)
