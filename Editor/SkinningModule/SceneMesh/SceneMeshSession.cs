@@ -20,6 +20,7 @@ namespace UnityEditor.U2D.Animation
         public int mode;
         public bool pendingCreation;
         public bool symmetry;
+        public bool restrictToFrame = true;
         [SerializeField] float m_SymmetryAxisOffset;
         [SerializeField] System.Collections.Generic.List<Vector2> m_SymmetryHull = new System.Collections.Generic.List<Vector2>();
         [SerializeField] System.Collections.Generic.List<int> m_SymmetrySources = new System.Collections.Generic.List<int>();
@@ -37,13 +38,14 @@ namespace UnityEditor.U2D.Animation
         {
             if (float.IsNaN(axis) || float.IsInfinity(axis)) return;
             float previous = symmetryAxis;
-            float minimum = 0f, maximum = mesh.frame.width;
+            float minimum = restrictToFrame ? 0f : float.NegativeInfinity;
+            float maximum = restrictToFrame ? mesh.frame.width : float.PositiveInfinity;
             if (symmetryHullActive)
                 foreach (var point in m_SymmetryHull)
                     if (point.x != previous)
                     {
                         minimum = Mathf.Max(minimum, point.x + mesh.frame.width * 0.0051f);
-                        maximum = Mathf.Min(maximum, (mesh.frame.width + point.x) * 0.5f);
+                        if (restrictToFrame) maximum = Mathf.Min(maximum, (mesh.frame.width + point.x) * 0.5f);
                     }
             axis = Mathf.Clamp(axis, minimum, maximum);
             if (axis == previous) return;
@@ -62,11 +64,14 @@ namespace UnityEditor.U2D.Animation
         internal Vector2 SymmetryHullPoint(Vector2 point)
         {
             float center = symmetryAxis;
-            point.x = Mathf.Clamp(point.x, 0f, mesh.frame.width);
-            point.y = Mathf.Clamp(point.y, 0f, mesh.frame.height);
+            if (restrictToFrame)
+            {
+                point.x = Mathf.Clamp(point.x, 0f, mesh.frame.width);
+                point.y = Mathf.Clamp(point.y, 0f, mesh.frame.height);
+            }
             if (Mathf.Abs(point.x - center) <= mesh.frame.width * 0.005f) point.x = center;
             else if (point.x > center) point = MirrorHullPoint(point);
-            point.x = Mathf.Max(point.x, 2f * center - mesh.frame.width);
+            if (restrictToFrame) point.x = Mathf.Max(point.x, 2f * center - mesh.frame.width);
             return point;
         }
 
@@ -114,7 +119,7 @@ namespace UnityEditor.U2D.Animation
             EndUndoOperation();
         }
 
-        internal void MoveSymmetryVertices(int[] indices, Vector2[] positions)
+        internal void MoveSymmetryVertices(int[] indices, Vector2[] positions, bool allowOutsideBounds = false)
         {
             var moved = new System.Collections.Generic.HashSet<int>();
             for (var i = 0; i < indices.Length; ++i)
@@ -128,7 +133,7 @@ namespace UnityEditor.U2D.Animation
                 // single, and paired vertices stop just short of merging on the axis.
                 point.x = m_SymmetryHull[source].x == center ? center :
                     Mathf.Min(point.x, center - mesh.frame.width * 0.0051f);
-                m_SymmetryHull[source] = SymmetryHullPoint(point);
+                m_SymmetryHull[source] = allowOutsideBounds ? point : SymmetryHullPoint(point);
             }
             var selected = indices.Select(i => m_SymmetrySources[i]).Distinct().ToArray();
             int previousCount = mesh.vertexCount;
@@ -324,11 +329,11 @@ namespace UnityEditor.U2D.Animation
             selection.elements = new[] { FindSymmetryVertex(position) };
         }
 
-        internal bool MoveSymmetricGeometry(int[] selected, Vector2[] positions)
+        internal bool MoveSymmetricGeometry(int[] selected, Vector2[] positions, bool allowOutsideBounds = false)
         {
             var backup = JsonUtility.ToJson(mesh);
             var previousSelection = selection.elements;
-            try { return MoveSymmetricGeometryCore(selected, positions); }
+            try { return MoveSymmetricGeometryCore(selected, positions, allowOutsideBounds); }
             catch
             {
                 JsonUtility.FromJsonOverwrite(backup, mesh);
@@ -337,10 +342,11 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        bool MoveSymmetricGeometryCore(int[] selected, Vector2[] positions)
+        bool MoveSymmetricGeometryCore(int[] selected, Vector2[] positions, bool allowOutsideBounds)
         {
             var updates = new System.Collections.Generic.Dictionary<int, Vector2>();
             float center = symmetryAxis;
+            bool restrictMovement = restrictToFrame && !allowOutsideBounds;
             for (var i = 0; i < selected.Length; ++i)
             {
                 int index = selected[i];
@@ -348,11 +354,11 @@ namespace UnityEditor.U2D.Animation
                 var original = mesh.vertices[index];
                 int partner = FindSymmetryPartner(index);
                 var point = positions[i];
-                point.y = Mathf.Clamp(point.y, 0f, mesh.frame.height);
+                if (restrictMovement) point.y = Mathf.Clamp(point.y, 0f, mesh.frame.height);
                 if (Mathf.Abs(original.x - center) <= symmetryTolerance) point.x = center;
-                else if (original.x < center) point.x = Mathf.Clamp(point.x, 0f, center - mesh.frame.width * 0.0051f);
-                else point.x = Mathf.Clamp(point.x, center + mesh.frame.width * 0.0051f, mesh.frame.width);
-                if (partner >= 0 && partner != index)
+                else if (original.x < center) point.x = Mathf.Clamp(point.x, restrictMovement ? 0f : float.NegativeInfinity, center - mesh.frame.width * 0.0051f);
+                else point.x = Mathf.Clamp(point.x, center + mesh.frame.width * 0.0051f, restrictMovement ? mesh.frame.width : float.PositiveInfinity);
+                if (restrictMovement && partner >= 0 && partner != index)
                     point.x = Mathf.Clamp(point.x, Mathf.Max(0f, 2f * center - mesh.frame.width), Mathf.Min(mesh.frame.width, 2f * center));
                 updates[index] = point;
                 if (partner >= 0 && partner != index) updates[partner] = MirrorHullPoint(point);
@@ -638,6 +644,7 @@ namespace UnityEditor.U2D.Animation
         public void Load(Sprite sprite, SceneMeshSource source)
         {
             assetPath = source.assetPath;
+            restrictToFrame = source.clipping == null && source.bindingPose == null;
             spriteId = source.rect.spriteID.ToString();
             mesh = source.ReadMesh(sprite);
             savedMesh = JsonUtility.ToJson(mesh);

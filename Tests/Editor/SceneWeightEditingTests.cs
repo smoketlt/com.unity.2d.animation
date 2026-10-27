@@ -157,6 +157,171 @@ namespace UnityEditor.U2D.Animation.Tests
             }
         }
 
+        [TestCase(false, false)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(true, true)]
+        public void SuspendSkinningMovesDisplayedImageAndPreservesWeights(bool flip, bool cancel)
+        {
+            var source = Source();
+            var geometry = source.ReadMesh(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path));
+            var corners = geometry.vertices;
+            geometry.SetVertices(corners.Concat(new[] { new Vector2(16, 16) }).ToArray(),
+                geometry.vertexWeights.Concat(new[] { geometry.vertexWeights[0] }).ToArray());
+            geometry.SetIndices(new[] { 0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4 });
+            source.WriteMesh(geometry);
+            var previousSelection = Selection.objects;
+            var root = new GameObject("Suspension Test");
+            try
+            {
+                var host = new GameObject("Mesh"); host.transform.SetParent(root.transform, false);
+                var renderer = host.AddComponent<SpriteRenderer>();
+                renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                renderer.flipX = flip;
+                var bones = renderer.sprite.GetBones();
+                var transforms = bones.Select((bone, i) =>
+                {
+                    var item = new GameObject(bone.name).transform;
+                    item.SetParent(root.transform, false);
+                    item.localPosition = new Vector3(.1f + i * .04f, .07f);
+                    item.localRotation = Quaternion.Euler(0, 0, 12 + i * 4);
+                    return item;
+                }).ToArray();
+                var skin = host.AddComponent<SpriteSkin>(); skin.SetRootBone(root.transform); skin.SetBoneTransforms(transforms);
+                var before = new SceneSpriteDeformedMesh(); Assert.IsTrue(before.Sample(renderer));
+                var initial = (Vector3[])before.vertices.Clone();
+                var weights = renderer.sprite.GetVertexAttribute<BoneWeight>(UnityEngine.Rendering.VertexAttribute.BlendWeight).ToArray();
+                var uv = renderer.sprite.GetVertexAttribute<Vector2>(UnityEngine.Rendering.VertexAttribute.TexCoord0).ToArray();
+                var bonePositions = transforms.Select(item => item.position).ToArray();
+                var fingerprint = Source().Fingerprint();
+                var originalUserData = Source().userData;
+                SceneSkinningSuspension.Begin(renderer);
+                Assert.IsTrue(SceneSkinningSuspension.IsSuspended(renderer));
+                Assert.IsTrue(renderer.forceRenderingOff);
+                var preview = host.GetComponentsInChildren<SpriteRenderer>().Single(item => item != renderer);
+                CollectionAssert.AreEqual(renderer.sprite.GetIndices().ToArray(), preview.sprite.GetIndices().ToArray());
+                CollectionAssert.AreEqual(uv, preview.sprite.GetVertexAttribute<Vector2>(UnityEngine.Rendering.VertexAttribute.TexCoord0).ToArray());
+                var frozen = new SceneSpriteDeformedMesh(); Assert.IsTrue(frozen.Sample(preview));
+                for (var i = 0; i < initial.Length; ++i)
+                    Assert.That(Vector3.Distance(initial[i], frozen.vertices[i]), Is.LessThan(.00001f), "Frozen vertex " + i + " expected " + initial[i].ToString("F6") + " actual " + frozen.vertices[i].ToString("F6"));
+                var delta = new Vector3(.13f, -.09f);
+                host.transform.position += delta;
+                Assert.IsTrue(frozen.Sample(preview));
+                for (var i = 0; i < initial.Length; ++i)
+                    Assert.That(Vector3.Distance(initial[i] + delta, frozen.vertices[i]), Is.LessThan(.00001f), "Moved preview vertex " + i);
+                if (cancel) SceneSkinningSuspension.Cancel();
+                else SceneSkinningSuspension.Resume();
+                var editSession = ScriptableObject.CreateInstance<SceneMeshSession>();
+                try
+                {
+                    editSession.Load(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path), Source());
+                    Assert.AreEqual(cancel, editSession.restrictToFrame, "Rebound geometry must not clamp to the old source image frame.");
+                }
+                finally { Object.DestroyImmediate(editSession); }
+                Assert.IsFalse(SceneSkinningSuspension.active);
+                Assert.IsFalse(renderer.forceRenderingOff);
+                renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                skin.BatchValidate();
+                var after = new SceneSpriteDeformedMesh(); Assert.IsTrue(after.Sample(renderer));
+                for (var i = 0; i < initial.Length; ++i)
+                    Assert.That(Vector3.Distance(initial[i] + (cancel ? Vector3.zero : delta), after.vertices[i]), Is.LessThan(.00001f), "Resumed vertex " + i);
+                CollectionAssert.AreEqual(weights, renderer.sprite.GetVertexAttribute<BoneWeight>(UnityEngine.Rendering.VertexAttribute.BlendWeight).ToArray());
+                var savedUV = renderer.sprite.GetVertexAttribute<Vector2>(UnityEngine.Rendering.VertexAttribute.TexCoord0);
+                for (var i = 0; i < uv.Length; ++i) Assert.That(Vector2.Distance(uv[i], savedUV[i]), Is.LessThan(.00001f));
+                CollectionAssert.AreEqual(bonePositions, transforms.Select(item => item.position).ToArray());
+                if (cancel)
+                {
+                    Assert.AreEqual(Vector3.zero, host.transform.localPosition);
+                    Assert.AreEqual(fingerprint, Source().Fingerprint());
+                }
+                else
+                {
+                    Undo.FlushUndoRecordObjects(); Undo.PerformUndo();
+                    SceneSkinningSuspension.RefreshNativeSources();
+                    renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                    skin.BatchValidate();
+                    Assert.AreEqual(fingerprint, Source().Fingerprint(), "Undo source payload");
+                    Assert.AreEqual(originalUserData, Source().userData, "Undo user data");
+                    Assert.IsTrue(skin.isValid, "Undo skin " + skin.Validate() + " transforms=" + string.Join(",", skin.boneTransforms.Select(item => item != null ? item.name : "null")));
+                    Assert.IsTrue(after.Sample(renderer));
+                    for (var i = 0; i < initial.Length; ++i)
+                        Assert.That(Vector3.Distance(initial[i] + (flip ? new Vector3(2 * delta.x, 0) : Vector3.zero), after.vertices[i]), Is.LessThan(.00001f), "Undo vertex " + i);
+                    Undo.PerformRedo();
+                    SceneSkinningSuspension.RefreshNativeSources();
+                    renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                    skin.BatchValidate();
+                    Assert.IsTrue(after.Sample(renderer));
+                    for (var i = 0; i < initial.Length; ++i)
+                        Assert.That(Vector3.Distance(initial[i] + delta, after.vertices[i]), Is.LessThan(.00001f), "Redo vertex " + i);
+                }
+            }
+            finally
+            {
+                SceneSkinningSuspension.Cancel();
+                Object.DestroyImmediate(root);
+                Selection.objects = previousSelection;
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SuspendSkinningInsideMeshWindowKeepsPopupAndReloadsSession(bool resume)
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var previousSelection = Selection.objects;
+            var previousTool = UnityEditor.Tools.current;
+            var previousHidden = UnityEditor.Tools.hidden;
+            var root = new GameObject("Mesh Window Suspension Test");
+            SceneEditMeshWindow window = null;
+            try
+            {
+                var host = new GameObject("Mesh"); host.transform.SetParent(root.transform, false);
+                var renderer = host.AddComponent<SpriteRenderer>(); renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                var transforms = renderer.sprite.GetBones().Select((bone, i) =>
+                {
+                    var item = new GameObject(bone.name).transform;
+                    item.SetParent(root.transform, false); item.localPosition = new Vector3(.1f + i * .04f, .07f);
+                    return item;
+                }).ToArray();
+                var skin = host.AddComponent<SpriteSkin>(); skin.SetRootBone(root.transform); skin.SetBoneTransforms(transforms);
+                SceneEditMeshWindow.OpenForRenderer(renderer, false);
+                window = Resources.FindObjectsOfTypeAll<SceneEditMeshWindow>().Single();
+                if (window.rootVisualElement.Q("suspendSkinning") == null) window.CreateGUI();
+                var row = window.rootVisualElement.Q("suspendControls");
+                Assert.AreEqual(row, window.rootVisualElement.Q("resumeSkinning").parent);
+                Assert.AreEqual(row, window.rootVisualElement.Q("cancelSkinning").parent);
+                Assert.IsFalse(window.rootVisualElement.Q("suspendSkinning").ClassListContains("mesh-hidden"));
+                window.BeginSkinningSuspension();
+                Assert.IsTrue(window != null && SceneSkinningSuspension.IsSuspended(renderer), "Begin suspension: " + typeof(SceneEditMeshWindow).GetField("m_Error", flags).GetValue(window));
+                Assert.IsTrue(window.rootVisualElement.Q("suspendSkinning").ClassListContains("mesh-hidden"));
+                Assert.IsFalse(window.rootVisualElement.Q("resumeSkinning").ClassListContains("mesh-hidden"));
+                Assert.IsFalse(window.rootVisualElement.Q("cancelSkinning").ClassListContains("mesh-hidden"));
+                Assert.IsFalse(window.rootVisualElement.Q("mainControls").enabledSelf);
+                Assert.AreEqual(Tool.Move, UnityEditor.Tools.current);
+                var delta = new Vector3(.13f, -.09f);
+                host.transform.position += delta;
+                window.EndSkinningSuspension(resume);
+                Assert.IsTrue(window != null);
+                Assert.IsFalse(SceneSkinningSuspension.active);
+                Assert.IsFalse(window.rootVisualElement.Q("suspendSkinning").ClassListContains("mesh-hidden"));
+                Assert.IsTrue(window.rootVisualElement.Q("resumeSkinning").ClassListContains("mesh-hidden"));
+                Assert.IsTrue(window.rootVisualElement.Q("cancelSkinning").ClassListContains("mesh-hidden"));
+                Assert.IsTrue(window.rootVisualElement.Q("mainControls").enabledSelf);
+                var session = (SceneMeshSession)typeof(SceneEditMeshWindow).GetField("m_Session", flags).GetValue(window);
+                Assert.IsFalse(session.dirty);
+                Assert.AreEqual(Source().Fingerprint(), session.sourceMesh);
+                Assert.AreEqual(resume ? delta : Vector3.zero, host.transform.position);
+                Assert.IsTrue(window.RequestClose()); window = null;
+            }
+            finally
+            {
+                if (window != null) Object.DestroyImmediate(window);
+                SceneSkinningSuspension.Cancel(); Object.DestroyImmediate(root);
+                Selection.objects = previousSelection;
+                UnityEditor.Tools.current = previousTool; UnityEditor.Tools.hidden = previousHidden;
+            }
+        }
+
         [Test]
         public void WeightClipboardBroadcastsSnapshotAndRequiresMatchingCounts()
         {

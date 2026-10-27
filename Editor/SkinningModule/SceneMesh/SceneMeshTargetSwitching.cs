@@ -105,6 +105,7 @@ namespace UnityEditor.U2D.Animation
 
         internal void SwitchHierarchyMeshTarget()
         {
+            if (m_SuspendingSkinning) return;
             if (m_TargetSwitchQueued || m_Source?.clipping != null || m_TraceActive || pasteActive ||
                 m_Session == null || m_Session.mode == 3 || BlockReason() != null) return;
             var target = SceneMeshTargetPicking.HierarchyTarget(m_Renderer);
@@ -149,6 +150,7 @@ namespace UnityEditor.U2D.Animation
         {
             try
             {
+                if (m_SuspendingSkinning) return;
                 if (target == null || target.sprite == null || SceneMeshTargetPicking.RigRoot(target) != SceneMeshTargetPicking.RigRoot(m_Renderer)) return;
                 var source = new SceneMeshSource(target.sprite);
                 if (!source.hasAuthoredMesh || source.clipping != null) return;

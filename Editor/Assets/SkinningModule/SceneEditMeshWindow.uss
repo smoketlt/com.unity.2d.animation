@@ -19,6 +19,12 @@
 .mesh-options > Toggle { flex-grow: 0; flex-shrink: 0; margin: 0 10px; }
 .uniskin-edit-mesh .mesh-options > Toggle { margin-left: 4px; margin-right: 4px; }
 .uniskin-edit-clipping-mask .mesh-options > Toggle { margin-left: 2px; margin-right: 2px; }
+.uniskin-edit-mesh .mesh-options-grid { justify-content: flex-start; padding-left: 6%; padding-right: 6%; }
+.uniskin-edit-mesh .mesh-options-grid > Toggle { flex-basis: 0; flex-grow: 30; min-width: 0; margin-left: 0; margin-right: 0; }
+.uniskin-edit-mesh .mesh-options-grid > .mesh-option-column-2 { flex-grow: 27; }
+.uniskin-edit-mesh .mesh-options-grid > .mesh-option-column-3 { flex-grow: 18; }
+.uniskin-edit-mesh .mesh-options-grid > .mesh-option-column-4 { flex-grow: 25; }
+.uniskin-edit-mesh .mesh-options-grid > .mesh-option-span-2 { flex-grow: 43; }
 .mesh-options > Toggle > .unity-base-field__label { display: none; }
 .mesh-options > Toggle > .unity-toggle__input { flex-grow: 0; flex-shrink: 0; justify-content: flex-start; }
 .mesh-options .unity-toggle__text { margin-left: 4px; margin-right: 0; }

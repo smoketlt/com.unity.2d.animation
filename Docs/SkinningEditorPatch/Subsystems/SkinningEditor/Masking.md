@@ -63,6 +63,57 @@ The component preserves unrelated MaterialPropertyBlock entries, uses shared mat
 
 ## Clipping authoring
 
+The clipping weight popup is titled **Edit Cliping Weights** (including its custom
+header and close tooltip). Unlike ordinary Edit Weights, its **Preview** keeps
+contour boundary/authored edges and vertex pies/dots visible; **Triangles** still
+controls internal triangle lines. Preview continues to hide the weight-color
+overlay, brush and ordinary bone/selection-rectangle decorations. Geometry, weight
+selection and the Pieces/Selected filters are preserved. Ordinary Edit Weights
+retains its sprite-only Preview behavior.
+
+Verified on 2026-10-16 in Unity 6000.6.0f1: package recompilation succeeded and
+an attached disposable popup check passed for native/custom titles, clipping
+Preview geometry visibility, retained Triangles state and ordinary Preview
+suppression. The focused check ran through Pipeline, without changing user window
+preferences. Interactive Scene raster appearance and 6000.0/6000.5 execution
+remain unverified; no version-dependent API was introduced.
+
+The component Inspector's **Invert** checkbox hides the body inside the contour
+and shows its existing geometry outside. It defaults off and is serialized per
+component, independently of the shared contour asset, with standard Inspector
+Undo/prefab support. Saved clipping and the editor's **Masked** preview use the
+same setting. With Masked off (or an empty contour), the full body remains visible.
+Inversion selects shared lit/unlit body materials comparing stencil bit 128 to
+zero; contour writing and bounds-based stencil cleanup are unchanged. It adds no
+geometry, skinning or draw passes and does not mutate shared material settings.
+
+Invert verification (2026-10-16): the locally linked Unity 6000.6.0f1 project
+recompiled without errors. Eleven directly invoked rendering/lifecycle/Inspector
+fixture checks passed in disposable preview scenes through Pipeline, including
+lit/unlit inversion, live toggle restoration, overlapping character cleanup,
+Masked preview and serialized Inspector Undo/Redo. These are focused fixture runs,
+not a full Test Runner sweep or GPU deformation benchmark. Unity 6000.0/6000.5,
+Player builds and interactive Inspector layout remain unverified for this addition;
+no version-dependent API was introduced.
+
+Clipping contours are not limited to the source Sprite rectangle. New hull points,
+Modify movement and Create boundary insertion can use negative coordinates or
+extend beyond the image on either axis, including Deformed editing. Symmetry
+also permits external points and an axis outside the image; its side/center
+safeguards remain active. The image rectangle and pivot remain the coordinate
+reference, without resizing or changing the body mesh. Ordinary Sprite mesh
+editing retains its existing frame limits. A larger contour only reveals existing
+body geometry; it does not create image pixels. Runtime stencil clearing continues
+to follow the posed contour bounds.
+
+Verified on 2026-10-16 in Unity 6000.6.0f1 with this checkout linked through a
+local file dependency: package recompilation completed without errors, and three
+focused checks passed through Pipeline in disposable preview scenes/assets.
+They cover controller frame policy, external symmetry coordinates, ordinary-session
+limits and save/reload of an external contour into generated Sprite positions.
+Interactive dragging, animated Deformed/stencil appearance and execution on
+6000.0/6000.5 remain unverified; no version-dependent API was introduced.
+
 1. Add **Uniskin Clipping Mask** to the target SpriteRenderer layer. Adding it leaves the body image, mesh, weights, material and sorting unchanged. The target must belong to an enabled UniskinRig character and must not already own a SortingGroup or contain other Sprite layers when creating the contour.
 2. Click **Draw Contour**. The owning skeleton resolves automatically from the body. The editor creates an empty polygon document and opens **Edit Clipping Mask** directly in New point-authoring mode. There are no Character, Image, Source or contour-asset fields in the ordinary Inspector.
 3. Click to place ordered contour points and click the first point to close the polygon. Modify/Create/Delete, symmetry and triangulation reuse the existing Scene geometry tools. Close the popup to save. Fewer than three points cancel back to the empty contour; the body remains unchanged.

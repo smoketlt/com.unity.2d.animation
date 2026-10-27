@@ -33,6 +33,19 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.AreEqual(new Rect(100, 200, 64, 32), source.frame);
         }
 
+        [Test]
+        public void RemappedImageBoundsFollowSavedGeometryWithoutDeformedDisplay()
+        {
+            var mesh = new SpriteMeshData();
+            mesh.SetFrame(new Rect(100, 200, 64, 32));
+            mesh.AddVertex(new Vector2(-30, -70), default);
+            mesh.AddVertex(new Vector2(90, -20), default);
+            mesh.AddVertex(new Vector2(10, -50), default);
+            Assert.AreEqual(new Rect(-30, -70, 120, 50), SceneEditMeshWindow.ImageBounds(mesh, null, true));
+            Assert.AreEqual(new Rect(0, 0, 64, 32), SceneEditMeshWindow.ImageBounds(mesh, null));
+            Assert.AreEqual(new Rect(0, 0, 64, 32), SceneEditMeshWindow.ImageBounds(mesh, new SpriteMeshData(), true));
+        }
+
         sealed class MeshPreferencesScope : IDisposable
         {
             readonly string[] m_Keys = { MeshEditorSettings.kSelectedVertexColorKey, MeshEditorSettings.kHoveredVertexColorKey, MeshEditorSettings.kMeshLineColorKey };
@@ -105,6 +118,97 @@ namespace UnityEditor.U2D.Animation.Tests
             public float GetHandleSize(Vector3 position) => 1f;
             public bool IsViewToolActive() => false;
             public bool HasCurrentCamera() => false;
+        }
+
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void OutsideBoundsOptionControlsVertexDragWithoutChangingFrame(bool allowOutside, bool newHull)
+        {
+            var session = Quad();
+            try
+            {
+                session.selection.elements = new[] { 0 };
+                var gui = new DragGUI { hot = 123 };
+                gui.Event(EventType.MouseDrag, new Vector2(-20, 40));
+                var view = new SpriteMeshView(gui) { selection = session.selection,
+                    mode = newHull ? SpriteMeshViewMode.NewGeometry : SpriteMeshViewMode.EditGeometry };
+                const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                typeof(SpriteMeshView).GetField("m_MoveVertexControlID", flags).SetValue(view, 123);
+                Vector2[] moved = null;
+                var frame = new Rect(0, 0, 32, 32);
+                var controller = new SpriteMeshController { spriteMeshView = view, spriteMeshData = session.mesh,
+                    selection = session.selection, cacheUndo = session, frame = frame, restrictMovementToFrame = !allowOutside,
+                    geometryVerticesMoved = (indices, positions) => moved = positions,
+                    newGeometryVerticesMoved = (indices, positions) => moved = positions };
+                typeof(SpriteMeshController).GetMethod("HandleMoveVertexAndEdge", flags).Invoke(controller, null);
+                Assert.IsNotNull(moved);
+                Assert.AreEqual(allowOutside ? new Vector2(-20, 40) : new Vector2(0, 32), moved[0]);
+                Assert.AreEqual(frame, controller.frame);
+                Assert.AreEqual(frame, session.mesh.frame);
+            }
+            finally { Object.DestroyImmediate(session); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void OutsideBoundsOptionControlsSymmetricMovement(bool allowOutside)
+        {
+            var session = Quad();
+            try
+            {
+                session.SetSymmetry(true);
+                session.EndUndoOperation();
+                var indices = new[] { session.FindSymmetryVertex(new Vector2(0, 0)), session.FindSymmetryVertex(new Vector2(0, 32)) };
+                Assert.IsTrue(session.MoveSymmetricGeometry(indices, new[] { new Vector2(-8, -8), new Vector2(-8, 40) }, allowOutside));
+                var x = allowOutside ? -8 : 0;
+                CollectionAssert.AreEquivalent(new[] { new Vector2(x, x), new Vector2(x, 32 - x),
+                    new Vector2(32 - x, x), new Vector2(32 - x, 32 - x) }, session.mesh.vertices);
+                Assert.AreEqual(new Rect(0, 0, 32, 32), session.mesh.frame);
+                SceneMeshSource.Validate(session.mesh);
+            }
+            finally { Object.DestroyImmediate(session); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void OutsideBoundsOptionControlsSymmetricNewMovement(bool allowOutside)
+        {
+            var session = Quad();
+            try
+            {
+                session.BeginNew(); session.SetSymmetry(true);
+                session.AddSymmetryVertex(new Vector2(4, 28));
+                session.AddSymmetryVertex(new Vector2(4, 4));
+                session.MoveSymmetryVertices(new[] { 0 }, new[] { new Vector2(-8, 40) }, allowOutside);
+                CollectionAssert.Contains(session.mesh.vertices, allowOutside ? new Vector2(-8, 40) : new Vector2(0, 32));
+                CollectionAssert.Contains(session.mesh.vertices, allowOutside ? new Vector2(40, 40) : new Vector2(32, 32));
+                Assert.IsEmpty(session.mesh.indices);
+                Assert.AreEqual(new Rect(0, 0, 32, 32), session.mesh.frame);
+            }
+            finally { Object.DestroyImmediate(session); }
+        }
+
+        [Test]
+        public void OutsideBoundsToggleStartsUncheckedAndUpdatesSessionOption()
+        {
+            var window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
+            try
+            {
+                window.ShowPopup();
+                window.CreateGUI();
+                window.rootVisualElement.Q("mainControls").SetEnabled(true);
+                var toggle = window.rootVisualElement.Q<Toggle>("allowOutsideBounds");
+                Assert.IsNotNull(toggle);
+                Assert.IsFalse(toggle.value);
+                var field = typeof(SceneEditMeshWindow).GetField("m_AllowOutsideBounds", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                toggle.value = true;
+                Assert.IsTrue((bool)field.GetValue(window));
+                toggle.value = false;
+                Assert.IsFalse((bool)field.GetValue(window));
+            }
+            finally { Object.DestroyImmediate(window); }
         }
 
         [Test]
@@ -623,6 +727,51 @@ namespace UnityEditor.U2D.Animation.Tests
                 Assert.AreEqual(7, session.mesh.vertexWeights[0].ToBoneWeight(false).boneIndex0);
             }
             finally { Object.DestroyImmediate(session); }
+        }
+
+        [TestCase(false, false, false)]
+        [TestCase(false, false, true)]
+        [TestCase(false, true, false)]
+        [TestCase(false, true, true)]
+        [TestCase(true, false, false)]
+        [TestCase(true, false, true)]
+        [TestCase(true, true, false)]
+        [TestCase(true, true, true)]
+        public void ImagePreviewClipsToMeshUnlessAuthoringHull(bool authoringHull, bool deformed, bool savedBindings)
+        {
+            var source = new SpriteMeshData();
+            source.SetFrame(new Rect(64, 128, 32, 32));
+            var vertices = new[] { new Vector2(4, 4), new Vector2(28, 4), new Vector2(16, 28) };
+            foreach (var vertex in vertices) source.AddVertex(vertex, default);
+            source.SetIndices(new[] { 0, 1, 2 });
+            var posed = deformed ? new SpriteMeshData() : null;
+            if (posed != null)
+            {
+                foreach (var vertex in vertices) posed.AddVertex(vertex + new Vector2(8, -12), default);
+                posed.SetIndices(source.indices.ToArray());
+            }
+            var textureOffset = savedBindings ? new Vector2(2, 3) : Vector2.zero;
+            var pose = savedBindings ? new SceneMeshBindingPose
+            {
+                positions = vertices.ToArray(),
+                texturePositions = vertices.Select(vertex => vertex + textureOffset).ToArray(),
+                indices = source.indices.ToArray()
+            } : null;
+            var image = new Mesh();
+            var original = JsonUtility.ToJson(source);
+            try
+            {
+                SceneEditMeshWindow.BuildImageMesh(image, source, posed, pose, authoringHull, 256, 256);
+                var expected = authoringHull ? new[] { Vector2.zero, new Vector2(32, 0), new Vector2(32, 32), new Vector2(0, 32) } :
+                    (posed ?? source).vertices.ToArray();
+                CollectionAssert.AreEqual(expected.Select(vertex => (Vector3)vertex).ToArray(), image.vertices);
+                CollectionAssert.AreEqual(authoringHull ? new[] { 0, 1, 2, 0, 2, 3 } : source.indices, image.triangles);
+                var textureVertices = authoringHull ? expected : vertices;
+                for (var i = 0; i < textureVertices.Length; ++i)
+                    Assert.Less(Vector2.Distance((source.frame.position + textureVertices[i] + textureOffset) / 256, image.uv[i]), 0.00001f);
+                Assert.AreEqual(original, JsonUtility.ToJson(source), "Preview must not change authored geometry or weights.");
+            }
+            finally { Object.DestroyImmediate(image); }
         }
 
         [TestCase(0, false)]
@@ -1520,7 +1669,7 @@ namespace UnityEditor.U2D.Animation.Tests
                 sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
                 source = new SceneMeshSource(sprite);
                 mesh = source.ReadMesh(sprite);
-                mesh.vertices[0] = new Vector2(3, 4);
+                mesh.vertices[0] = new Vector2(-3, -4);
                 mesh.vertexWeights[0].SetFromBoneWeight(new BoneWeight { boneIndex0 = 1, weight0 = 1f });
                 var vertices = mesh.vertices.ToArray();
                 var indices = mesh.indices.ToArray();

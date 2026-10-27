@@ -41,6 +41,8 @@ namespace UnityEditor.U2D.Animation
 
         public bool disable { get; set; }
         public Rect frame { get; set; }
+        public bool restrictToFrame { get; set; } = true;
+        public bool restrictMovementToFrame { get; set; } = true;
 
         public void OnGUI()
         {
@@ -317,7 +319,8 @@ namespace UnityEditor.U2D.Animation
             {
                 int[] selectionArray = selection.elements;
 
-                finalDeltaPos = MathUtility.MoveRectInsideFrame(CalculateRectFromSelection(), frame, finalDeltaPos);
+                if (restrictToFrame && restrictMovementToFrame)
+                    finalDeltaPos = MathUtility.MoveRectInsideFrame(CalculateRectFromSelection(), frame, finalDeltaPos);
                 Vector2[] movedVertexSelection = GetMovedVertexSelection(in selectionArray, spriteMeshData.vertices, finalDeltaPos);
 
                 if (spriteMeshView.mode == SpriteMeshViewMode.NewGeometry)
@@ -732,7 +735,7 @@ namespace UnityEditor.U2D.Animation
 
         Vector2 ClampToFrame(Vector2 position)
         {
-            return MathUtility.ClampPositionToRect(position, frame);
+            return restrictToFrame ? MathUtility.ClampPositionToRect(position, frame) : position;
         }
 
         Rect CalculateRectFromSelection()

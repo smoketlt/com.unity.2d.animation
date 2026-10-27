@@ -28,6 +28,8 @@
 - `cacheUndo`
 - `triangulator`
 - `frame`
+- `restrictToFrame`: source-frame limits for placement and the default movement path.
+- `restrictMovementToFrame`: movement-only limit, enabled by default. Scene Edit Mesh disables it while **Outside Bounds** is checked; placement retains its independent restriction.
 
 ## Outputs
 

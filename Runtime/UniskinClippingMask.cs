@@ -12,6 +12,8 @@ namespace UnityEngine.U2D.Animation
         [HideInInspector] public UniskinClippingMaskData contour;
         [HideInInspector] public UniskinRigBinding character;
         [HideInInspector] public SpriteRenderer contourRenderer;
+        [Tooltip("Hide the body inside the contour and show it outside.")]
+        public bool invert;
         [SerializeField, HideInInspector] Material m_PreviousMaterial;
         [SerializeField, HideInInspector] int m_PreviousOrder, m_PreviousLayer;
         [SerializeField, HideInInspector] SpriteMaskInteraction m_PreviousInteraction;
@@ -27,10 +29,12 @@ namespace UnityEngine.U2D.Animation
         [SerializeField, HideInInspector] SortingGroup m_Group;
         int m_Revision = -1, m_CharacterRevision = -1;
         bool m_Editing;
+        bool m_AppliedInvert;
         SpriteRenderer m_EditingPreview;
         MaterialPropertyBlock m_Properties;
         static Sprite s_ClearSprite;
         static Material s_WriteMaterial, s_ClearMaterial, s_LitMaterial, s_UnlitMaterial;
+        static Material s_InvertedLitMaterial, s_InvertedUnlitMaterial;
 
         public void SetEditing(bool editing)
         {
@@ -57,7 +61,7 @@ namespace UnityEngine.U2D.Animation
             if (character == null) character = GetComponentInParent<UniskinRigBinding>();
             if (character == null) return;
             if (m_OwnsRenderer && m_Target != null && (m_Target.sortingOrder != m_PreviousOrder || m_Target.sortingLayerID != m_PreviousLayer)) SyncSorting();
-            if (contourRenderer == null || m_Revision != contour.revision || m_CharacterRevision != character.appliedRevision || !m_OwnsRenderer) Refresh();
+            if (contourRenderer == null || m_Revision != contour.revision || m_CharacterRevision != character.appliedRevision || !m_OwnsRenderer || m_AppliedInvert != invert) Refresh();
             UpdateClearBounds();
         }
 
@@ -118,7 +122,10 @@ namespace UnityEngine.U2D.Animation
             bool unlit = m_PreviousMaterial != null && m_PreviousMaterial.shader != null &&
                 (m_PreviousMaterial.shader.name.Contains("Unlit") || m_PreviousMaterial.shader.name == "Sprites/Default" ||
                 (m_PreviousMaterial.shader.name == "Uniskin/UniskinMask" && m_PreviousMaterial.GetFloat("_UniskinUseLighting") < .5f));
-            m_Target.sharedMaterial = Load(ref s_LitMaterial, ref s_UnlitMaterial, unlit);
+            m_Target.sharedMaterial = invert
+                ? Load(ref s_InvertedLitMaterial, ref s_InvertedUnlitMaterial, unlit, true)
+                : Load(ref s_LitMaterial, ref s_UnlitMaterial, unlit);
+            m_AppliedInvert = invert;
             m_Target.maskInteraction = SpriteMaskInteraction.None;
             m_Target.GetPropertyBlock(m_Properties);
             m_Properties.SetFloat("_UniskinMaskEnabled", 0);
@@ -174,10 +181,10 @@ namespace UnityEngine.U2D.Animation
             UpdateClearBounds();
         }
 
-        static Material Load(ref Material lit, ref Material unlit, bool useUnlit)
+        static Material Load(ref Material lit, ref Material unlit, bool useUnlit, bool inverted = false)
         {
-            if (useUnlit) return unlit != null ? unlit : unlit = Resources.Load<Material>("UniskinClipBodyUnlit");
-            return lit != null ? lit : lit = Resources.Load<Material>("UniskinClipBody");
+            if (useUnlit) return unlit != null ? unlit : unlit = Resources.Load<Material>(inverted ? "UniskinClipBodyInvertedUnlit" : "UniskinClipBodyUnlit");
+            return lit != null ? lit : lit = Resources.Load<Material>(inverted ? "UniskinClipBodyInverted" : "UniskinClipBody");
         }
 
         void SyncSorting()

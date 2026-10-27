@@ -28,6 +28,7 @@ namespace UnityEditor.U2D.Animation
         Vector2[] m_FirstBindPositions;
         bool m_PreviewPose;
         bool spriteOnlyPreview => m_Preview || m_PreviewPose;
+        bool showWeightGeometry => !m_Preview || m_Source?.clipping != null;
         readonly Dictionary<Transform, (Vector3 position, Quaternion rotation, Vector3 scale)> m_PreviewPoseBaseline =
             new Dictionary<Transform, (Vector3, Quaternion, Vector3)>();
         readonly Dictionary<Transform, (Vector3 position, Quaternion rotation, Vector3 scale)> m_PreviewPoseLastWritten =
@@ -546,11 +547,11 @@ namespace UnityEditor.U2D.Animation
             if (evt.type == EventType.Repaint)
             {
                 if (!m_Preview) DrawPreview(world);
+                if (showWeightGeometry) DrawMeshEdges(screen);
+                if (!m_Preview && scene.drawGizmos) DrawBones();
+                if (showWeightGeometry) DrawPieces(screen);
                 if (!m_Preview)
                 {
-                    DrawMeshEdges(screen);
-                    if (scene.drawGizmos) DrawBones();
-                    DrawPieces(screen);
                     if (!m_Weld && !m_Bind && !m_Direct && !evt.control && !evt.command) DrawBrush(evt.mousePosition);
                     if (m_Gesture == Gesture.Select) DrawSelectionRect(m_GestureStart, evt.mousePosition);
                 }

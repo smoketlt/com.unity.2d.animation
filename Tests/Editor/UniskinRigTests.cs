@@ -61,6 +61,42 @@ namespace UnityEditor.U2D.Animation.Tests
 
         Sprite SourceSprite() => AssetDatabase.LoadAllAssetsAtPath(m_Path).OfType<Sprite>().First();
 
+        [Test]
+        public void SuspendSkinningRigSavePreservesImageWeightsSourceAndUndo()
+        {
+            var previousSelection = Selection.objects;
+            try
+            {
+                var child = new GameObject("Rig Mesh"); child.transform.SetParent(m_Root.transform, false);
+                var sprite = m_Renderer.sprite;
+                Object.DestroyImmediate(m_Renderer);
+                m_Renderer = child.AddComponent<SpriteRenderer>(); m_Renderer.sprite = sprite;
+                AddBones();
+                var skin = m_Renderer.GetComponent<SpriteSkin>();
+                skin.boneTransforms[0].localRotation = Quaternion.Euler(0, 0, 23);
+                var before = RuntimeBindingVertices();
+                var weights = m_Renderer.sprite.GetVertexAttribute<BoneWeight>(VertexAttribute.BlendWeight).ToArray();
+                var uv = m_Renderer.sprite.GetVertexAttribute<Vector2>(VertexAttribute.TexCoord0).ToArray();
+                var metadata = File.ReadAllBytes(m_Path + ".meta");
+                SceneSkinningSuspension.Begin(m_Renderer);
+                var delta = new Vector3(.12f, -.08f);
+                m_Renderer.transform.position += delta;
+                SceneSkinningSuspension.Resume();
+                AssertPoints(before.Select(point => point + delta).ToArray(), RuntimeBindingVertices());
+                CollectionAssert.AreEqual(weights, m_Renderer.sprite.GetVertexAttribute<BoneWeight>(VertexAttribute.BlendWeight).ToArray());
+                var savedUV = m_Renderer.sprite.GetVertexAttribute<Vector2>(VertexAttribute.TexCoord0);
+                for (var i = 0; i < uv.Length; ++i) Assert.That(Vector2.Distance(uv[i], savedUV[i]), Is.LessThan(.00001f));
+                CollectionAssert.AreEqual(metadata, File.ReadAllBytes(m_Path + ".meta"));
+                Undo.FlushUndoRecordObjects(); Undo.PerformUndo();
+                AssertPoints(before, RuntimeBindingVertices());
+                Undo.PerformRedo();
+                AssertPoints(before.Select(point => point + delta).ToArray(), RuntimeBindingVertices());
+                UniskinRigUtility.RefreshInstances(m_Rig);
+                AssertPoints(before.Select(point => point + delta).ToArray(), RuntimeBindingVertices());
+            }
+            finally { SceneSkinningSuspension.Cancel(); Selection.objects = previousSelection; }
+        }
+
         [TestCase(false, false)]
         [TestCase(true, false)]
         [TestCase(false, true)]

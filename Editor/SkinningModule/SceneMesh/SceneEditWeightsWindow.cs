@@ -104,6 +104,7 @@ namespace UnityEditor.U2D.Animation
             SceneEditWeightsWindow opening = null;
             try
             {
+                if (SceneSkinningSuspension.active) throw new InvalidOperationException("Resume or cancel Suspend Skinning first.");
                 if (renderer == null || renderer.sprite == null || !renderer.gameObject.scene.IsValid())
                     throw new InvalidOperationException("Select a scene SpriteRenderer with an authored mesh.");
                 if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Weight editing is available in Edit Mode.");
@@ -194,6 +195,7 @@ namespace UnityEditor.U2D.Animation
             rootVisualElement.Clear(); m_Rows.Clear(); m_RowKey = null;
             ResourceLoader.Load<VisualTreeAsset>("SkinningModule/SceneEditWeightsWindow.uxml").CloneTree(rootVisualElement);
             SceneMeshWindowStyle.Configure(rootVisualElement, this, () => RequestClose(), resizeHeight: true);
+            UpdateWindowTitle();
             var mode = new PopupField<string>("Mode", new List<string> { "Direct", "Add", "Remove" }, m_Direct ? 0 : m_RemoveMode ? 2 : 1);
             m_ModePopup = mode;
             mode.name = "weightMode"; rootVisualElement.Q("mode").Add(mode);
@@ -496,8 +498,19 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
+        void UpdateWindowTitle()
+        {
+            var title = m_Source?.clipping != null ? "Edit Cliping Weights" : "Edit Weights";
+            titleContent = new GUIContent(title);
+            var label = rootVisualElement.Q<Label>("windowTitle");
+            if (label != null) label.text = title;
+            var close = rootVisualElement.Q<Button>("closeWindow");
+            if (close != null) close.tooltip = "Close " + title;
+        }
+
         void UpdateUI()
         {
+            UpdateWindowTitle();
             if (m_Saving || rootVisualElement.Q("commands") == null) return;
             var blocked = BlockReason();
             if (blocked != null) m_Weld = false;

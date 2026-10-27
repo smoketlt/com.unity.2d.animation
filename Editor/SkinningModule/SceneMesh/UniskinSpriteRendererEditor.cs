@@ -106,7 +106,12 @@ namespace Fedorov.Uniskin
                 button.SetEnabled(targets.Length == 1 && m_Supported && !EditorApplication.isPlayingOrWillChangePlaymode);
                 boneButton.SetEnabled(targets.Length == 1 && m_Supported && clipping == null && !EditorApplication.isPlayingOrWillChangePlaymode);
                 weightsButton.SetEnabled(targets.Length == 1 && m_Supported && m_HasMesh && !EditorApplication.isPlayingOrWillChangePlaymode);
+                if (SceneSkinningSuspension.active)
+                {
+                    button.SetEnabled(false); boneButton.SetEnabled(false); weightsButton.SetEnabled(false);
+                }
                 rigControls.Refresh(sprite, targets.Length == 1 && m_Supported);
+                rigControls.SetEnabled(!SceneSkinningSuspension.active);
                 supportMessage.text = m_SupportError ?? string.Empty;
                 supportMessage.style.display = string.IsNullOrEmpty(m_SupportError) ? DisplayStyle.None : DisplayStyle.Flex;
                 icon.image = ResourceLoader.Load<Texture2D>("SkinningModule/SceneMeshIcons/" + (edit ? "EditMesh" : "CreateMesh") + ".png");

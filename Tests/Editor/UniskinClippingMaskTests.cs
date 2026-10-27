@@ -93,6 +93,59 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void InvertHidesInsideAndTogglesWithoutChangingSharedMaterials()
+        {
+            var clip = Clip(Color.red);
+            var body = clip.GetComponent<SpriteRenderer>();
+            var update = (Action)Delegate.CreateDelegate(typeof(Action), clip, typeof(UniskinClippingMask).GetMethod("LateUpdate", BindingFlags.NonPublic | BindingFlags.Instance));
+            var normal = body.sharedMaterial;
+            foreach (var lit in new[] { false, true })
+            {
+                clip.enabled = false;
+                var original = new Material(Resources.Load<Material>("UniskinMask")); m_Objects.Add(original);
+                original.SetFloat("_UniskinUseLighting", lit ? 1 : 0); body.sharedMaterial = original;
+                clip.enabled = true;
+                clip.invert = true; update();
+                Assert.AreSame(Resources.Load<Material>(lit ? "UniskinClipBodyInverted" : "UniskinClipBodyInvertedUnlit"), body.sharedMaterial);
+                Assert.That(Pixel(0).a, Is.LessThan(.01f));
+                Assert.That(Pixel(.4f).r, Is.GreaterThan(.95f));
+                clip.invert = false; update();
+                Assert.That(Pixel(0).r, Is.GreaterThan(.95f));
+                Assert.That(Pixel(.4f).a, Is.LessThan(.01f));
+            }
+            Assert.AreEqual(128, normal.GetFloat("_UniskinStencilRef"));
+        }
+
+        [Test]
+        public void InvertedContourClearsStencilBeforeTheNextCharacter()
+        {
+            var inverted = Clip(Color.red, -.2f); inverted.invert = true; inverted.Refresh();
+            Clip(Color.blue, .2f, 1);
+            Assert.That(Pixel(-.1f).a, Is.LessThan(.01f));
+            Assert.That(Pixel(.1f).b, Is.GreaterThan(.95f), "The preceding inverted mask must clear its stencil.");
+            Assert.That(Pixel(.55f).a, Is.LessThan(.01f));
+        }
+
+        [Test]
+        public void InspectorInvertUsesSerializedStateAndUndo()
+        {
+            var clip = Clip(Color.red);
+            var editor = Editor.CreateEditor(clip); m_Objects.Add(editor);
+            var ui = editor.CreateInspectorGUI();
+            var field = UnityEngine.UIElements.UQueryExtensions.Q<UnityEditor.UIElements.PropertyField>(ui, "uniskinClippingInvert");
+            Assert.IsNotNull(field); Assert.AreEqual("invert", field.bindingPath);
+            Assert.IsFalse(clip.invert);
+            Undo.IncrementCurrentGroup();
+            editor.serializedObject.Update();
+            editor.serializedObject.FindProperty("invert").boolValue = true;
+            editor.serializedObject.ApplyModifiedProperties(); Undo.FlushUndoRecordObjects();
+            Assert.IsTrue(clip.invert);
+            Undo.PerformUndo(); Assert.IsFalse(clip.invert);
+            Undo.PerformRedo(); Assert.IsTrue(clip.invert);
+            Undo.ClearUndo(clip);
+        }
+
+        [Test]
         public void MovingBodyInteriorVerticesChangesTextureWithoutMovingTheContour()
         {
             var sprite = Sprite(1.6f, x => x < 16 ? Color.red : Color.blue);
@@ -200,6 +253,9 @@ namespace UnityEditor.U2D.Animation.Tests
             var preview = previewObject.AddComponent<SpriteRenderer>(); preview.sprite = Sprite(.2f);
             clip.SetEditingPreview(preview);
             Assert.That(Pixel(0).r, Is.GreaterThan(.95f)); Assert.That(Pixel(.2f).a, Is.LessThan(.01f));
+            clip.invert = true; clip.Refresh();
+            Assert.That(Pixel(0).a, Is.LessThan(.01f)); Assert.That(Pixel(.2f).r, Is.GreaterThan(.95f));
+            clip.invert = false; clip.Refresh();
             Assert.AreSame(saved, clip.contour.sprite); Assert.AreSame(saved, clip.contourRenderer.sprite);
             clip.SetEditing(true); Assert.IsFalse(preview.enabled); Assert.That(Pixel(.4f).r, Is.GreaterThan(.95f));
             clip.SetEditing(false); Assert.That(Pixel(.2f).r, Is.GreaterThan(.95f)); Assert.That(Pixel(.4f).a, Is.LessThan(.01f));

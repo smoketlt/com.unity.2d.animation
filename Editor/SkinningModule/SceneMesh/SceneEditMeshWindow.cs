@@ -18,6 +18,7 @@ namespace UnityEditor.U2D.Animation
         [SerializeField] bool m_Dim;
         [SerializeField] bool m_Isolate;
         [SerializeField] bool m_Deformed;
+        [SerializeField] bool m_AllowOutsideBounds;
         [SerializeField] bool m_Masked;
         [SerializeField] bool m_OnTop = true;
         [SerializeField] float m_Detail = 0.5f;
@@ -29,6 +30,8 @@ namespace UnityEditor.U2D.Animation
         [SerializeField] int m_TraceTransactionUndoGroup = -1;
         [SerializeField] UnityEngine.Object[] m_SelectionObjects;
         bool m_SelectionRestoreQueued;
+        bool m_SuspendingSkinning;
+        bool m_ReloadBindingAfterUndo;
         SceneMeshSource m_Source;
         UniskinClippingMask m_ClippingOwner;
         bool m_DiscardOnClose;
@@ -103,6 +106,7 @@ namespace UnityEditor.U2D.Animation
             SceneEditMeshWindow openingWindow = null;
             try
             {
+                if (SceneSkinningSuspension.active) throw new InvalidOperationException("Resume or cancel Suspend Skinning first.");
                 foreach (var boneWindow in Resources.FindObjectsOfTypeAll<SceneEditBoneWindow>())
                     if (!boneWindow.RequestClose()) return;
                 foreach (var weightWindow in Resources.FindObjectsOfTypeAll<SceneEditWeightsWindow>())
@@ -155,6 +159,7 @@ namespace UnityEditor.U2D.Animation
         internal bool RequestClose()
         {
             if (m_SaveInProgress) return false;
+            if (m_SuspendingSkinning) EndSkinningSuspension(false);
             rootVisualElement.focusController?.focusedElement?.Blur();
             if (m_Source != null && m_Session.dirty)
             {
@@ -199,6 +204,11 @@ namespace UnityEditor.U2D.Animation
 
         protected void OnDisable()
         {
+            if (m_SuspendingSkinning)
+            {
+                SceneSkinningSuspension.Cancel();
+                m_SuspendingSkinning = false;
+            }
             EndSymmetryAxisDrag(false);
             if (m_PasteControl != 0 && GUIUtility.hotControl == m_PasteControl) GUIUtility.hotControl = 0;
             m_PasteControl = 0;
@@ -274,12 +284,21 @@ namespace UnityEditor.U2D.Animation
             Bind("traceOK", () => { ExitTrace(); SceneView.RepaintAll(); UpdateUI(); });
             Bind("traceCancel", CancelTrace);
             Bind("copy", CopyMesh);
+            Bind("suspendSkinning", BeginSkinningSuspension);
+            Bind("resumeSkinning", () => EndSkinningSuspension(true));
+            Bind("cancelSkinning", () => EndSkinningSuspension(false));
             Bind("paste", BeginMeshPaste);
             Bind("pasteCancel", CancelMeshPaste);
             Bind("pasteApply", ApplyMeshPaste);
             rootVisualElement.Q<Toggle>("pasteMirror")?.RegisterValueChangedCallback(_ => RefreshMeshPaste());
             rootVisualElement.RegisterCallback<KeyDownEvent>(evt =>
             {
+                if (m_SuspendingSkinning)
+                {
+                    if (evt.keyCode == KeyCode.Escape) EndSkinningSuspension(false);
+                    evt.StopImmediatePropagation();
+                    return;
+                }
                 if (!(evt.target is TextInputBaseField<string>) &&
                     HandleVertexClipboard(evt.keyCode, evt.ctrlKey || evt.commandKey, evt.shiftKey, evt.altKey))
                 {
@@ -299,6 +318,7 @@ namespace UnityEditor.U2D.Animation
             BindToggle("dim", m_Dim, value => m_Dim = value);
             BindToggle("isolate", m_Isolate, value => { m_Isolate = value; RestoreVisibility(); });
             BindToggle("deformed", m_Deformed, value => m_Deformed = value);
+            BindToggle("allowOutsideBounds", m_AllowOutsideBounds, value => m_AllowOutsideBounds = value);
             BindToggle("masked", m_Masked, value => { m_Masked = value; UpdateClippingPreview(); });
             BindToggle("onTop", m_OnTop, value =>
             {
@@ -513,12 +533,71 @@ namespace UnityEditor.U2D.Animation
             return null;
         }
 
+        internal void BeginSkinningSuspension()
+        {
+            if (m_SuspendingSkinning || m_TraceActive || pasteActive || m_Session.mode == 3) return;
+            if (m_Session.dirty && !Apply()) return;
+            EndSymmetryAxisDrag(false);
+            m_Session.EndUndoOperation();
+            RestoreScene();
+            try
+            {
+                SceneSkinningSuspension.Begin(m_Renderer, this);
+                m_SuspendingSkinning = SceneSkinningSuspension.IsSuspended(m_Renderer);
+                m_Error = null;
+            }
+            catch (Exception ex) { m_Error = ex.Message; }
+            UpdateUI();
+        }
+
+        internal void EndSkinningSuspension(bool resume)
+        {
+            if (!m_SuspendingSkinning) return;
+            try
+            {
+                if (resume) SceneSkinningSuspension.Resume();
+                else SceneSkinningSuspension.Cancel();
+                m_ReloadBindingAfterUndo |= resume;
+                m_SuspendingSkinning = false;
+                ReloadSuspensionMesh();
+                m_Error = null;
+            }
+            catch (Exception ex) { m_Error = ex.Message; }
+            UpdateUI();
+            SceneView.RepaintAll();
+        }
+
+        void ReloadSuspensionMesh()
+        {
+            RefreshSource();
+            if (m_Source == null) return;
+            var mode = m_Session.mode;
+            var symmetry = m_Session.symmetry;
+            m_Session.Load(m_Renderer.sprite, m_Source);
+            m_Session.mode = mode;
+            m_Session.symmetry = symmetry;
+        }
+
         void UpdateUI()
         {
             if (m_SaveInProgress) return;
             if (rootVisualElement.Q<VisualElement>("commands") == null) return;
+            if (m_SuspendingSkinning && !SceneSkinningSuspension.IsSuspended(m_Renderer))
+            {
+                m_SuspendingSkinning = false;
+                ReloadSuspensionMesh();
+            }
             var blocked = BlockReason();
-            rootVisualElement.Q<VisualElement>("mainControls").SetEnabled(blocked == null);
+            var suspend = rootVisualElement.Q("suspendControls");
+            suspend?.EnableInClassList("mesh-hidden", m_Source?.clipping != null);
+            rootVisualElement.Q("suspendSkinning")?.EnableInClassList("mesh-hidden", m_SuspendingSkinning);
+            rootVisualElement.Q("resumeSkinning")?.EnableInClassList("mesh-hidden", !m_SuspendingSkinning);
+            rootVisualElement.Q("cancelSkinning")?.EnableInClassList("mesh-hidden", !m_SuspendingSkinning);
+            var skin = m_Renderer != null ? m_Renderer.GetComponent<SpriteSkin>() : null;
+            rootVisualElement.Q("suspendSkinning")?.SetEnabled(blocked == null && !SceneSkinningSuspension.active &&
+                !m_TraceActive && !pasteActive && m_Session.mode != 3 && skin != null && skin.isActiveAndEnabled &&
+                !AnimationMode.InAnimationMode());
+            rootVisualElement.Q<VisualElement>("mainControls").SetEnabled(blocked == null && !m_SuspendingSkinning);
             foreach (var name in new[] { "detail", "alpha", "traceOK" })
                 rootVisualElement.Q(name)?.SetEnabled(blocked == null);
             rootVisualElement.Q<VisualElement>("commands").tooltip = blocked;
@@ -561,6 +640,7 @@ namespace UnityEditor.U2D.Animation
 
         void UpdateScenePose()
         {
+            if (m_SuspendingSkinning) return;
             if ((!m_Deformed && !m_Masked) || m_TraceActive || m_SaveInProgress || m_MeshMutationInProgress ||
                 m_Renderer == null || m_Renderer.sprite == null || EditorApplication.timeSinceStartup < m_NextPoseRepaint) return;
             m_NextPoseRepaint = EditorApplication.timeSinceStartup + 1.0 / 30.0;
@@ -573,6 +653,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnSelectionChanged()
         {
+            if (m_SuspendingSkinning) return;
             if (m_SaveInProgress) return;
             if (m_Renderer == null || m_SelectionRestoreQueued || m_SelectionObjects == null ||
                 Selection.objects.SequenceEqual(m_SelectionObjects)) return;
@@ -606,6 +687,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnUndoRedo()
         {
+            if (m_SuspendingSkinning) return;
             if (m_SaveInProgress) return;
             EndSymmetryAxisDrag(false, false);
             if (pasteActive) CancelMeshPaste();
@@ -617,6 +699,7 @@ namespace UnityEditor.U2D.Animation
             if (m_Source?.rig == null && m_AppliedUndoGroup >= 0 && new SceneMeshSource(m_Renderer.sprite).Fingerprint() != m_LastImporterFingerprint)
                 AssetDatabase.ImportAsset(m_Session.assetPath, ImportAssetOptions.ForceUpdate);
             RefreshSource();
+            if (m_ReloadBindingAfterUndo && !m_Session.dirty) ReloadSuspensionMesh();
             m_Session.EndUndoOperation();
             m_BoxSelecting = false;
             SceneView.RepaintAll();
@@ -896,6 +979,16 @@ namespace UnityEditor.U2D.Animation
 
         void BeforeSceneGUI(SceneView scene)
         {
+            if (m_SuspendingSkinning)
+            {
+                toolScope.Restore();
+                if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)
+                {
+                    EndSkinningSuspension(false);
+                    Event.current.Use();
+                }
+                return;
+            }
             if (m_SaveInProgress) return;
             if (BlockReason() != null)
             {
@@ -983,6 +1076,7 @@ namespace UnityEditor.U2D.Animation
 
         void OnSceneGUI(SceneView scene)
         {
+            if (m_SuspendingSkinning) return;
             ReleasePrimaryScenePress(m_InputGUI, m_PrimaryInputControl);
             m_PrimaryInputControl = 0;
             if (m_TraceInProgress || m_MeshMutationInProgress || m_SaveInProgress) return;
@@ -1110,7 +1204,8 @@ namespace UnityEditor.U2D.Animation
                     if (m_Session.mode != 3) m_View.mode = SpriteMeshViewMode.EditGeometry;
                 } : (Action<Vector2>)null;
                 m_Controller.newGeometryVerticesRemoved = m_Session.symmetryHullActive ? m_Session.RemoveSymmetryVertices : (Action<int[]>)null;
-                m_Controller.newGeometryVerticesMoved = m_Session.symmetryHullActive ? m_Session.MoveSymmetryVertices : (Action<int[], Vector2[]>)null;
+                m_Controller.newGeometryVerticesMoved = m_Session.symmetryHullActive ?
+                    (indices, positions) => m_Session.MoveSymmetryVertices(indices, positions, m_AllowOutsideBounds) : (Action<int[], Vector2[]>)null;
                 m_Controller.newGeometryPreview = m_Session.symmetryHullActive ? PreviewSymmetryHull : (Action)null;
                 m_View.mode = m_TraceActive ? SpriteMeshViewMode.EditGeometry :
                     effectiveMode == 3 ? SpriteMeshViewMode.NewGeometry :
@@ -1129,6 +1224,8 @@ namespace UnityEditor.U2D.Animation
                     displayedMesh = deformation?.mesh ?? m_Session.mesh;
                     m_Controller.spriteMeshData = displayedMesh;
                     m_Controller.frame = deformation?.editingFrame ?? new Rect(Vector2.zero, m_Session.mesh.frame.size);
+                    m_Controller.restrictToFrame = m_Session.restrictToFrame;
+                    m_Controller.restrictMovementToFrame = !m_AllowOutsideBounds;
                     ConfigureSymmetryEditing(deformation);
                     // Controller edits also triangulate and may pump nested Scene GUI events.
                     // Keep partial vertices/indices private until the controller returns.
@@ -1192,7 +1289,7 @@ namespace UnityEditor.U2D.Animation
                 m_SymmetrySourceMutated = true;
                 var source = positions.Select((p, i) => deformation == null ? p :
                     deformation.SourcePosition(p, deformation.mesh.vertexWeights[indices[i]])).ToArray();
-                m_Session.MoveSymmetricGeometry(indices, source);
+                m_Session.MoveSymmetricGeometry(indices, source, m_AllowOutsideBounds);
             } : (Action<int[], Vector2[]>)null;
             m_Controller.geometrySymmetryPreview = active ? () => PreviewSymmetricGeometry(deformation) : (Action)null;
             m_Controller.geometryHoveredVertexPartner = active ? m_Session.FindSymmetryPartner : (Func<int, int>)null;
@@ -1515,8 +1612,9 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        internal static Rect ImageBounds(SpriteMeshData source, SpriteMeshData deformed)
+        internal static Rect ImageBounds(SpriteMeshData source, SpriteMeshData deformed, bool remapped = false)
         {
+            if (deformed == null && remapped) deformed = source;
             if (deformed == null || deformed.vertexCount == 0) return new Rect(Vector2.zero, source.frame.size);
             var min = deformed.vertices[0];
             var max = min;
@@ -1531,7 +1629,7 @@ namespace UnityEditor.U2D.Animation
         void DrawImageBounds(Matrix4x4 matrix, SceneView scene, SpriteMeshData deformed = null)
         {
             if (m_Source?.clipping != null) return;
-            var bounds = ImageBounds(m_Session.mesh, deformed);
+            var bounds = ImageBounds(m_Session.mesh, deformed, m_Source.bindingPose != null);
             m_ImageBoundsPoints[0] = new Vector3(bounds.xMin, bounds.yMin, 0f);
             m_ImageBoundsPoints[1] = new Vector3(bounds.xMax, bounds.yMin, 0f);
             m_ImageBoundsPoints[2] = new Vector3(bounds.xMax, bounds.yMax, 0f);
@@ -1653,7 +1751,7 @@ namespace UnityEditor.U2D.Animation
             var displayed = deformedMesh ?? sourceMesh;
             // New has no triangles until the hull closes. Keep a drawable source image
             // even when Update Bindings saved a custom texture mapping.
-            if (!authoringHull && displayed.indices.Length >= 3 && (deformedMesh != null || bindingPose != null))
+            if (!authoringHull && displayed.indices.Length >= 3)
             {
                 imageMesh.vertices = Array.ConvertAll(displayed.vertices, vertex => (Vector3)vertex);
                 imageMesh.uv = sourceMesh.vertices.Select((vertex, i) =>

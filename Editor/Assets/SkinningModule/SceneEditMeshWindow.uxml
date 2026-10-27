@@ -8,6 +8,11 @@
     </ui:VisualElement>
     <ui:VisualElement name="commands" class="mesh-body">
       <ui:VisualElement class="mesh-block">
+        <ui:VisualElement name="suspendControls" class="mesh-row">
+          <ui:Button name="suspendSkinning" text="Suspend Skinning" class="mesh-last-action" tooltip="Freeze the current shape and move the image with the ordinary Move handle." />
+          <ui:Button name="resumeSkinning" text="Resume Skinning" class="mesh-hidden" />
+          <ui:Button name="cancelSkinning" text="Cancel" class="mesh-hidden mesh-last-action" />
+        </ui:VisualElement>
         <ui:VisualElement name="mainControls">
           <ui:VisualElement class="mesh-row">
             <ui:Button name="copy" text="Copy" tooltip="Copy the complete source mesh, including its outline. Bones and weights are excluded." />
@@ -24,15 +29,16 @@
             <ui:Button name="generate" text="Generate" />
             <ui:Button name="trace" text="Trace" />
           </ui:VisualElement>
-          <ui:VisualElement class="mesh-row mesh-options">
+          <ui:VisualElement class="mesh-row mesh-options mesh-options-grid">
             <ui:Toggle name="symmetry" text="Symmetry" tooltip="Mirror New/Create geometry and edit mirrored vertex pairs across the source axis. Drag either triangle to move the axis; double-click to reset to center. Points near the axis snap to it." class="mesh-option-toggle" />
-            <ui:Toggle name="onTop" text="On Top" value="true" tooltip="Show the edited image in front of other sprites. Disable to use its normal sorting layer and order." class="mesh-option-toggle" />
+            <ui:Toggle name="onTop" text="On Top" value="true" tooltip="Show the edited image in front of other sprites. Disable to use its normal sorting layer and order." class="mesh-option-toggle mesh-option-column-2" />
+            <ui:Toggle name="allowOutsideBounds" text="Outside Bounds" tooltip="Allow vertex and edge drags beyond the sprite bounding box. The box remains visible. New vertex placement is unchanged." class="mesh-option-toggle mesh-option-span-2" />
           </ui:VisualElement>
-          <ui:VisualElement class="mesh-row mesh-options">
+          <ui:VisualElement class="mesh-row mesh-options mesh-options-grid">
             <ui:Toggle name="deformed" text="Deformed" tooltip="Follow the current scene bone pose while keeping edits in source coordinates." class="mesh-option-toggle" />
-            <ui:Toggle name="triangles" text="Triangles" value="true" class="mesh-option-toggle" />
-            <ui:Toggle name="dim" text="Dim" class="mesh-option-toggle" />
-            <ui:Toggle name="isolate" text="Isolate" class="mesh-option-toggle" />
+            <ui:Toggle name="triangles" text="Triangles" value="true" class="mesh-option-toggle mesh-option-column-2" />
+            <ui:Toggle name="dim" text="Dim" class="mesh-option-toggle mesh-option-column-3" />
+            <ui:Toggle name="isolate" text="Isolate" class="mesh-option-toggle mesh-option-column-4" />
           </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement name="traceSettings" class="mesh-hidden">

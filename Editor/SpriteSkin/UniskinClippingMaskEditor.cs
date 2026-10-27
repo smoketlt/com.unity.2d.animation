@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.U2D.Animation;
 using UnityEngine.UIElements;
+using UnityEditor.UIElements;
 
 namespace UnityEditor.U2D.Animation
 {
@@ -19,6 +20,7 @@ namespace UnityEditor.U2D.Animation
             var weights = new Button(() => Run(2)) { name = "uniskinEditWeights" };
             AddIcon(weights, "Weights"); weights.Add(new Label("Edit Weights") { pickingMode = PickingMode.Ignore });
             root.Add(mesh); root.Add(weights);
+            root.Add(new PropertyField(serializedObject.FindProperty("invert"), "Invert") { name = "uniskinClippingInvert" });
             void Refresh()
             {
                 var mask = target as UniskinClippingMask;

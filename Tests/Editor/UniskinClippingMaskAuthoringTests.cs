@@ -136,6 +136,40 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void ClippingWeightPreviewKeepsGeometryAndUsesItsOwnWindowTitle()
+        {
+            DrawContour();
+            var window = ScriptableObject.CreateInstance(Type("SceneEditWeightsWindow")); m_Transient.Add(window);
+            window.GetType().GetField("m_SettingsLoaded", Flags).SetValue(window, false);
+            window.GetType().GetField("m_DiscardOnClose", Flags).SetValue(window, true);
+            window.GetType().GetField("m_Renderer", Flags).SetValue(window, m_Mask.contourRenderer);
+            var source = Source();
+            window.GetType().GetField("m_Source", Flags).SetValue(window, source);
+            Call(Get(window, "m_Session"), "Load", m_Mask.contour.sprite, source);
+            Call(window, "CreateGUI");
+            ((EditorWindow)window).ShowPopup();
+            var ui = ((EditorWindow)window).rootVisualElement;
+            Assert.AreEqual("Edit Cliping Weights", ((EditorWindow)window).titleContent.text);
+            Assert.AreEqual("Edit Cliping Weights", ui.Q<Label>("windowTitle").text);
+            var triangles = ui.Q<Toggle>("triangles"); triangles.value = true;
+            ui.Q<Toggle>("preview").value = true;
+            Assert.IsTrue((bool)Get(window, "m_Preview"));
+            Assert.IsTrue((bool)Get(window, "showWeightGeometry"));
+            Assert.IsTrue(triangles.value);
+            ui.Q<Toggle>("preview").value = false;
+            Assert.IsTrue((bool)Get(window, "showWeightGeometry"));
+            var body = m_Mask.GetComponent<SpriteRenderer>();
+            var ordinary = Activator.CreateInstance(Type("SceneMeshSource"), Flags, null, new object[] { body.sprite, true }, null);
+            window.GetType().GetField("m_Source", Flags).SetValue(window, ordinary);
+            Call(window, "UpdateWindowTitle");
+            Assert.AreEqual("Edit Weights", ui.Q<Label>("windowTitle").text);
+            ui.Q<Toggle>("preview").value = true;
+            Assert.IsFalse((bool)Get(window, "showWeightGeometry"));
+            ui.Q<Toggle>("preview").value = false;
+            Assert.IsTrue((bool)Get(window, "showWeightGeometry"));
+        }
+
+        [Test]
         public void BoneInspectorAcceptsMultipleBonesFromOneCharacterAndRejectsMixedObjects()
         {
             var bones = m_Mask.character.bones.Where(link => link.transform != null).Take(2).ToArray();
@@ -306,8 +340,9 @@ namespace UnityEditor.U2D.Animation.Tests
             Assert.AreSame(Resources.Load<Material>("UniskinMask"), m_Mask.GetComponent<SpriteRenderer>().sharedMaterial);
         }
 
-        [Test]
-        public void ClosingDrawnContourSavesOnlyTheNewPolygonAndReenablesClipping()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ClosingDrawnContourSavesOnlyTheNewPolygonAndReenablesClipping(bool outsideFrame)
         {
             var bodyData = m_Rig.authoringData;
             Utility("SceneEditMeshWindow", "OpenForRenderer", m_Mask.contourRenderer, false);
@@ -315,17 +350,51 @@ namespace UnityEditor.U2D.Animation.Tests
             try
             {
                 var session = Get(window, "m_Session"); var mesh = Get(session, "mesh");
-                Call(mesh, "AddVertex", new Vector2(2, 2), default(BoneWeight));
-                Call(mesh, "AddVertex", new Vector2(30, 4), default(BoneWeight));
-                Call(mesh, "AddVertex", new Vector2(16, 30), default(BoneWeight));
+                Assert.IsFalse((bool)Get(session, "restrictToFrame"));
+                var points = outsideFrame
+                    ? new[] { new Vector2(-40, -20), new Vector2(70, -10), new Vector2(16, 90) }
+                    : new[] { new Vector2(2, 2), new Vector2(30, 4), new Vector2(16, 30) };
+                foreach (var point in points) Call(mesh, "AddVertex", point, default(BoneWeight));
                 Call(mesh, "SetEdges", new[] { new int2(0, 1), new int2(1, 2) });
                 Assert.IsTrue((bool)Call(window, "RequestClose"));
                 Assert.IsTrue(m_Mask.contour.hasGeometry); Assert.AreEqual(3, m_Mask.contour.sprite.vertices.Length);
                 Assert.IsTrue(m_Mask.contourRenderer.enabled);
+                var reloaded = Call(Source(), "ReadMesh", m_Mask.contour.sprite);
+                CollectionAssert.AreEquivalent(points, (Vector2[])Get(reloaded, "vertices"));
+                var sprite = m_Mask.contour.sprite;
+                var local = points.Select(point => (point - sprite.pivot) / sprite.pixelsPerUnit).ToArray();
+                foreach (var point in local)
+                    Assert.That(sprite.vertices.Any(vertex => Vector2.Distance(vertex, point) < .0001f), Is.True);
                 Assert.AreEqual(bodyData, m_Rig.authoringData);
                 CollectionAssert.AreEqual(m_PsbMeta, File.ReadAllBytes(m_PsbPath + ".meta"));
             }
             finally { if (window != null) { ((EditorWindow)window).DiscardChanges(); ((EditorWindow)window).Close(); } }
+        }
+
+        [Test]
+        public void OnlyClippingSessionsAllowExternalControllerAndSymmetryPoints()
+        {
+            var session = ScriptableObject.CreateInstance(Type("SceneMeshSession")); m_Transient.Add(session);
+            var controller = Activator.CreateInstance(Type("SpriteMeshController"));
+            var frame = new Rect(0, 0, 32, 32);
+            controller.GetType().GetProperty("frame").SetValue(controller, frame);
+            var outside = new Vector2(-40, 90);
+            Assert.AreEqual(new Vector2(0, 32), Call(controller, "ClampToFrame", outside));
+            Call(session, "Load", m_Mask.contour.sprite, Source());
+            Assert.IsFalse((bool)Get(session, "restrictToFrame"));
+            controller.GetType().GetProperty("restrictToFrame").SetValue(controller, Get(session, "restrictToFrame"));
+            Assert.AreEqual(outside, Call(controller, "ClampToFrame", outside));
+            Assert.AreEqual(outside, Call(session, "SymmetryHullPoint", outside));
+            Call(session, "SetSymmetryAxis", -50f);
+            Assert.AreEqual(-50f, Get(session, "symmetryAxis"));
+            Assert.AreEqual(new Vector2(-100, 90), Call(session, "SymmetryHullPoint", new Vector2(0, 90)));
+
+            var body = m_Mask.GetComponent<SpriteRenderer>();
+            var source = Activator.CreateInstance(Type("SceneMeshSource"), Flags, null, new object[] { body.sprite, true }, null);
+            Call(session, "Load", body.sprite, source);
+            Assert.IsTrue((bool)Get(session, "restrictToFrame"));
+            Call(session, "SetSymmetryAxis", -50f);
+            Assert.AreEqual(0f, Get(session, "symmetryAxis"));
         }
 
         [Test]

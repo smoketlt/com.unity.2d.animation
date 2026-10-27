@@ -78,6 +78,7 @@ namespace UnityEditor.U2D.Animation
             SceneEditBoneWindow opening = null;
             try
             {
+                if (SceneSkinningSuspension.active) throw new InvalidOperationException("Resume or cancel Suspend Skinning first.");
                 if (renderer == null || renderer.sprite == null || !renderer.gameObject.scene.IsValid())
                     throw new InvalidOperationException("Select a SpriteRenderer with an imported Sprite in the scene.");
                 if (EditorApplication.isPlayingOrWillChangePlaymode)
