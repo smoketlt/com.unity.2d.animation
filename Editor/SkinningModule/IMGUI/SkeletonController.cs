@@ -61,6 +61,7 @@ namespace UnityEditor.U2D.Animation
         public IBoneSelection selection { get; set; }
         public bool editBindPose { get; set; }
         public bool suppressBoneSelection { get; set; }
+        public Func<BoneCache[], bool> confirmBoneRemoval { get; set; }
 
         public SkeletonCache skeleton
         {
@@ -384,9 +385,10 @@ namespace UnityEditor.U2D.Animation
         {
             if (view.DoRemoveBone())
             {
+                BoneCache[] bonesToRemove = selectedBones;
+                if (confirmBoneRemoval != null && !confirmBoneRemoval(bonesToRemove)) return;
                 using (skinningCache.UndoScope(TextContent.removeBone))
                 {
-                    BoneCache[] bonesToRemove = selectedBones;
                     ConstraintsTool.RemoveConstraintsForBones(bonesToRemove);
                     m_Skeleton.DestroyBones(bonesToRemove);
 

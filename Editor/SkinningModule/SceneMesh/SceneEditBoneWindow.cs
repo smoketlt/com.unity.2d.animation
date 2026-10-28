@@ -190,7 +190,8 @@ namespace UnityEditor.U2D.Animation
             m_Controller = new SkeletonController
             {
                 view = m_View, selection = m_Session.cache.skeletonSelection,
-                skeleton = m_Session.skeleton, editBindPose = true
+                skeleton = m_Session.skeleton, editBindPose = true,
+                confirmBoneRemoval = ConfirmBoneRemoval
             };
         }
 
@@ -509,6 +510,7 @@ namespace UnityEditor.U2D.Animation
         {
             var bones = m_Session.cache.skeletonSelection.elements.Where(bone => bone != null && !bone.IsConstraintParent()).ToArray();
             if (bones.Length == 0) return;
+            if (!ConfirmBoneRemoval(bones)) return;
             using (m_Session.cache.UndoScope("Delete Bones"))
             {
                 ConstraintsTool.RemoveConstraintsForBones(bones);
@@ -518,6 +520,9 @@ namespace UnityEditor.U2D.Animation
             }
             UpdateUI(); SceneView.RepaintAll();
         }
+
+        bool ConfirmBoneRemoval(BoneCache[] bones) => SceneBoneDeletionGuard.Confirm(m_Session.cache, bones,
+            message => EditorUtility.DisplayDialog("Delete Weighted Bones", message, "Delete Bones", "Cancel"));
 
         void CancelMode()
         {

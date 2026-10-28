@@ -762,6 +762,52 @@ namespace UnityEditor.U2D.Animation.Tests
 
         [TestCase(false)]
         [TestCase(true)]
+        public void WeightedBoneDeletionRequiresOneExplicitConfirmation(bool accept)
+        {
+            AddBones();
+            var source = Source();
+            var session = Session<SceneBoneSession>();
+            session.Load(m_Renderer.sprite, source);
+            var mesh = session.cache.selectedSprite.GetMesh();
+            var before = JsonUtility.ToJson(mesh);
+            var sourceBefore = m_Rig.authoringData;
+            var bones = session.skeleton.bones;
+            session.cache.skeletonSelection.Select(bones[0], true);
+            var calls = 0;
+            var result = SceneBoneDeletionGuard.Confirm(session.cache, bones, message =>
+            {
+                ++calls;
+                StringAssert.Contains(session.cache.selectedSprite.name, message);
+                StringAssert.Contains("parent does not transfer", message);
+                return accept;
+            });
+            Assert.AreEqual(accept, result);
+            Assert.AreEqual(1, calls, "A batch deletion must show one warning.");
+            Assert.AreEqual(before, JsonUtility.ToJson(mesh));
+            Assert.AreEqual(sourceBefore, m_Rig.authoringData);
+            Assert.AreEqual(2, session.skeleton.bones.Length);
+            Assert.IsTrue(session.cache.skeletonSelection.elements.Contains(bones[0]));
+            Assert.IsFalse(session.dirty);
+        }
+
+        [Test]
+        public void UnweightedBoneDeletionDoesNotWarnAndDisabledWeightsDoNotCount()
+        {
+            AddBones();
+            var session = Session<SceneBoneSession>();
+            session.Load(m_Renderer.sprite, Source());
+            var mesh = session.cache.selectedSprite.GetMesh();
+            var child = session.skeleton.bones.Single(bone => bone.name == "Child");
+            Assert.IsTrue(SceneBoneDeletionGuard.Confirm(session.cache, new[] { child }, message =>
+            { Assert.Fail("An unweighted child must not warn."); return false; }));
+            foreach (var weight in mesh.vertexWeights)
+                foreach (var channel in weight) channel.enabled = false;
+            Assert.IsTrue(SceneBoneDeletionGuard.Confirm(session.cache, session.skeleton.bones, message =>
+            { Assert.Fail("Disabled channels must not warn."); return false; }));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
         public void DeletedBoneSaveUndoRedoRestoresBindingsPosesAndWeights(bool removeParent)
         {
             AddBones();
