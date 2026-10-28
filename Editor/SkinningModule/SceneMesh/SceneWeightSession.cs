@@ -79,7 +79,7 @@ namespace UnityEditor.U2D.Animation
         }
         const string kBindingPrefix = "Uniskin.WeightBindings.v1:";
         [Serializable] sealed class Bindings { public List<Binding> sprites = new List<Binding>(); }
-        [Serializable] sealed class Binding { public string id; public string[] bones; public string[] drawOrder; }
+        [Serializable] sealed class Binding { public string id; public string[] bones; public string[] drawOrder; public bool unbound; }
         [Serializable] sealed class State { public string[] bones; public EditableBoneWeight[] weights; public string[] drawOrder; public Vector2[] positions; public SceneMeshBindingPose bindingPose; }
         [Serializable] sealed class DonorHistory { public int[] edited; public float[] values; }
 
@@ -273,14 +273,17 @@ namespace UnityEditor.U2D.Animation
         {
             var remove = selectedBones.Select(i => mesh.bones[i]).ToArray();
             if (remove.Length == 0) return;
-            if (remove.Length == mesh.boneCount)
-                throw new InvalidOperationException("Keep at least one bound bone so removed weights can be redistributed.");
             using (cache.UndoScope("Remove Mesh Bones"))
             {
                 SetBones(mesh.bones.Except(remove).ToArray());
                 foreach (var weight in mesh.vertexWeights)
                 {
-                    if (mesh.boneCount > 0 && weight.Sum() <= 0)
+                    if (mesh.boneCount == 0)
+                    {
+                        weight.Clear();
+                        continue;
+                    }
+                    if (weight.Sum() <= 0)
                         for (var i = 0; i < Mathf.Min(4, mesh.boneCount); ++i)
                             weight.AddChannel(i, 1f / Mathf.Min(4, mesh.boneCount), true);
                     weight.Normalize();
@@ -577,7 +580,7 @@ namespace UnityEditor.U2D.Animation
             {
                 var bindings = ReadBindings(source.userData);
                 bindings.sprites.RemoveAll(item => item.id == m_Context.spriteId);
-                bindings.sprites.Add(new Binding { id = m_Context.spriteId, bones = cache.hasCharacter ? null : mesh.bones.Select(bone => bone.guid).ToArray(), drawOrder = m_DrawOrder.ToArray() });
+                bindings.sprites.Add(new Binding { id = m_Context.spriteId, bones = cache.hasCharacter ? null : mesh.bones.Select(bone => bone.guid).ToArray(), drawOrder = m_DrawOrder.ToArray(), unbound = !cache.hasCharacter && mesh.boneCount == 0 });
                 var other = source.userData.Split('\n').Where(line => !line.StartsWith(kBindingPrefix)).ToList();
                 other.Add(kBindingPrefix + Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonUtility.ToJson(bindings))));
                 source.userData = string.Join("\n", other);
@@ -587,6 +590,9 @@ namespace UnityEditor.U2D.Animation
             m_Saved = Snapshot();
             m_Fingerprint = Fingerprint(new SceneMeshSource(source.ResolveSprite(m_Context.spriteId)));
         }
+
+        internal static bool IsExplicitlyUnbound(string userData, string spriteId) =>
+            ReadBindings(userData).sprites.Any(binding => binding.id == spriteId && binding.unbound);
 
         static Bindings ReadBindings(string userData)
         {

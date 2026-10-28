@@ -762,6 +762,48 @@ namespace UnityEditor.U2D.Animation.Tests
 
         [TestCase(false)]
         [TestCase(true)]
+        public void RemoveAllMeshBindingsSavesUnweightedStaticMesh(bool lastOnly)
+        {
+            AddBones();
+            var session = Session<SceneWeightSession>();
+            session.Load(m_Renderer.sprite, Source());
+            if (lastOnly)
+            {
+                session.cache.skeletonSelection.Select(session.mesh.bones.Last(), true);
+                session.Remove();
+                session.cache.EndUndoOperation();
+            }
+            var count = session.mesh.boneCount;
+            var weights = session.mesh.vertexWeights.Select(weight => weight.ToBoneWeight(false)).ToArray();
+            var positions = session.mesh.vertices.ToArray();
+            var indices = session.mesh.indices.ToArray();
+            var uv = m_Renderer.sprite.uv;
+            var skeleton = Source().provider.GetDataProvider<ICharacterDataProvider>().GetCharacterData().bones.Select(bone => JsonUtility.ToJson(bone)).ToArray();
+            foreach (var bone in session.mesh.bones) session.cache.skeletonSelection.Select(bone, true);
+            Undo.IncrementCurrentGroup();
+            session.Remove();
+            Assert.AreEqual(0, session.mesh.boneCount);
+            Assert.IsTrue(session.mesh.vertexWeights.All(weight => weight.Sum() == 0));
+            Undo.FlushUndoRecordObjects(); Undo.PerformUndo(); session.context.RestoreAfterUndo();
+            Assert.AreEqual(count, session.mesh.boneCount);
+            CollectionAssert.AreEqual(weights, session.mesh.vertexWeights.Select(weight => weight.ToBoneWeight(false)));
+            Undo.PerformRedo(); session.context.RestoreAfterUndo();
+            Assert.AreEqual(0, session.mesh.boneCount);
+            session.Save(Source());
+            var reopened = Session<SceneWeightSession>(); reopened.Load(m_Renderer.sprite, Source());
+            Assert.AreEqual(0, reopened.mesh.boneCount);
+            Assert.IsTrue(reopened.mesh.vertexWeights.All(weight => weight.Sum() == 0));
+            CollectionAssert.AreEqual(positions, reopened.mesh.vertices);
+            CollectionAssert.AreEqual(indices, reopened.mesh.indices);
+            AssertTextureCoordinates(uv, m_Renderer.sprite.uv);
+            Assert.AreEqual(0, m_Renderer.sprite.GetBones().Length);
+            Assert.AreEqual(0, m_Renderer.sprite.GetBindPoses().Length);
+            CollectionAssert.AreEqual(skeleton, Source().provider.GetDataProvider<ICharacterDataProvider>().GetCharacterData().bones.Select(bone => JsonUtility.ToJson(bone)));
+            Assert.AreEqual(2, m_Root.GetComponent<UniskinRigBinding>().bones.Length, "Unbind must retain the character skeleton.");
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
         public void AdditiveBindPreservesZeroAndPositiveWeights(bool mixed)
         {
             AddBones();

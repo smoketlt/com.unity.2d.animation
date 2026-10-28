@@ -223,6 +223,17 @@ namespace UnityEditor.U2D.Animation
 
                 List<SpriteBone> spriteBone = boneDataProvider.GetBones(guid);
                 bool hasBones = spriteBone is { Count: > 0 };
+                // An ordinary Sprite keeps its authoring skeleton when its last
+                // mesh binding is removed. Do not turn its deliberate zero weights
+                // into the rigid first-bone fallback used by geometry replacement.
+                if (SceneWeightSession.IsExplicitlyUnbound(SceneMeshBindingPose.UserData(spriteDataProvider, assetImporter), guid.ToString()) &&
+                    vertices.All(vertex => vertex.boneWeight.weight0 == 0 && vertex.boneWeight.weight1 == 0 &&
+                        vertex.boneWeight.weight2 == 0 && vertex.boneWeight.weight3 == 0))
+                {
+                    sprite.SetBones(Array.Empty<SpriteBone>());
+                    using (var emptyPoses = new NativeArray<Matrix4x4>(0, Allocator.Temp)) sprite.SetBindPoses(emptyPoses);
+                    hasBones = false;
+                }
 
                 if (indices != null && indices.Length > 2 && vertices.Length > 2)
                 {

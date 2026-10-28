@@ -53,6 +53,33 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void RemoveAllOrdinarySpriteBindingsRetainsSkeletonButRendersWithoutBones()
+        {
+            var skeleton = Source().provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(Source().rect.spriteID).Select(bone => JsonUtility.ToJson(bone)).ToArray();
+            var positions = m_Session.mesh.vertices.ToArray();
+            var uv = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path).uv;
+            foreach (var bone in m_Session.mesh.bones) m_Session.cache.skeletonSelection.Select(bone, true);
+            m_Session.Remove();
+            Assert.AreEqual(0, m_Session.mesh.boneCount);
+            Assert.IsTrue(m_Session.mesh.vertexWeights.All(weight => weight.Sum() == 0));
+            m_Session.Save(Source());
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+            Assert.AreEqual(0, sprite.GetBones().Length);
+            Assert.AreEqual(0, sprite.GetBindPoses().Length);
+            CollectionAssert.AreEqual(uv, sprite.uv);
+            CollectionAssert.AreEqual(skeleton, Source().provider.GetDataProvider<ISpriteBoneDataProvider>().GetBones(Source().rect.spriteID).Select(bone => JsonUtility.ToJson(bone)));
+            Object.DestroyImmediate(m_Session);
+            m_Session = ScriptableObject.CreateInstance<SceneWeightSession>(); m_Session.Load(sprite, Source());
+            Assert.AreEqual(0, m_Session.mesh.boneCount);
+            Assert.IsTrue(m_Session.mesh.vertexWeights.All(weight => weight.Sum() == 0));
+            CollectionAssert.AreEqual(positions, m_Session.mesh.vertices);
+            m_Session.Bind(m_Session.context.skeleton.bones[0]);
+            m_Session.Save(Source());
+            Assert.IsFalse(SceneWeightSession.IsExplicitlyUnbound(Source().userData, Source().rect.spriteID.ToString()));
+            Assert.Greater(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path).GetBones().Length, 0);
+        }
+
+        [Test]
         public void WeightClipboardPreservesReselectionOrderAndPastesPairsWithUndo()
         {
             var weights = m_Session.mesh.vertexWeights;
