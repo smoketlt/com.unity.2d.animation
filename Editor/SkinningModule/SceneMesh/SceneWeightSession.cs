@@ -243,11 +243,14 @@ namespace UnityEditor.U2D.Animation
         internal void Bind(BoneCache bone)
         {
             if (bone == null || bone.IsConstraintParent() || mesh.ContainsBone(bone)) return;
+            var firstBinding = mesh.boneCount == 0;
             using (cache.UndoScope("Bind Mesh Bone"))
             {
                 SetBones(mesh.bones.Concat(new[] { bone }).ToArray());
-                // Bind preserves authored positive weights; Auto is an explicit command.
-                m_Context.WithSourcePose(() => cache.selectedSprite.CalculateMissingWeights());
+                // Initialize only the first binding. An additive Bind must preserve
+                // intentional zero weights as well as positive authored channels.
+                if (firstBinding)
+                    m_Context.WithSourcePose(() => cache.selectedSprite.CalculateMissingWeights());
                 Changed();
             }
         }

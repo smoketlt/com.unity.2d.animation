@@ -762,6 +762,36 @@ namespace UnityEditor.U2D.Animation.Tests
 
         [TestCase(false)]
         [TestCase(true)]
+        public void AdditiveBindPreservesZeroAndPositiveWeights(bool mixed)
+        {
+            AddBones();
+            var session = Session<SceneWeightSession>();
+            session.Load(m_Renderer.sprite, Source());
+            var target = session.mesh.bones.Last();
+            var part = session.cache.selectedSprite.GetCharacterPart();
+            part.bones = session.mesh.bones.Where(bone => bone != target).ToArray();
+            session.cache.selectedSprite.UpdateMesh(part.bones);
+            for (var i = 0; i < session.mesh.vertexCount; ++i)
+                session.mesh.vertexWeights[i].SetFromBoneWeight(mixed && i % 2 == 0 ? new BoneWeight { boneIndex0 = 0, weight0 = 1 } : default);
+            var before = session.mesh.vertexWeights.Select(JsonUtility.ToJson).ToArray();
+            var positions = session.mesh.vertices.ToArray();
+            var original = m_Rig.authoringData;
+            session.Bind(target);
+            CollectionAssert.AreEqual(before, session.mesh.vertexWeights.Select(JsonUtility.ToJson));
+            CollectionAssert.AreEqual(positions, session.mesh.vertices);
+            Assert.AreEqual(2, session.mesh.boneCount);
+            Assert.AreEqual(original, m_Rig.authoringData);
+            session.Save(Source());
+            var reopened = Session<SceneWeightSession>();
+            reopened.Load(m_Renderer.sprite, Source());
+            CollectionAssert.AreEqual(session.mesh.bones.Select(bone => bone.guid), reopened.mesh.bones.Select(bone => bone.guid));
+            CollectionAssert.AreEqual(session.mesh.vertexWeights.Select(weight => weight.ToBoneWeight(false)),
+                reopened.mesh.vertexWeights.Select(weight => weight.ToBoneWeight(false)));
+            CollectionAssert.AreEqual(positions, reopened.mesh.vertices);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
         public void WeightedBoneDeletionRequiresOneExplicitConfirmation(bool accept)
         {
             AddBones();
