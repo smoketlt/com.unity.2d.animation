@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
@@ -64,6 +65,7 @@ namespace UnityEditor.U2D.Animation
         bool m_TraceInProgress;
         bool m_MeshMutationInProgress;
         bool m_SaveInProgress;
+        bool m_SourceConflict;
         string m_LastImporterFingerprint;
         double m_NextPoseRepaint;
         string m_MeshClipboard;
@@ -161,9 +163,23 @@ namespace UnityEditor.U2D.Animation
             if (m_SaveInProgress) return false;
             if (m_SuspendingSkinning) EndSkinningSuspension(false);
             rootVisualElement.focusController?.focusedElement?.Blur();
-            if (m_Source != null && m_Session.dirty)
+            if (m_Session != null && m_Session.dirty)
             {
-                if (!Apply()) return false;
+                if (!Apply(false, false))
+                {
+                    int choice = EditorUtility.DisplayDialogComplex("Edit Mesh — Save failed",
+                        m_Error + "\n\nBack Up and Close preserves the staged session in a recovery file and leaves the source unchanged." +
+                        (m_SourceConflict ? " Overwrite Source replaces its mesh and weights with this session after making a backup." : ""),
+                        "Back Up and Close", "Keep Editing", m_SourceConflict ? "Overwrite Source" : "");
+                    if (choice == 1 || (choice == 2 && !m_SourceConflict)) return false;
+                    try { BackUpSession(); }
+                    catch (Exception exception) { ReportError(exception); return false; }
+                    if (choice == 2)
+                    {
+                        if (!Apply(true)) return false;
+                    }
+                    else DiscardChanges();
+                }
             }
             hasUnsavedChanges = false;
             Close();
@@ -231,7 +247,12 @@ namespace UnityEditor.U2D.Animation
                         m_Session.savedMesh = JsonUtility.ToJson(m_Session.mesh);
                     }
                 }
-                catch (Exception exception) { Debug.LogError("Edit Mesh auto-save failed: " + exception.Message); }
+                catch (Exception exception)
+                {
+                    try { BackUpSession(); }
+                    catch (Exception backupException) { Debug.LogError("Edit Mesh recovery backup failed: " + backupException.Message); }
+                    Debug.LogError("Edit Mesh auto-save failed: " + exception.Message);
+                }
             }
             Selection.selectionChanged -= OnSelectionChanged;
             SceneView.beforeSceneGui -= BeforeSceneGUI;
@@ -719,9 +740,31 @@ namespace UnityEditor.U2D.Animation
             base.DiscardChanges();
         }
 
-        bool Apply()
+        [Serializable]
+        internal sealed class RecoveryRecord
+        {
+            public string session;
+            public string currentSource;
+        }
+
+        internal string BackUpSession()
+        {
+            var directory = Path.GetFullPath(Path.Combine(Application.dataPath, "../UserSettings/UniskinMeshRecovery"));
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff") + ".json");
+            var record = new RecoveryRecord { session = EditorJsonUtility.ToJson(m_Session, true) };
+            // An unavailable source must not prevent recovery of the staged mesh.
+            try { record.currentSource = new SceneMeshSource(m_Renderer.sprite).Fingerprint(); }
+            catch (Exception) { }
+            File.WriteAllText(path, JsonUtility.ToJson(record, true));
+            Debug.Log("Edit Mesh recovery session saved to " + path);
+            return path;
+        }
+
+        bool Apply(bool overwriteSource = false, bool reportErrors = true)
         {
             if (m_SaveInProgress) return false;
+            m_SourceConflict = false;
             m_SaveInProgress = true;
             rootVisualElement.SetEnabled(false);
             try
@@ -729,8 +772,11 @@ namespace UnityEditor.U2D.Animation
                 if (BlockReason() != null) throw new InvalidOperationException(BlockReason());
                 if (m_Session.mode == 3) m_Session.FinishNew();
                 var source = new SceneMeshSource(m_Renderer.sprite);
-                if (source.Fingerprint() != m_Session.sourceMesh)
-                    throw new InvalidOperationException("The Sprite asset changed since editing began. Restore the source or undo the pending edits before closing, then reopen the mesh to load the current asset.");
+                if (!overwriteSource && source.Fingerprint() != m_Session.sourceMesh)
+                {
+                    m_SourceConflict = true;
+                    throw new InvalidOperationException("The Sprite asset changed since editing began. Choose which mesh to retain when closing.");
+                }
                 if (source.clipping == null || m_Session.mesh.vertexCount > 0) SceneMeshSource.Validate(m_Session.mesh);
                 ExitTrace();
                 Undo.IncrementCurrentGroup();
@@ -747,7 +793,12 @@ namespace UnityEditor.U2D.Animation
                 SceneView.RepaintAll();
                 return true;
             }
-            catch (Exception ex) { ReportError(ex); return false; }
+            catch (Exception ex)
+            {
+                m_Error = ex.Message;
+                if (reportErrors) ReportError(ex);
+                return false;
+            }
             finally
             {
                 m_SaveInProgress = false;

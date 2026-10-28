@@ -874,7 +874,9 @@ namespace UnityEditor.U2D.Animation
             {
                 foreach (var vertex in vertices)
                     mesh.AddVertex(vertex.position, vertex.boneWeight);
-                mesh.SetIndices(meshProvider.GetIndices(rect.spriteID) ?? Array.Empty<int>());
+                // Providers may return their backing array. Triangle sorting is staged
+                // editing and must never mutate the source before WriteMesh.
+                mesh.SetIndices((int[])(meshProvider.GetIndices(rect.spriteID) ?? Array.Empty<int>()).Clone());
                 mesh.SetEdges(EditorUtilities.ToInt2(meshProvider.GetEdges(rect.spriteID) ?? Array.Empty<Vector2Int>()));
             }
             else if (clipping == null)

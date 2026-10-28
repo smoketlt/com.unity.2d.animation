@@ -17,6 +17,39 @@ namespace UnityEditor.U2D.Animation.Tests
     internal class SceneMeshEditingTests
     {
         [Test]
+        public void RecoveryBackupPreservesStagedMeshWhenSourceIsUnavailable()
+        {
+            var window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
+            string path = null;
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var session = (SceneMeshSession)typeof(SceneEditMeshWindow).GetField("m_Session", flags).GetValue(window);
+            try
+            {
+                session.mesh.SetFrame(new Rect(0, 0, 32, 32));
+                session.CreateMesh();
+                session.mesh.vertices[0] = new Vector2(7, 9);
+                session.sourceMesh = "entry fingerprint";
+                path = window.BackUpSession();
+                var record = JsonUtility.FromJson<SceneEditMeshWindow.RecoveryRecord>(File.ReadAllText(path));
+                var restored = ScriptableObject.CreateInstance<SceneMeshSession>();
+                try
+                {
+                    EditorJsonUtility.FromJsonOverwrite(record.session, restored);
+                    Assert.AreEqual(JsonUtility.ToJson(session.mesh), JsonUtility.ToJson(restored.mesh));
+                    Assert.AreEqual(session.sourceMesh, restored.sourceMesh);
+                    Assert.IsTrue(restored.pendingCreation);
+                }
+                finally { Object.DestroyImmediate(restored); }
+            }
+            finally
+            {
+                window.DiscardChanges();
+                Object.DestroyImmediate(window);
+                if (path != null) File.Delete(path);
+            }
+        }
+
+        [Test]
         public void ImageBoundsFollowDeformedVerticesAndReturnToSourceFrame()
         {
             var source = new SpriteMeshData();
@@ -1690,6 +1723,10 @@ namespace UnityEditor.U2D.Animation.Tests
                 Assert.IsFalse(reopened.WriteMesh(loaded), "An identical provider payload must skip Apply and reimport.");
                 CollectionAssert.AreEqual(savedMeta, File.ReadAllBytes(path + ".meta"));
                 Assert.AreEqual(savedFingerprint, reopened.Fingerprint());
+
+                var staged = reopened.ReadMesh(AssetDatabase.LoadAssetAtPath<Sprite>(path));
+                staged.indices[0] = (staged.indices[0] + 1) % staged.vertexCount;
+                Assert.AreEqual(savedFingerprint, reopened.Fingerprint(), "Staged triangle edits must not mutate provider backing arrays.");
 
                 // Unity's approximate Vector2 == would lose this legitimate small edit.
                 loaded.vertices[0] += new Vector2(0.000002f, 0);
