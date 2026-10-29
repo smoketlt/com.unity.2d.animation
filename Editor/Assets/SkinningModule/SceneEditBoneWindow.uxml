@@ -28,8 +28,13 @@
             </ui:Button>
           </ui:VisualElement>
           <ui:VisualElement class="bone-length-size-row">
-            <uie:FloatField name="boneLength" label="Length" is-delayed="true" tooltip="Bone length in original source pixels." />
-            <uie:FloatField name="boneIconSize" label="Size" is-delayed="true" tooltip="Icon display size in screen points (4–128). Available for custom icons." />
+            <uie:FloatField name="boneLength" label="Length" is-delayed="false" tooltip="Bone length in original source pixels." />
+            <uie:FloatField name="boneIconSize" label="Size" is-delayed="false" tooltip="Icon display size in screen points (4–128). Available for custom icons." />
+            <ui:Button name="adjust" text="Adjust" tooltip="Move or rotate bones while preserving meshes and child poses. Click again to save. Esc cancels." />
+          </ui:VisualElement>
+          <ui:VisualElement name="adjustProperties" class="mesh-hidden">
+            <uie:Vector2Field name="adjustPosition" label="Position" tooltip="Adjusted joint position in source pixels. Meshes and child poses are preserved." />
+            <uie:FloatField name="adjustRotation" label="Rotation" tooltip="Adjusted bone angle in degrees. Meshes and child poses are preserved." />
           </ui:VisualElement>
         </ui:VisualElement>
       </ui:VisualElement>

@@ -175,6 +175,22 @@ namespace UnityEditor.U2D.Animation
                     field.Q(className: "unity-base-field__label").style.minWidth = Px(fieldName == "boneLength" ? 52 : 30);
                 }
                 root.Q("boneIconSize").style.marginLeft = Px(8);
+                foreach (var fieldName in new[] { "adjustPosition", "adjustRotation" })
+                {
+                    var field = root.Q(fieldName);
+                    if (field == null) continue;
+                    field.style.height = Px(20); field.style.marginBottom = Px(4);
+                    field.Q(className: "unity-base-field__label").style.minWidth = Px(52);
+                }
+                var adjust = root.Q<Button>("adjust");
+                if (adjust != null)
+                {
+                    root.Q("boneLength").style.flexBasis = Px(145);
+                    adjust.style.width = adjust.style.minWidth = Px(66);
+                    adjust.style.height = Px(20);
+                    adjust.style.marginLeft = Px(6);
+                    adjust.style.paddingLeft = adjust.style.paddingRight = Px(5);
+                }
             }
             options?.Query(className: "unity-toggle__checkmark").ForEach(check => check.style.width = check.style.height = Px(14));
             options?.Query(className: "unity-toggle__text").ForEach(label => label.style.marginLeft = Px(4));

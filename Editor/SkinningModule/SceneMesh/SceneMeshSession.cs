@@ -819,7 +819,7 @@ namespace UnityEditor.U2D.Animation
         public bool hasAuthoredMesh => meshProvider.GetVertices(rect.spriteID)?.Length >= 3 &&
             meshProvider.GetIndices(rect.spriteID)?.Length >= 3;
 
-        public SceneMeshSource(Sprite sprite, bool useRig = true)
+        public SceneMeshSource(Sprite sprite, bool useRig = true, bool validateClippingImage = true)
         {
             clipping = useRig ? UniskinClippingMaskUtility.Find(sprite) : null;
             assetPath = UniskinRigUtility.SourcePath(sprite);
@@ -835,7 +835,7 @@ namespace UnityEditor.U2D.Animation
             rig = useRig ? UniskinRigUtility.FindAtSource(assetPath) : null;
             if (clipping != null)
             {
-                UniskinClippingMaskUtility.CheckSource(clipping);
+                UniskinClippingMaskUtility.CheckSource(clipping, validateClippingImage);
                 rig = clipping.rig;
                 provider = new UniskinRigDataProvider(clipping, provider);
             }

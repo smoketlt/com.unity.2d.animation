@@ -70,6 +70,7 @@ namespace UnityEditor.U2D.Animation
             public SpriteBone[] characterBones;
             public CharacterData character;
             public BoneIconUtility.Entry[] icons;
+            public string bindingData;
         }
 
         internal SkeletonCache skeleton => cache.GetEffectiveSkeleton(cache.selectedSprite);
@@ -247,7 +248,7 @@ namespace UnityEditor.U2D.Animation
             m_Saved = SourceSnapshot();
         }
 
-        Dictionary<string, (Transform transform, float length)> FindSceneBindings(SpriteRenderer renderer)
+        internal Dictionary<string, (Transform transform, float length)> FindSceneBindings(SpriteRenderer renderer)
         {
             var root = PrefabUtility.GetNearestPrefabInstanceRoot(renderer.gameObject);
             var host = root != null ? root.transform : renderer.transform.root;
@@ -409,7 +410,7 @@ namespace UnityEditor.U2D.Animation
                     indices = source.meshProvider.GetIndices(rect.spriteID), edges = source.meshProvider.GetEdges(rect.spriteID)
                 }).ToArray(),
                 character = source.provider.GetDataProvider<ICharacterDataProvider>()?.GetCharacterData() ?? default,
-                icons = BoneIconUtility.Read(source.userData)
+                icons = BoneIconUtility.Read(source.userData), bindingData = source.userData
             });
         }
 
@@ -536,6 +537,81 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
+        internal Dictionary<string, Quaternion> SourceRotations() => skeleton.bones.ToDictionary(bone => bone.guid, bone => SourcePose(bone).pose.rotation);
+
+        internal Dictionary<string, Matrix4x4> SourceFrames() => skeleton.bones.ToDictionary(bone => bone.guid,
+            bone => Matrix4x4.TRS(SourcePose(bone).pose.position, SourcePose(bone).pose.rotation, Vector3.one));
+
+        internal void AdjustRotation(BoneCache bone, Quaternion rotation) => AdjustPose(bone, bone.position, rotation);
+
+        internal void AdjustPose(BoneCache bone, Vector3 position, Quaternion rotation)
+        {
+            if (bone == null || bone.IsConstraintParent() || !skeleton.Contains(bone)) return;
+            using (cache.UndoScope("Adjust Bone Axes"))
+            {
+                var children = bone.GetChildrenWoldPose();
+                bone.position = position;
+                bone.rotation = rotation;
+                bone.SetChildrenWorldPose(children);
+                Changed();
+            }
+        }
+
+        internal void SaveAdjusted(SceneMeshSource source, SpriteRenderer renderer, Dictionary<string, Quaternion> baseline, int adjustmentUndoGroup = -1)
+            => SaveAdjusted(source, renderer, baseline.ToDictionary(pair => pair.Key, pair =>
+                Matrix4x4.TRS(SourceFrames()[pair.Key].GetColumn(3), pair.Value, Vector3.one)), adjustmentUndoGroup);
+
+        internal void SaveAdjusted(SceneMeshSource source, SpriteRenderer renderer, Dictionary<string, Matrix4x4> baseline, int adjustmentUndoGroup = -1)
+        {
+            if (AnimationMode.InAnimationMode()) throw new InvalidOperationException("Stop animation preview before applying Adjust.");
+            var plan = CreateAdjustmentPlan(source, baseline);
+            if (plan == null) return;
+            cache.EndUndoOperation();
+            Undo.IncrementCurrentGroup();
+            var group = Undo.GetCurrentGroup();
+            try
+            {
+                Save(source, plan);
+                plan.ApplyScenePoses();
+                using (cache.UndoScope("Refresh Adjusted Bone Pose"))
+                {
+                    var pose = skeleton.bones.Select(SourcePose).ToArray();
+                    skeleton.SetWorldPose(pose);
+                    skeleton.SetDefaultPose();
+                    if (cache.hasCharacter) cache.SyncSpriteSheetSkeletons();
+                    scenePoseCaptured = false;
+                    m_SceneBindings = null;
+                    var refreshed = new SceneMeshSource(renderer.sprite);
+                    CaptureScenePose(renderer, refreshed.rect.rect);
+                    sourceFingerprint = Fingerprint(refreshed);
+                }
+                if (source.rig == null) SceneSkinningSuspension.TrackNativeSource(source.importer);
+                Undo.FlushUndoRecordObjects();
+                Undo.SetCurrentGroupName("Adjust Bone Axes");
+                Undo.CollapseUndoOperations(adjustmentUndoGroup >= 0 ? adjustmentUndoGroup : group);
+            }
+            catch
+            {
+                Undo.RevertAllDownToGroup(group);
+                RestoreAfterUndo();
+                throw;
+            }
+        }
+
+        internal SceneBoneAdjustPlan CreateAdjustmentPlan(SceneMeshSource source, Dictionary<string, Matrix4x4> baseline)
+        {
+            var deltas = SourceFrames().Where(pair => baseline.ContainsKey(pair.Key) && pair.Value != baseline[pair.Key])
+                .ToDictionary(pair => pair.Key, pair =>
+                {
+                    var delta = baseline[pair.Key].inverse * pair.Value;
+                    delta.m03 /= source.provider.pixelsPerUnit;
+                    delta.m13 /= source.provider.pixelsPerUnit;
+                    delta.m23 /= source.provider.pixelsPerUnit;
+                    return delta;
+                });
+            return deltas.Count == 0 ? null : SceneBoneAdjustPlan.Create(source, deltas);
+        }
+
         internal static bool CanSetParent(BoneCache child, BoneCache parent)
         {
             if (child == null || child.IsConstraintParent() || (parent != null && parent.skeleton != child.skeleton)) return false;
@@ -596,13 +672,14 @@ namespace UnityEditor.U2D.Animation
             return pixelsToWorld * localToWorld.inverse;
         }
 
-        internal void Save(SceneMeshSource source)
+        internal void Save(SceneMeshSource source, SceneBoneAdjustPlan adjustment = null)
         {
             if (Fingerprint(source) != sourceFingerprint)
                 throw new InvalidOperationException("The source asset changed while Edit Bones was open. Revert and reopen it to load the latest data.");
             if (!dirty) return;
             var renames = SceneBoneRenamePlan.Create(source, skeleton);
             Undo.RegisterCompleteObjectUndo(source.saveTarget, "Save Sprite Bones");
+            adjustment?.WriteBindings(source);
             WithSourcePose(() => SkinningModule.ApplySceneBoneChanges(cache, source.provider, initializeMissingWeights: !skeletonOnly));
             source.userData = BoneIconUtility.Write(source.userData, BoneIconUtility.Bones(cache));
             if (source.provider is UniskinRigDataProvider rigProvider)
@@ -623,6 +700,7 @@ namespace UnityEditor.U2D.Animation
                     throw;
                 }
                 m_Saved = SourceSnapshot();
+                sourceFingerprint = Fingerprint(new SceneMeshSource(source.ResolveSprite(spriteId)));
                 BoneGizmo.instance.ClearSpriteBoneCache();
                 return;
             }
@@ -631,6 +709,7 @@ namespace UnityEditor.U2D.Animation
             renames.Apply();
             source.ApplyAndSave();
             m_Saved = SourceSnapshot();
+            sourceFingerprint = Fingerprint(new SceneMeshSource(source.ResolveSprite(spriteId)));
             BoneGizmo.instance.ClearSpriteBoneCache();
         }
 

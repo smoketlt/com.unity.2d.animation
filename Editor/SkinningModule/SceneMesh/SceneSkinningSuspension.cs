@@ -161,6 +161,16 @@ namespace UnityEditor.U2D.Animation
             Cleanup();
         }
 
+        internal static void TrackNativeSource(AssetImporter importer)
+        {
+            if (importer == null) return;
+            LoadNativeSources();
+            var guid = AssetDatabase.AssetPathToGUID(importer.assetPath);
+            s_NativeSources.sources.RemoveAll(item => item.guid == guid);
+            s_NativeSources.sources.Add(new NativeSource { guid = guid, userData = importer.userData });
+            SessionState.SetString(k_UndoSources, JsonUtility.ToJson(s_NativeSources));
+        }
+
         static void LoadNativeSources()
         {
             if (s_NativeSources == null)

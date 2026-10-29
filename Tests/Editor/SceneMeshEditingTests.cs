@@ -245,6 +245,53 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         [Test]
+        public void OutsideBoundsIsRememberedPerMeshAcrossWindowRecreation()
+        {
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var sessionField = typeof(SceneEditMeshWindow).GetField("m_Session", flags);
+            var optionField = typeof(SceneEditMeshWindow).GetField("m_AllowOutsideBounds", flags);
+            var setter = typeof(SceneEditMeshWindow).GetMethod("SetOutsideBoundsOption", flags);
+            var id = System.Guid.NewGuid().ToString();
+            var keys = new System.Collections.Generic.List<string>();
+            SceneEditMeshWindow window = null;
+            try
+            {
+                for (var reopen = 0; reopen < 2; ++reopen)
+                {
+                    window = ScriptableObject.CreateInstance<SceneEditMeshWindow>();
+                    var session = (SceneMeshSession)sessionField.GetValue(window);
+                    session.assetPath = AssetDatabase.GetAssetPath(MonoScript.FromScriptableObject(window));
+                    session.spriteId = id;
+                    keys.Add(window.outsideBoundsPreferenceKey);
+                    Assert.IsNotNull(window.outsideBoundsPreferenceKey);
+                    window.LoadOutsideBoundsOption();
+                    Assert.AreEqual(reopen == 1, optionField.GetValue(window));
+                    setter.Invoke(window, new object[] { true });
+                    session.spriteId = id + "-sibling";
+                    keys.Add(window.outsideBoundsPreferenceKey);
+                    window.LoadOutsideBoundsOption();
+                    Assert.IsFalse((bool)optionField.GetValue(window));
+                    session.spriteId = id;
+                    window.LoadOutsideBoundsOption();
+                    Assert.IsTrue((bool)optionField.GetValue(window));
+                    if (reopen == 1)
+                    {
+                        setter.Invoke(window, new object[] { false });
+                        window.LoadOutsideBoundsOption();
+                        Assert.IsFalse((bool)optionField.GetValue(window));
+                    }
+                    Object.DestroyImmediate(window);
+                    window = null;
+                }
+            }
+            finally
+            {
+                if (window != null) Object.DestroyImmediate(window);
+                foreach (var key in keys) if (key != null) EditorPrefs.DeleteKey(key);
+            }
+        }
+
+        [Test]
         public void SceneMeshPrimaryPressIsReservedBeforePickingAndReleasedForMeshTools()
         {
             var gui = new DragGUI();

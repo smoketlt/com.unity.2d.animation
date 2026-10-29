@@ -492,6 +492,16 @@ namespace UnityEngine.U2D.Animation
             return m_State;
         }
 
+#if UNITY_EDITOR
+        internal void RefreshBindPoseData()
+        {
+            UpdateSpriteDeformationData();
+            m_DeformationSystem?.CopyToSpriteSkinData(this);
+            m_TransformsHash = 0;
+            m_VertexDeformationHash = 0;
+        }
+#endif
+
         internal bool BatchValidate()
         {
             if (!m_BoneCacheUpdateToDate)

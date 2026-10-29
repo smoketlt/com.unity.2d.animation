@@ -133,6 +133,7 @@ namespace UnityEditor.U2D.Animation
                 window.m_Source = source;
                 window.m_SelectionObjects = Selection.objects;
                 window.m_Session.Load(renderer.sprite, source);
+                window.LoadOutsideBoundsOption();
                 var blocked = window.BlockReason();
                 if (blocked != null) throw new InvalidOperationException(blocked);
                 if (createMesh && !source.hasAuthoredMesh) window.m_Session.CreateMesh();
@@ -339,7 +340,7 @@ namespace UnityEditor.U2D.Animation
             BindToggle("dim", m_Dim, value => m_Dim = value);
             BindToggle("isolate", m_Isolate, value => { m_Isolate = value; RestoreVisibility(); });
             BindToggle("deformed", m_Deformed, value => m_Deformed = value);
-            BindToggle("allowOutsideBounds", m_AllowOutsideBounds, value => m_AllowOutsideBounds = value);
+            BindToggle("allowOutsideBounds", m_AllowOutsideBounds, SetOutsideBoundsOption);
             BindToggle("masked", m_Masked, value => { m_Masked = value; UpdateClippingPreview(); });
             BindToggle("onTop", m_OnTop, value =>
             {
@@ -531,6 +532,37 @@ namespace UnityEditor.U2D.Animation
                 EditorGUIUtility.AddCursorRect(new Rect(evt.mousePosition - Vector2.one * 12, Vector2.one * 24),
                     corner >= 0 ? MouseCursor.RotateArrow : MouseCursor.MoveArrow);
         }
+        // Per-source editor preference: shared Sprite instances use the same option,
+        // while sibling sprites and different projects remain independent.
+        internal string outsideBoundsPreferenceKey
+        {
+            get
+            {
+                if (m_Session == null || string.IsNullOrEmpty(m_Session.assetPath) || string.IsNullOrEmpty(m_Session.spriteId)) return null;
+                var guid = AssetDatabase.AssetPathToGUID(m_Session.assetPath);
+                if (string.IsNullOrEmpty(guid)) return null;
+                return "Uniskin.SceneMesh.OutsideBounds." + Hash128.Compute(Application.dataPath) + "." + guid + "." + m_Session.spriteId;
+            }
+        }
+
+        internal void LoadOutsideBoundsOption()
+        {
+            var key = outsideBoundsPreferenceKey;
+            m_AllowOutsideBounds = key != null && EditorPrefs.GetBool(key, false);
+            var toggle = rootVisualElement.Q<Toggle>("allowOutsideBounds");
+            if (toggle == null) return;
+            toggle.SetValueWithoutNotify(m_AllowOutsideBounds);
+            var tick = toggle.Q<Label>(className: "mesh-tick");
+            if (tick != null) tick.text = m_AllowOutsideBounds ? "\u2713" : string.Empty;
+        }
+
+        void SetOutsideBoundsOption(bool value)
+        {
+            m_AllowOutsideBounds = value;
+            var key = outsideBoundsPreferenceKey;
+            if (key != null) EditorPrefs.SetBool(key, value);
+        }
+
         void BindToggle(string name, bool value, Action<bool> action)
         {
             var toggle = rootVisualElement.Q<Toggle>(name);

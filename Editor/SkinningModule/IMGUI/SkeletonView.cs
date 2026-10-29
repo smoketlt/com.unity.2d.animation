@@ -332,7 +332,7 @@ namespace UnityEditor.U2D.Animation
                 m_GUIWrapper.IsControlHot(0) &&
                 m_GUIWrapper.IsMultiStepControlHot(0))
             {
-                if (m_GUIWrapper.IsMouseDown(0) && !CanCreateBone() && hoveredBoneID != InvalidID)
+                if (!selectExistingBonesInCreate && m_GUIWrapper.IsMouseDown(0) && !CanCreateBone() && hoveredBoneID != InvalidID)
                 {
                     m_PendingCreateBoneFromExistingBone = true;
                     m_PendingCreateBoneBoneID = hoveredBoneID;
@@ -371,9 +371,11 @@ namespace UnityEditor.U2D.Animation
             return false;
         }
 
+        internal bool selectExistingBonesInCreate { get; set; }
+
         public bool CanCreateBone()
         {
-            return mode == SkeletonMode.CreateBone && (m_GUIWrapper.IsControlNearest(defaultControlID) || m_GUIWrapper.IsControlNearest(m_HoveredTailControlID));
+            return mode == SkeletonMode.CreateBone && (!selectExistingBonesInCreate || hoveredBoneID == InvalidID) && (m_GUIWrapper.IsControlNearest(defaultControlID) || m_GUIWrapper.IsControlNearest(m_HoveredTailControlID));
         }
 
         public bool DoCreateBone(out Vector3 position)

@@ -149,7 +149,7 @@ namespace UnityEditor.U2D.Animation
                 {
                     if (!additive)
                     {
-                        if (!selection.Contains(bone))
+                        if (!selection.Contains(bone) || (view is SkeletonView createView && createView.selectExistingBonesInCreate && createView.mode == SkeletonMode.CreateBone))
                             selectedBone = bone;
                     }
                     else

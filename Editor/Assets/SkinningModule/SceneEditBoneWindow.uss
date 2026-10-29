@@ -16,3 +16,10 @@
 .bone-icon-picker-button { width: 32px; height: 32px; flex-grow: 0; flex-shrink: 0; margin: 2px; padding: 0; border-width: 0; border-bottom-width: 1px; border-color: #14171B; border-radius: 0; background-color: #272D35; align-items: center; justify-content: center; }
 .bone-icon-picker-button:hover { background-color: #313943; }
 .bone-icon-picker-button.bone-icon-current { background-color: #005050; }
+
+.bone-length-size-row > #boneLength { flex-grow: 0; flex-basis: 145px; }
+.uniskin-bone-window #adjust { width: 66px; min-width: 66px; height: 20px; flex-grow: 0; flex-shrink: 0; margin: 0 0 0 6px; padding: 0 5px; }
+.uniskin-bone-window #adjustPulse { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background-color: rgba(40, 220, 190, 0.35); }
+
+#adjustProperties > .unity-base-field { height: 20px; margin: 0 0 4px 0; }
+#adjustProperties .unity-base-field__label { min-width: 52px; }

@@ -92,12 +92,12 @@ namespace UnityEditor.U2D.Animation
             }
         }
 
-        internal static void CheckSource(UniskinClippingMaskData asset)
+        internal static void CheckSource(UniskinClippingMaskData asset, bool validateImage = true)
         {
             if (asset.rig == null || asset.source == null || asset.sprite == null) throw new InvalidOperationException("The contour image or character rig is missing.");
             UniskinRigUtility.CheckSource(asset.rig);
             var path = AssetDatabase.GetAssetPath(asset.source);
-            if (path != AssetDatabase.GUIDToAssetPath(asset.rig.sourceGuid) && AssetDatabase.GetAssetDependencyHash(path).ToString() != asset.sourceDependencyHash)
+            if (validateImage && path != AssetDatabase.GUIDToAssetPath(asset.rig.sourceGuid) && AssetDatabase.GetAssetDependencyHash(path).ToString() != asset.sourceDependencyHash)
                 throw new InvalidOperationException("The source image/import settings changed. Back up this contour before creating a replacement.");
         }
 
@@ -169,6 +169,9 @@ namespace UnityEditor.U2D.Animation
                 var data = provider.data; var item = data.sprites[0]; var bones = BorrowedBones(asset, data.pixelsPerUnit, item.rect);
                 if (SameBones(bones, JsonUtility.FromJson<UniskinRigData>(asset.authoringData).character.bones)) continue;
                 if (undo) Undo.RegisterCompleteObjectUndo(asset, "Update Clipping Skeleton");
+                var originalBones = item.bones.ToArray();
+                var exactWeights = originalBones.All(bone => bones.Any(candidate => candidate.guid == bone.guid))
+                    ? item.vertices.Select(vertex => vertex.boneWeight).ToArray() : null;
                 var retained = item.bones.Where(bone => bones.Any(candidate => candidate.guid == bone.guid)).ToArray();
                 for (var vertex = 0; vertex < item.vertices.Length; ++vertex)
                 {
@@ -199,6 +202,18 @@ namespace UnityEditor.U2D.Animation
                     SkinningModule.ApplySceneWeightChanges(cache, provider);
                 }
                 finally { Object.DestroyImmediate(cache); }
+                if (exactWeights != null)
+                    for (var vertex = 0; vertex < item.vertices.Length; ++vertex)
+                    {
+                        var weight = exactWeights[vertex];
+                        for (var channel = 0; channel < 4; ++channel)
+                        {
+                            var old = weight.GetBoneIndex(channel);
+                            var index = old >= 0 && old < originalBones.Length ? Array.FindIndex(item.bones, bone => bone.guid == originalBones[old].guid) : -1;
+                            if (index >= 0) BoneWeightExtensions.SetBoneIndex(ref weight, channel, index);
+                        }
+                        item.vertices[vertex].boneWeight = weight;
+                    }
                 asset.authoringData = data.Serialize(); Rebuild(asset, provider); RefreshInstances(asset, undo); AssetDatabase.SaveAssetIfDirty(asset);
             }
         }

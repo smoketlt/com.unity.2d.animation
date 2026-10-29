@@ -6,6 +6,7 @@ using UnityEditor.UIElements;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
 using UnityEngine.U2D;
+using UnityEngine.U2D.Animation;
 using UnityEngine.UIElements;
 using Object = UnityEngine.Object;
 
@@ -41,6 +42,134 @@ namespace UnityEditor.U2D.Animation.Tests
         }
 
         SceneMeshSource Source() => new SceneMeshSource(AssetDatabase.LoadAssetAtPath<Sprite>(m_Path));
+
+        [Test]
+        public void IconSizeChangesImmediatelyAndAdjustCancelsWithoutLeavingDirtyPose()
+        {
+            Load();
+            var bone = m_Session.skeleton.CreateBone(null, new Vector3(8, 8), new Vector3(16, 8), false, "Icon");
+            bone.iconId = "0010_Arrow"; m_Session.Changed(true); m_Session.Save(Source());
+            var host = new GameObject("Adjust UI Fixture");
+            var window = ScriptableObject.CreateInstance<SceneEditBoneWindow>();
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            try
+            {
+                var renderer = host.AddComponent<SpriteRenderer>(); renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                Object.DestroyImmediate(typeof(SceneEditBoneWindow).GetField("m_Session", flags).GetValue(window) as Object);
+                typeof(SceneEditBoneWindow).GetField("m_Session", flags).SetValue(window, m_Session);
+                typeof(SceneEditBoneWindow).GetField("m_Renderer", flags).SetValue(window, renderer);
+                typeof(SceneEditBoneWindow).GetField("m_Source", flags).SetValue(window, Source());
+                typeof(SceneEditBoneWindow).GetField("m_DiscardOnClose", flags).SetValue(window, true);
+                typeof(SceneEditBoneWindow).GetMethod("SetupController", flags).Invoke(window, null);
+                m_Session.SelectBone(bone.guid); window.ShowPopup(); window.CreateGUI();
+                var size = window.rootVisualElement.Q<FloatField>("boneIconSize");
+                Assert.IsFalse(size.isDelayed);
+                size.value = 45; Assert.AreEqual(45f, bone.iconSize);
+                size.value = 61; Assert.AreEqual(61f, bone.iconSize);
+                Assert.NotNull(window.rootVisualElement.Q<Button>("adjust"));
+                m_Session.Save(Source());
+                m_Session.sourceFingerprint = SceneBoneSession.Fingerprint(Source());
+                typeof(SceneEditBoneWindow).GetField("m_Source", flags).SetValue(window, Source());
+                typeof(SceneEditBoneWindow).GetMethod("ToggleAdjust", flags).Invoke(window, null);
+                var before = bone.rotation;
+                var beforePosition = bone.position;
+                window.rootVisualElement.Q<Vector2Field>("adjustPosition").value = (Vector2)bone.position + new Vector2(3, -2);
+                window.rootVisualElement.Q<FloatField>("adjustRotation").value = before.eulerAngles.z + 35;
+                Assert.That(Vector3.Distance(beforePosition + new Vector3(3, -2), bone.position), Is.LessThan(.0001f));
+                Assert.That(Quaternion.Angle(before, bone.rotation), Is.EqualTo(35).Within(.01f));
+                typeof(SceneEditBoneWindow).GetMethod("CancelAdjust", flags).Invoke(window, null);
+                Assert.That(Vector3.Distance(beforePosition, bone.position), Is.LessThan(.0001f));
+                Assert.That(Quaternion.Angle(before, bone.rotation), Is.LessThan(.01f));
+                Assert.IsFalse(m_Session.dirty);
+            }
+            finally
+            {
+                window.rootVisualElement.Clear();
+                typeof(SceneEditBoneWindow).GetField("m_Renderer", flags).SetValue(window, null);
+                window.Close();
+                m_Session = null; Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void AdjustNativeSpritePreservesBindingProductsAndSourceGeometry()
+        {
+            var source = Source();
+            source.provider.GetDataProvider<ISpriteBoneDataProvider>().SetBones(source.rect.spriteID, new[]
+            {
+                new SpriteBone { name = "Root", guid = "adjust-root", parentId = -1, position = new Vector3(8, 8), rotation = Quaternion.Euler(0, 0, 35), length = 12 },
+                new SpriteBone { name = "Child", guid = "adjust-child", parentId = 0, position = new Vector3(12, 0), rotation = Quaternion.Euler(0, 0, -25), length = 8 }
+            }.ToList());
+            source.meshProvider.SetVertices(source.rect.spriteID, new[] { Vector2.zero, new Vector2(32, 0), new Vector2(0, 32) }
+                .Select(point => new Vertex2DMetaData { position = point, boneWeight = new BoneWeight { boneIndex0 = 0, weight0 = .6f, boneIndex1 = 1, weight1 = .4f } }).ToArray());
+            source.meshProvider.SetIndices(source.rect.spriteID, new[] { 0, 1, 2 });
+            source.meshProvider.SetEdges(source.rect.spriteID, new[] { new Vector2Int(0, 1), new Vector2Int(1, 2), new Vector2Int(2, 0) });
+            source.provider.Apply(); source.importer.SaveAndReimport();
+            Load();
+            var host = new GameObject("Adjust Native Fixture");
+            try
+            {
+                var renderer = host.AddComponent<SpriteRenderer>(); renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(m_Path);
+                var root = new GameObject("Root").transform; root.SetParent(host.transform, false);
+                var child = new GameObject("Child").transform; child.SetParent(root, false);
+                root.localPosition = new Vector3(.12f, .2f); root.localRotation = Quaternion.Euler(0, 0, 62);
+                child.localPosition = new Vector3(.12f, .01f); child.localRotation = Quaternion.Euler(0, 0, -15);
+                var skin = host.AddComponent<SpriteSkin>(); skin.SetRootBone(host.transform); skin.SetBoneTransforms(new[] { root, child });
+                var sourceBefore = Source();
+                var vertices = sourceBefore.meshProvider.GetVertices(sourceBefore.rect.spriteID);
+                var bind = renderer.sprite.GetBindPoses();
+                var products = skin.boneTransforms.Select((bone, i) => bone.localToWorldMatrix * bind[i]).ToArray();
+                var childBefore = child.localToWorldMatrix;
+                m_Session.CaptureScenePose(renderer, sourceBefore.rect.rect);
+                var baseline = m_Session.SourceFrames();
+                var target = m_Session.skeleton.bones.Single(bone => bone.name == "Root");
+                m_Session.AdjustPose(target, target.position + new Vector3(-4, 7), target.rotation * Quaternion.Euler(0, 0, 48));
+                m_Session.SaveAdjusted(Source(), renderer, baseline);
+                bind = renderer.sprite.GetBindPoses();
+                for (var i = 0; i < products.Length; ++i)
+                    for (var c = 0; c < 16; ++c)
+                        Assert.That((skin.boneTransforms[i].localToWorldMatrix * bind[i])[c], Is.EqualTo(products[i][c]).Within(.00001f));
+                for (var c = 0; c < 16; ++c) Assert.That(child.localToWorldMatrix[c], Is.EqualTo(childBefore[c]).Within(.00001f));
+                var after = Source();
+                CollectionAssert.AreEqual(vertices.Select(vertex => vertex.position), after.meshProvider.GetVertices(after.rect.spriteID).Select(vertex => vertex.position));
+                CollectionAssert.AreEqual(vertices.Select(vertex => vertex.boneWeight), after.meshProvider.GetVertices(after.rect.spriteID).Select(vertex => vertex.boneWeight));
+                Assert.NotNull(after.bindingPose);
+                Assert.IsFalse(m_Session.dirty);
+            }
+            finally { Object.DestroyImmediate(host); }
+        }
+
+        [Test]
+        public void AdjustRejectsShearAndAcceptsReflectedTrs()
+        {
+            var reflected = Matrix4x4.TRS(new Vector3(2, 3), Quaternion.Euler(0, 0, 27), new Vector3(-2, 3, 1));
+            var pose = SceneBoneAdjustPlan.Decompose(reflected);
+            var rebuilt = Matrix4x4.TRS(pose.position, pose.rotation, pose.scale);
+            for (var i = 0; i < 16; ++i) Assert.That(rebuilt[i], Is.EqualTo(reflected[i]).Within(.00001f));
+            Assert.Throws<InvalidOperationException>(() => SceneBoneAdjustPlan.Decompose(
+                Matrix4x4.Scale(new Vector3(2, 1, 1)) * Matrix4x4.Rotate(Quaternion.Euler(0, 0, 45))));
+        }
+
+        [Test]
+        public void CreateSelectsExistingJointBodyAndTailWithoutStartingBone()
+        {
+            var bone = ScriptableObject.CreateInstance<BoneCache>();
+            try
+            {
+                foreach (var x in new[] { 0f, 50f, 100f })
+                {
+                    var gui = new BodyPickingGUI { pointer = new Vector2(x, 0) };
+                    var view = new SkeletonView(gui) { mode = SkeletonMode.CreateBone, selectExistingBonesInCreate = true, defaultControlID = 99 };
+                    view.BeginLayout(); view.LayoutBone(bone.GetObjectId(), Vector3.zero, new Vector3(100, 0), Vector3.forward, Vector3.up, Vector3.right, true); view.EndLayout();
+                    Assert.IsFalse(view.CanCreateBone());
+                    gui.currentEvent = EventType.MouseDown;
+                    Assert.IsFalse(view.DoCreateBoneStart(out _));
+                    Assert.IsTrue(view.DoSelectBone(out var selected, out _));
+                    Assert.AreEqual(bone.GetObjectId(), selected);
+                }
+            }
+            finally { Object.DestroyImmediate(bone); }
+        }
 
         [TestCase(0.25f)]
         [TestCase(1f)]
@@ -82,6 +211,9 @@ namespace UnityEditor.U2D.Animation.Tests
             bool IGUIWrapper.IsControlHot(int id) => id == 0;
             bool IGUIWrapper.IsMultiStepControlHot(int id) => id == 0;
             bool IGUIWrapper.IsMouseDown(int button) => currentEvent == EventType.MouseDown && button == 0;
+            bool IGUIWrapper.IsMouseUp(int button) => currentEvent == EventType.MouseUp && button == 0;
+            bool IGUIWrapper.IsEventOutsideWindow() => false;
+            void IGUIWrapper.UseCurrentEvent() { currentEvent = EventType.Used; }
             bool IGUIWrapper.HasCurrentCamera() => false;
             Vector3 IGUIWrapper.GUIToWorld(Vector2 point, Vector3 normal, Vector3 origin) => point;
             float IGUIWrapper.DistanceToSegmentClamp(Vector3 start, Vector3 end) => MathUtility.DistanceToSegmentClamp(pointer, start, end);

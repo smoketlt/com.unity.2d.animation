@@ -62,6 +62,165 @@ namespace UnityEditor.U2D.Animation.Tests
         Sprite SourceSprite() => AssetDatabase.LoadAllAssetsAtPath(m_Path).OfType<Sprite>().First();
 
         [Test]
+        public void AdjustWindowConsumesNativeInspectorUndoModifications()
+        {
+            AddBones();
+            var skin = m_Renderer.GetComponent<SpriteSkin>(); var root = skin.boneTransforms[0];
+            var before = RuntimeBindingVertices(); var angleBefore = root.localRotation;
+            var window = Session<SceneEditBoneWindow>();
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var session = Session<SceneBoneSession>(); session.Load(m_Renderer.sprite, Source());
+            var initial = (SceneBoneSession)typeof(SceneEditBoneWindow).GetField("m_Session", flags).GetValue(window);
+            Object.DestroyImmediate(initial);
+            typeof(SceneEditBoneWindow).GetField("m_Session", flags).SetValue(window, session);
+            typeof(SceneEditBoneWindow).GetField("m_Renderer", flags).SetValue(window, m_Renderer);
+            typeof(SceneEditBoneWindow).GetField("m_Source", flags).SetValue(window, Source());
+            typeof(SceneEditBoneWindow).GetField("m_DiscardOnClose", flags).SetValue(window, true);
+            typeof(SceneEditBoneWindow).GetMethod("SetupController", flags).Invoke(window, null);
+            window.CreateGUI();
+            typeof(SceneEditBoneWindow).GetMethod("ToggleAdjust", flags).Invoke(window, null);
+            Undo.RecordObject(root, "Inspector Rotation Z");
+            root.localRotation *= Quaternion.Euler(0, 0, 31);
+            Undo.FlushUndoRecordObjects();
+            AssertPoints(before, RuntimeBindingVertices());
+            Assert.That(Quaternion.Angle(angleBefore, root.localRotation), Is.EqualTo(31).Within(.01f));
+            Assert.IsTrue(session.dirty);
+            Assert.IsTrue((bool)typeof(SceneEditBoneWindow).GetMethod("Apply", flags).Invoke(window, new object[] { null, default(Vector3), default(Vector3) }));
+            Assert.IsFalse((bool)typeof(SceneEditBoneWindow).GetField("m_Adjust", flags).GetValue(window));
+            AssertPoints(before, RuntimeBindingVertices());
+        }
+
+        [Test]
+        public void AdjustInspectorRotationAndMoveKeepMeshAndChildrenFixedDuringPreview()
+        {
+            AddBones();
+            var skin = m_Renderer.GetComponent<SpriteSkin>();
+            var root = skin.boneTransforms[0]; var child = skin.boneTransforms[1];
+            var before = RuntimeBindingVertices(); var childBefore = child.localToWorldMatrix;
+            var rotation = root.localRotation; var position = root.localPosition;
+            var original = m_Rig.authoringData;
+            var session = Session<SceneBoneSession>(); session.Load(m_Renderer.sprite, Source());
+            session.CaptureScenePose(m_Renderer, Source().rect.rect);
+            var baseline = session.SourceFrames();
+            var preview = new SceneBoneAdjustPreview(session, m_Renderer, Source(), baseline);
+            try
+            {
+                root.localRotation *= Quaternion.Euler(0, 0, 39);
+                Assert.IsTrue(preview.ReadInspectorChanges(new[] { root }));
+                AssertPoints(before, RuntimeBindingVertices());
+                Assert.That(Quaternion.Angle(rotation, root.localRotation), Is.EqualTo(39).Within(.01f));
+                var cached = default(SpriteSkinData); skin.CopyToSpriteSkinData(ref cached);
+                var expectedBindings = m_Renderer.sprite.GetBindPoses();
+                for (var b = 0; b < expectedBindings.Length; ++b)
+                    for (var c = 0; c < 16; ++c) Assert.That(cached.bindPoses[b][c], Is.EqualTo(expectedBindings[b][c]).Within(.00001f));
+                for (var c = 0; c < 16; ++c) Assert.That(child.localToWorldMatrix[c], Is.EqualTo(childBefore[c]).Within(.00001f));
+                root.localPosition += new Vector3(.03f, -.02f);
+                Assert.IsTrue(preview.ReadInspectorChanges(new[] { root }));
+                AssertPoints(before, RuntimeBindingVertices());
+                Assert.AreEqual(original, m_Rig.authoringData, "Preview must not save source data.");
+                preview.Restore();
+                Assert.That(Vector3.Distance(position, root.localPosition), Is.LessThan(.00001f));
+                session.SaveAdjusted(Source(), m_Renderer, baseline);
+                AssertPoints(before, RuntimeBindingVertices());
+                Assert.That(Quaternion.Angle(rotation, root.localRotation), Is.EqualTo(39).Within(.01f));
+            }
+            finally { preview.Restore(); }
+        }
+
+        [Test]
+        public void AdjustAxesAlsoCompensatesIndependentClippingContour()
+        {
+            var layer = new GameObject("Mesh"); layer.transform.SetParent(m_Root.transform, false);
+            var sprite = m_Renderer.sprite; Object.DestroyImmediate(m_Renderer);
+            m_Renderer = layer.AddComponent<SpriteRenderer>(); m_Renderer.sprite = sprite;
+            AddBones();
+            var mask = layer.AddComponent<UniskinClippingMask>();
+            mask.character = m_Root.GetComponent<UniskinRigBinding>();
+            UniskinClippingMaskUtility.Create(mask);
+            var contour = new SceneMeshSource(mask.contour.sprite);
+            var provider = (UniskinRigDataProvider)contour.provider;
+            var data = provider.data; var item = data.sprites[0];
+            item.bones = data.character.bones.ToArray();
+            item.vertices = new[] { Vector2.zero, new Vector2(24, 0), new Vector2(0, 24) }.Select(point =>
+                new Vertex2DMetaData { position = point, boneWeight = new BoneWeight { boneIndex0 = 0, weight0 = .6f, boneIndex1 = 1, weight1 = .4f } }).ToArray();
+            item.indices = new[] { 0, 1, 2 }; item.edges = new[] { new Vector2Int(0, 1), new Vector2Int(1, 2), new Vector2Int(2, 0) };
+            data.character.parts[0].bones = Enumerable.Range(0, item.bones.Length).ToArray();
+            provider.Apply();
+            var imagePath = m_Folder + "/ExternalContourImage.png";
+            var image = new Texture2D(32, 32);
+            try { image.SetPixels(Enumerable.Repeat(Color.white, 1024).ToArray()); image.Apply(); File.WriteAllBytes(imagePath, image.EncodeToPNG()); }
+            finally { Object.DestroyImmediate(image); }
+            AssetDatabase.ImportAsset(imagePath, ImportAssetOptions.ForceSynchronousImport);
+            var importer = (TextureImporter)AssetImporter.GetAtPath(imagePath);
+            importer.textureType = TextureImporterType.Sprite; importer.spriteImportMode = SpriteImportMode.Single; importer.SaveAndReimport();
+            mask.contour.source = AssetDatabase.LoadAssetAtPath<Sprite>(imagePath);
+            mask.contour.sourceDependencyHash = "old-image-hash";
+            Assert.Throws<InvalidOperationException>(() => new SceneMeshSource(mask.contour.sprite));
+            var original = m_Renderer;
+            m_Renderer = mask.contourRenderer; var before = RuntimeBindingVertices(); m_Renderer = original;
+            var weights = mask.contour.sprite.GetVertexAttribute<BoneWeight>(VertexAttribute.BlendWeight).ToArray();
+            var session = Session<SceneBoneSession>(); session.Load(m_Renderer.sprite, Source());
+            session.CaptureScenePose(m_Renderer, Source().rect.rect);
+            var baseline = session.SourceRotations();
+            var bone = session.skeleton.bones.Single(candidate => candidate.name == "Root");
+            session.AdjustRotation(bone, bone.rotation * Quaternion.Euler(0, 0, 43));
+            session.SaveAdjusted(Source(), m_Renderer, baseline);
+            m_Renderer = mask.contourRenderer;
+            try { AssertPoints(before, RuntimeBindingVertices()); }
+            finally { m_Renderer = original; }
+            CollectionAssert.AreEqual(weights, mask.contour.sprite.GetVertexAttribute<BoneWeight>(VertexAttribute.BlendWeight).ToArray());
+        }
+
+        [Test]
+        public void AdjustAxesPreservesMeshChildrenWeightsAndUndo()
+        {
+            AddBones();
+            var skin = m_Renderer.GetComponent<SpriteSkin>();
+            var root = skin.boneTransforms[0];
+            var child = skin.boneTransforms[1];
+            var attachment = new GameObject("Attachment").transform;
+            attachment.SetParent(child, false); attachment.localPosition = new Vector3(.07f, .03f);
+            root.localRotation = Quaternion.Euler(0, 0, 21);
+            var before = RuntimeBindingVertices();
+            var childBefore = child.localToWorldMatrix;
+            var attachmentBefore = attachment.localToWorldMatrix;
+            var weights = m_Renderer.sprite.GetVertexAttribute<BoneWeight>(VertexAttribute.BlendWeight).ToArray();
+            var uv = m_Renderer.sprite.GetVertexAttribute<Vector2>(VertexAttribute.TexCoord0).ToArray();
+            var metadata = File.ReadAllBytes(m_Path + ".meta");
+            var session = Session<SceneBoneSession>(); session.Load(m_Renderer.sprite, Source());
+            session.CaptureScenePose(m_Renderer, Source().rect.rect);
+            var baseline = session.SourceFrames();
+            var bone = session.skeleton.bones.Single(item => item.name == "Root");
+            var childPose = session.skeleton.bones.Single(item => item.name == "Child").worldPose;
+            var oldRotation = root.rotation;
+            Undo.IncrementCurrentGroup(); var adjustGroup = Undo.GetCurrentGroup();
+            session.AdjustPose(bone, bone.position + new Vector3(5, -3), bone.rotation * Quaternion.Euler(0, 0, -37));
+            Assert.AreEqual(childPose, session.skeleton.bones.Single(item => item.name == "Child").worldPose);
+            AssertPoints(before, RuntimeBindingVertices());
+            session.SaveAdjusted(Source(), m_Renderer, baseline, adjustGroup);
+            Assert.That(Quaternion.Angle(oldRotation, root.rotation), Is.EqualTo(37).Within(.01f));
+            AssertPoints(before, RuntimeBindingVertices());
+            for (var i = 0; i < 16; ++i)
+            {
+                Assert.That(child.localToWorldMatrix[i], Is.EqualTo(childBefore[i]).Within(.00001f));
+                Assert.That(attachment.localToWorldMatrix[i], Is.EqualTo(attachmentBefore[i]).Within(.00001f));
+            }
+            CollectionAssert.AreEqual(weights, m_Renderer.sprite.GetVertexAttribute<BoneWeight>(VertexAttribute.BlendWeight).ToArray());
+            var afterUV = m_Renderer.sprite.GetVertexAttribute<Vector2>(VertexAttribute.TexCoord0);
+            for (var i = 0; i < uv.Length; ++i) Assert.That(Vector2.Distance(uv[i], afterUV[i]), Is.LessThan(.00001f));
+            CollectionAssert.AreEqual(metadata, File.ReadAllBytes(m_Path + ".meta"));
+            Assert.IsFalse(session.dirty);
+            UniskinRigUtility.RefreshInstances(m_Rig);
+            AssertPoints(before, RuntimeBindingVertices());
+            Undo.FlushUndoRecordObjects(); Undo.PerformUndo();
+            AssertPoints(before, RuntimeBindingVertices());
+            Assert.That(Quaternion.Angle(oldRotation, root.rotation), Is.LessThan(.01f));
+            Assert.IsFalse(session.dirty, "Undo must not leave an uncompensated staged rotation.");
+            Undo.PerformRedo(); AssertPoints(before, RuntimeBindingVertices());
+            Assert.That(Quaternion.Angle(oldRotation, root.rotation), Is.EqualTo(37).Within(.01f));
+        }
+
+        [Test]
         public void SuspendSkinningRigSavePreservesImageWeightsSourceAndUndo()
         {
             var previousSelection = Selection.objects;

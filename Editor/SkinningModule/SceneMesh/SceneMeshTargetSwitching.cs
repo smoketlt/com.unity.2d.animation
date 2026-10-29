@@ -166,6 +166,7 @@ namespace UnityEditor.U2D.Animation
                 RestoreScene();
                 var previous = m_Session;
                 m_Session = session; m_Renderer = target; m_Source = source;
+                LoadOutsideBoundsOption();
                 m_Controller.selection = session.selection; m_Controller.cacheUndo = session;
                 m_AppliedUndoGroup = -1; m_Error = null;
                 m_LastImporterFingerprint = source.Fingerprint();
